@@ -1,0 +1,12 @@
+{
+  "id": "fac_discreteconsensus",
+  "slugs": [
+    "fair-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "discrete-odds",
+    "eu-odds-pinnacle"
+  ],
+  "content": "离散指数低位，市场分歧极小，强化方向确定性",
+  "updated_at": "2026-07-03T13:42:37.297296"
+}

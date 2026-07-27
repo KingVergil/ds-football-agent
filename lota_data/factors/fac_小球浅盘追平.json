@@ -1,0 +1,14 @@
+{
+  "id": "fac_小球浅盘追平",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "over-under-crown",
+    "match-head"
+  ],
+  "content": "大小球盘口偏小且小球水位占优，配合亚盘浅盘，低进球预期有利平局",
+  "updated_at": "2026-07-07T18:23:33.604947"
+}

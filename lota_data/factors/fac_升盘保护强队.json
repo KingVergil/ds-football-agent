@@ -1,0 +1,12 @@
+{
+  "id": "fac_升盘保护强队",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "亚盘升盘且强队水位控制在安全区间，机构防范强队打出的信号",
+  "updated_at": "2026-07-07T23:44:21.751512"
+}

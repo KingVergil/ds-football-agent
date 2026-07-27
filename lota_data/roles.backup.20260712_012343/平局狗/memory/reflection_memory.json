@@ -1,0 +1,70 @@
+{
+  "updated_at": "2026-07-08T00:41:42.708887",
+  "reflections": [
+    {
+      "date": "2026-06-12",
+      "reflection": "本场是典型的“平局结构看似满足但动态指标示警”案例。平赔临场不降反升与大小球水位趋平共同提示进球预期升温，削弱了平局基础。未来需将这两个动态验证作为必要条件：必须看到平赔下行或至少稳定，且小球水位维持低位防范，才可出手追平。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: match-head, discrete-odds\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:11:50.464909"
+    },
+    {
+      "date": "2026-06-14",
+      "reflection": "赢场多因子共振（必发买盘、浅盘、小球不退、平赔横盘、离散温和），输场触发多项反向因子（平赔上扬、小球升水、离散过热）。核心教训：离散平局跌落至极低并非出手理由，须结合赔率走向和资金流向，若离散低位而平赔反升，是典型高位诱平陷阱。因子共振点越多，命中率越高。\n📡 有效slug: discrete-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:14:17.811908"
+    },
+    {
+      "date": "2026-06-18",
+      "reflection": "两场平局信号看似共振，但均出现隐蔽破坏因子：离散平局攀升、平赔剧烈震荡、大小球诱盘。平局狙击除满足基本面外，必须严审赔率波动和离散趋势，任何一方出现方向性异动都应放弃，等待更稳定的出手机会。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell, discrete-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:18:54.007060"
+    },
+    {
+      "date": "2026-06-19",
+      "reflection": "该场虽满足浅盘、平赔下行、必发买盘等平局信号，但公平盘实力差已超出预设阈值，且大小球临场反转加剧风险，主胜凝聚进一步削弱平局基础。今后需将“实力接近”作为平局投注的第一道滤网，任何表面共振若突破核心约束都应放弃。因子“公平盘实力差警戒”将与现有“小球升水示险”互补，强化对虚假平局信号的识别。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:20:26.685166"
+    },
+    {
+      "date": "2026-06-24",
+      "reflection": "本场失败源于平赔走势、必发和亚盘三重负面信号共振，尽管公平盘和大小球初看支持平局，但临场动态完全否定。追平时必须重视负面因子的否决权，避免因部分信号达标而忽略矛盾点。可将此类反面案例纳入避雷清单，过滤相似场景。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell, discrete-odds\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:23:06.940085"
+    },
+    {
+      "date": "2026-06-28",
+      "reflection": "本场平局打出依赖基本面均衡、盘口浅开与平赔剧烈收敛的共振。跨场可提炼“平赔急速收敛+平手盘”为核心组合因子，大小球小球方向作为辅助确认。离散值未极端凝聚并非否决条件，当平赔主动下压远胜离散干扰。后续需警惕平赔收敛但亚盘深开或大小球大球盘口的矛盾场景，此类将降低因子置信度。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:28:13.751175"
+    },
+    {
+      "date": "2026-06-29",
+      "reflection": "此役公平盘实力差-0.33、平赔下行、小球设防看似共振，但亚盘受半一实为深盘，离散平局33.68极端高位暴露市场无统一方向，深盘阻平效应压倒浅盘思维。今后追平必须亚盘≤0.5球，离散无异常极端值，任何单项利好无法挽救硬避雷失效。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:29:54.961501"
+    },
+    {
+      "date": "2026-07-01",
+      "reflection": "这场2.60平赔与离散凝聚看似形成共振，但深入拆解发现平赔收敛过程波动剧烈（“下山式”），离散平局过热到1以下而胜负离散都在2以上——市场共识过度聚焦平局本身即是风险。对照规则“离散某一方极端凝聚不追平”，此处平局凝聚已触发避雷条款。后续模型需区分“平稳收敛”与“剧烈波动收敛”两种平赔下压形态，后者配合离散过热应直接放弃。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:33:17.069832"
+    },
+    {
+      "date": "2026-07-02",
+      "reflection": "平局捕捉的核心不在赔率绝对高低，而在盘口与实力差的错配。当亚盘深度明显低于实力差时，机构实际在防范冷平；离散平庸进一步验证无单边热度，此时即使平赔3.3以上仍有价值。后续需结合必发买盘与大小球小球共同验证，三者共振时置信度更高。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, discrete-odds\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:34:46.391210"
+    },
+    {
+      "date": "2026-07-03",
+      "reflection": "本场公平盘实力差0.56主队略优，但亚盘给到半球，已超出浅盘范畴；平赔下行伴随胜赔升高，典型诱平格局，离散平淡缺乏明确防御。追平的核心前提是实力极度接近与浅盘共存，半球盘本身就打破了平衡，后续赔率变化多为诱导，此类比赛必须过滤。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:35:53.309876"
+    },
+    {
+      "date": "2026-07-04",
+      "reflection": "浅盘、小球低水和欧赔平赔下行是追平核心信号，尤其当三者齐备时命中率高。离散指数不像某些方向凝聚，反而是平局有利条件。必发买盘未占优不影响，无需必发信号。后续需关注类似组合。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, discrete-odds\n🔇 噪声slug: betfair-buysell\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:37:01.036642"
+    },
+    {
+      "date": "2026-07-05",
+      "reflection": "两场失败均因平局表面信号诱人而深层矛盾未被重视。浅盘+公平盘+必发买盘是必要不充分条件，必需叠加平赔离散走低、亚盘双方贴水平衡的确认。平赔下行但离散不降，或亚盘一方水位单边拉升，均揭示市场真实倾向而非平局。必发买盘过热而平赔逆升更是典型的诱平陷阱，此后需将平赔与买盘方向是否一致列为硬性过滤。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:39:38.407289"
+    },
+    {
+      "date": "2026-07-06",
+      "reflection": "本场墨西哥受让平半，实力差-0.69明显倒向英格兰，公平盘显示客队进球预期远超平局阈值。Pinnacle平赔从3.13→3.15，并未出现有效收敛，与澳门2.90的下行形成矛盾，说明机构间存在分歧。必发平局买盘虽略高于卖盘，但客胜买盘量级碾压，资金流向更偏向英格兰小胜。结合大小球小球严防，最终可能以1-0或0-1收场，平局陷阱成立。今后追平必须严守实力差≤0.5的铁律，且平赔收敛信号必须以Pinnacle等主流公司为准。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: discrete-odds, match-head\n📐 因子归因: 1 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:41:42.708461"
+    }
+  ]
+}

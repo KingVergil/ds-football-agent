@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散平局凝聚防上盘",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "离散值中平局数值远低于主客胜，即使上盘离散也低，应防范平局而选择受让方",
+  "updated_at": "2026-07-18T12:56:39.240696"
+}

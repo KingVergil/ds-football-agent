@@ -1,0 +1,12 @@
+{
+  "id": "fac_升盘离散不凝聚",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "亚盘升盘配合资金同向，但离散未在该方向凝聚，常为诱盘，上盘不稳",
+  "updated_at": "2026-07-19T12:06:39.632645"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚独立支撑",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "离散凝聚方向若未伴随欧赔大幅下沉或升盘高水，仅以中性水位配合，仍为可靠上盘信号，可独立入场",
+  "updated_at": "2026-07-06T16:22:42.464309"
+}

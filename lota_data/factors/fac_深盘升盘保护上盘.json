@@ -1,0 +1,11 @@
+{
+  "id": "fac_深盘升盘保护上盘",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "discrete-odds",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "亚盘在赛前出现连续升盘并维持深盘低水，通过深盘形成对上盘的机构保护行为",
+  "updated_at": "2026-07-06T00:58:48.428756"
+}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据管线架构图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root { --bg: #f0f4f8; --card: #ffffff; --text: #1e293b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; padding: 40px;
+  }
+  .card {
+    background: var(--card); border: 1px solid #30363d; border-radius: 12px;
+    padding: 32px; width: 100%; max-width: 900px;
+  }
+  h2 { text-align: center; margin-bottom: 8px; color: #1e293b; font-size: 1.2em; }
+  .sub { text-align: center; color: #64748b; font-size: 0.8em; margin-bottom: 24px; }
+  svg { max-width: 100% !important; height: auto !important; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>📡 数据管线架构</h2>
+  <p class="sub">双输入流 → PromptBuilder 汇合 → LLM</p>
+  <div class="mermaid">
+graph LR
+    subgraph API["🌐 市场数据源"]
+        A1["估值模型<br/>预期分差 · 进球预期"]
+        A2["做市商定价<br/>报价 · 报价水位"]
+        A3["市场离散度<br/>定价分歧"]
+        A4["量价分布<br/>买卖双方"]
+        A5["总分线"]
+    end
+
+    subgraph DM["📡 DataManager"]
+        D1["按 slug 分块<br/>fair-odds"]
+        D2["eu-odds"]
+        D3["discrete-odds"]
+        D4["betfair"]
+        D5["over-under"]
+    end
+
+    subgraph MEM["🧠 FactorMemory"]
+        M1["活跃因子描述"]
+        M2["slug 关联映射"]
+        M3["历史绩效"]
+    end
+
+    subgraph PB["📝 PromptBuilder"]
+        P1["system prompt"]
+        P2["数据截面块"]
+        P3["因子记忆块"]
+        P4["persona 注入"]
+    end
+
+    A1 & A2 & A3 & A4 & A5 --> DM
+    D1 & D2 & D3 & D4 & D5 --> P2
+    M1 --> M2
+    M2 --> P3
+    M3 --> P3
+    P1 & P2 & P3 & P4 --> LLM["🤖 LLM"]
+
+    style API fill:#fef2f2,stroke:#dc2626,color:#1e293b
+    style DM fill:#fefce8,stroke:#ca8a04,color:#1e293b
+    style MEM fill:#f3e8ff,stroke:#7c3aed,color:#1e293b
+    style PB fill:#dbeafe,stroke:#2563eb,color:#1e293b
+    style LLM fill:#f0fdf4,stroke:#16a34a,color:#1e293b
+  </div>
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true, theme: 'base',
+  themeVariables: {
+    primaryColor: '#dbeafe', primaryTextColor: '#1e293b', primaryBorderColor: '#93c5fd',
+    lineColor: '#2563eb', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9',
+    fontSize: '13px',
+  },
+  flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', padding: 15 },
+  securityLevel: 'loose',
+});
+</script>
+</body>
+</html>

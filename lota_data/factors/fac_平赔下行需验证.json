@@ -1,0 +1,13 @@
+{
+  "id": "fac_平赔下行需验证",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "betfair-buysell",
+    "discrete-odds"
+  ],
+  "content": "平赔下行必须结合大小球及离散等其他维度共同确认，单靠平赔收敛和必发买盘不足以构成强信号",
+  "updated_at": "2026-07-07T18:36:47.470848"
+}

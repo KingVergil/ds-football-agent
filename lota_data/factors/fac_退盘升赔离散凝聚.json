@@ -1,0 +1,12 @@
+{
+  "id": "fac_退盘升赔离散凝聚",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "亚盘退盘且欧赔升赔，但离散在该方保持凝聚，上盘大概率不败",
+  "updated_at": "2026-07-18T12:56:39.243359"
+}

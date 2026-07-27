@@ -1,0 +1,12 @@
+{
+  "id": "fac_modelconsistency",
+  "slugs": [
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "discrete-odds",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "近期（1-3天）相同盘口与对阵模式存在成功记录，提升预测可信度。",
+  "updated_at": "2026-07-03T13:58:04.118209"
+}

@@ -1,0 +1,114 @@
+{
+  "sent_at": "2026-07-26 21:44:38",
+  "football_day": "2026-07-26",
+  "orders": [
+    {
+      "lota_id": "Lota4467104",
+      "pick": "A",
+      "handicap": 1.25,
+      "odds": 0.93
+    },
+    {
+      "lota_id": "Lota4467110",
+      "pick": "H",
+      "handicap": -1.25,
+      "odds": 0.87
+    },
+    {
+      "lota_id": "Lota4468157",
+      "pick": "H",
+      "handicap": -0.75,
+      "odds": 0.91
+    },
+    {
+      "lota_id": "Lota4468156",
+      "pick": "A",
+      "handicap": -0.0,
+      "odds": 1.0
+    },
+    {
+      "lota_id": "Lota4467621",
+      "pick": "H",
+      "handicap": -0.75,
+      "odds": 0.85
+    },
+    {
+      "lota_id": "Lota4468158",
+      "pick": "H",
+      "handicap": -1.5,
+      "odds": 0.97
+    },
+    {
+      "lota_id": "Lota4467106",
+      "pick": "H",
+      "handicap": -1.0,
+      "odds": 0.84
+    },
+    {
+      "lota_id": "Lota4467109",
+      "pick": "H",
+      "handicap": -0.5,
+      "odds": 0.93
+    },
+    {
+      "lota_id": "Lota4467642",
+      "pick": "A",
+      "handicap": 0.25,
+      "odds": 0.78
+    },
+    {
+      "lota_id": "Lota4467639",
+      "pick": "A",
+      "handicap": 1.75,
+      "odds": 1.06
+    },
+    {
+      "lota_id": "Lota4467602",
+      "pick": "A",
+      "handicap": -0.75,
+      "odds": 1.06
+    },
+    {
+      "lota_id": "Lota4467633",
+      "pick": "A",
+      "handicap": 1.25,
+      "odds": 1.08
+    },
+    {
+      "lota_id": "Lota4465754",
+      "pick": "A",
+      "handicap": -0.0,
+      "odds": 0.86
+    },
+    {
+      "lota_id": "Lota4465731",
+      "pick": "A",
+      "handicap": -1.25,
+      "odds": 0.82
+    },
+    {
+      "lota_id": "Lota4480465",
+      "pick": "H",
+      "handicap": 0.5,
+      "odds": 0.83
+    },
+    {
+      "lota_id": "Lota4480463",
+      "pick": "H",
+      "handicap": 0.5,
+      "odds": 0.9
+    },
+    {
+      "lota_id": "Lota4480499",
+      "pick": "H",
+      "handicap": -0.75,
+      "odds": 0.96
+    },
+    {
+      "lota_id": "Lota4480462",
+      "pick": "H",
+      "handicap": -0.75,
+      "odds": 0.93
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_必发背离离散预警",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "离散凝聚方向若必发对应选项卖盘大于买盘，该方向不可信，宜反向操作或观望。",
+  "updated_at": "2026-07-06T17:14:28.660315"
+}

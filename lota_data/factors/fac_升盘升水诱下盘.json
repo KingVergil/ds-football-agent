@@ -1,0 +1,13 @@
+{
+  "id": "fac_升盘升水诱下盘",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "over-under-crown"
+  ],
+  "content": "亚盘升盘伴随水位同步抬升，暴露诱上意图，下盘不败概率高",
+  "updated_at": "2026-07-06T14:37:53.255279"
+}

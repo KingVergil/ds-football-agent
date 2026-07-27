@@ -1,0 +1,11 @@
+{
+  "id": "fac_必发卖压反向",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "必发市场某方向卖单远大于买单，则此方向难出，应关注对立方向",
+  "updated_at": "2026-07-25T11:00:52.572677"
+}

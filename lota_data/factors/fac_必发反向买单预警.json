@@ -1,0 +1,12 @@
+{
+  "id": "fac_必发反向买单预警",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "深盘下，若弱势方必发大额净买入，谨防上盘赢球输盘",
+  "updated_at": "2026-07-19T12:08:06.129339"
+}

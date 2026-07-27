@@ -1,0 +1,13 @@
+{
+  "id": "fac_赔率逆升下盘",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "fair-odds",
+    "betfair-buysell",
+    "over-under-crown"
+  ],
+  "content": "赛前上盘赔率上升，即使离散凝聚也常无力穿盘，可博下盘",
+  "updated_at": "2026-07-27T09:43:21.251365"
+}

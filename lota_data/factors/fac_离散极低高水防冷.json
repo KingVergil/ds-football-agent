@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散极低高水防冷",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "离散值在某一方极端低位但亚盘水位高企，防范过热不穿。",
+  "updated_at": "2026-07-22T10:10:35.378333"
+}

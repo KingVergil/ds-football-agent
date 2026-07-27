@@ -1,0 +1,12 @@
+{
+  "id": "fac_深盘离散凝聚低水",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "让球方盘口深度超过半球时，离散呈“一低两高”形态，终盘水位降至低水区间，强队穿盘概率极大。",
+  "updated_at": "2026-07-04T16:56:19.547657"
+}

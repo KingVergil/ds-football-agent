@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚资金同向",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "离散极度凝聚方向必须同步出现必发资金净买入（买>卖），否则放弃该方向。",
+  "updated_at": "2026-07-06T17:14:28.659492"
+}

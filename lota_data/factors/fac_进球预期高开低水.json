@@ -1,0 +1,12 @@
+{
+  "id": "fac_进球预期高开低水",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "betfair-buysell"
+  ],
+  "content": "公平盘进球和显著大于市场大小球盘口，且大球水位始终压低，追大球。",
+  "updated_at": "2026-07-07T18:52:20.736632"
+}

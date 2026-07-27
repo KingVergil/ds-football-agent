@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散伪凝聚跟资金",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "离散平局凝聚但必发平局卖盘远大于买盘，另一方向离散次低且必发净买入，跟随资金博该方向。",
+  "updated_at": "2026-07-19T12:11:09.203519"
+}

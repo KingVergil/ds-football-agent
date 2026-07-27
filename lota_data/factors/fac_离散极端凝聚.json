@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散极端凝聚",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "离散指数某一方向（主胜或客胜）出现极端低位，且与公平盘强队方向或赔率低位方向一致，预示强队赢盘",
+  "updated_at": "2026-07-20T09:14:22.786605"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散缺失防强队",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "当离散指数缺失时，仅凭实力差和赔率下沉追强队风险极高，应防范爆冷。",
+  "updated_at": "2026-07-11T15:41:48.204025"
+}

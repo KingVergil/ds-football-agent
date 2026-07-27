@@ -1,0 +1,11 @@
+{
+  "id": "fac_浅盘离散易反",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "当盘口为平半或平手，离散指数某一方向极度凝聚时，该方向往往难以打出，需防冷门。",
+  "updated_at": "2026-07-22T10:18:25.082819"
+}

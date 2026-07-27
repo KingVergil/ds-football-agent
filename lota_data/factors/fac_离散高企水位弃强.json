@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散高企水位弃强",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "当离散在上盘方向（让球方）数值高企发散，而平局和对手方向未凝聚，同时上盘维持高水（≥1.0），上盘打出困难，应弃强投下盘。",
+  "updated_at": "2026-07-22T10:19:51.910562"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚赔率不下沉",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "离散在某一方极度凝聚，但欧赔未同步下沉且亚盘水位上升，上盘过热易翻车",
+  "updated_at": "2026-07-18T12:49:32.727673"
+}

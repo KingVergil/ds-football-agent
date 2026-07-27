@@ -1,0 +1,13 @@
+{
+  "id": "fac_离散资金背离",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "over-under-crown"
+  ],
+  "content": "离散凝聚方向与必发对手大额成交相悖时凝聚力虚假，极易爆冷，不可盲信",
+  "updated_at": "2026-07-04T15:55:48.255665"
+}

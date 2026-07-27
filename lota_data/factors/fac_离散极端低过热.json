@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散极端低过热",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "离散指数上盘方数值碾压式走低至极值，同时必发同向买入量显著聚集，提示市场过热，上盘易冷。",
+  "updated_at": "2026-07-06T17:26:11.188029"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散顺盘深盘陷阱",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "离散凝聚方向与深盘让球方向一致，且盘口达两球以上时，强队上盘极易输盘，应视为陷阱。",
+  "updated_at": "2026-07-04T16:12:13.840677"
+}

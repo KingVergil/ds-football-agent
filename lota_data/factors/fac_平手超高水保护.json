@@ -1,0 +1,11 @@
+{
+  "id": "fac_平手超高水保护",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "match-head"
+  ],
+  "content": "平手盘下某方水位≥1.00超高，则超高水方难胜，低水方不败。",
+  "updated_at": "2026-07-06T16:26:05.420808"
+}

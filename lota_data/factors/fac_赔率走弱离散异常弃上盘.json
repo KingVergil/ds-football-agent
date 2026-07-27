@@ -1,0 +1,11 @@
+{
+  "id": "fac_赔率走弱离散异常弃上盘",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "match-head"
+  ],
+  "content": "欧赔主胜明显升高或退盘与离散低位/高位凝聚矛盾时,优先相信赔率走势,放弃上盘",
+  "updated_at": "2026-07-06T18:21:25.491414"
+}

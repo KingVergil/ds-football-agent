@@ -1,0 +1,12 @@
+{
+  "id": "fac_资金主胜净买入",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds",
+    "eu-odds-pinnacle"
+  ],
+  "content": "必发买卖盘主胜买量明显大于卖量，显示聪明钱流入，与离散共振则更可靠。",
+  "updated_at": "2026-07-07T22:44:12.818536"
+}

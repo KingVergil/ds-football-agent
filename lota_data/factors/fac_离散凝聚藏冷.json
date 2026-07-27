@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚藏冷",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "离散在热门方向凝聚但反方向离散同步下降或保持低位时，警惕冷门。",
+  "updated_at": "2026-07-26T12:44:51.394636"
+}

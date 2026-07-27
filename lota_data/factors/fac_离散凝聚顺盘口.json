@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚顺盘口",
+  "slugs": [
+    "fair-odds",
+    "over-under-crown",
+    "discrete-odds",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "离散值在某方极度凝聚（极低），即使盘口与公平实力差反向，也应顺应离散方向与该方盘口，避免逆势搏冷。",
+  "updated_at": "2026-07-04T15:35:17.482199"
+}

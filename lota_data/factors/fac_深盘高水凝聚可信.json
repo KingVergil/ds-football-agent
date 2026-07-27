@@ -1,0 +1,12 @@
+{
+  "id": "fac_深盘高水凝聚可信",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "深盘（≥一球）下亚盘上盘水位偏高，但离散极度凝聚且欧赔同步下沉时，高水阻上无效，穿盘可期",
+  "updated_at": "2026-07-06T16:36:44.533705"
+}

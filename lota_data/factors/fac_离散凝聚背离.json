@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚背离",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "当欧赔向强队偏移，但离散指数凝聚在平局或弱队方向，预示强队难穿，应果断回避上盘",
+  "updated_at": "2026-07-04T16:37:46.606477"
+}

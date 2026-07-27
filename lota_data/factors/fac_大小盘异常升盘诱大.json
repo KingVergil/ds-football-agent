@@ -1,0 +1,12 @@
+{
+  "id": "fac_大小盘异常升盘诱大",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "公平盘预期总进球不支撑高盘时，机构强行升盘且降水，常为造热大球，实际易出小球。",
+  "updated_at": "2026-07-04T16:56:19.549062"
+}
