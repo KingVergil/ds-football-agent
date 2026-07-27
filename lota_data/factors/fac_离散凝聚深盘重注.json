@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚深盘重注",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "离散指数某一方极端低位凝聚，且盘口为一球或更深时，重注该方向穿盘",
+  "updated_at": "2026-07-25T11:00:52.570460"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_必发卖盘硬接",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "必发市场对应方有巨量卖单挂出但赔率不降，显示庄家或大资金主动吸筹护盘。",
+  "updated_at": "2026-07-07T22:57:44.673577"
+}

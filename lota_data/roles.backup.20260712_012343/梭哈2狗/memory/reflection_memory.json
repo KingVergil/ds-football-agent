@@ -1,0 +1,105 @@
+{
+  "updated_at": "2026-07-08T01:07:33.267346",
+  "reflections": [
+    {
+      "date": "2026-06-17",
+      "reflection": "上盘深盘打出往往需要多重共振——欧亚背离、离散凝聚是最强组合；单纯退盘升水极易构成诱盘，若无离散凝聚或欧赔走强保护则为陷阱。应坚持多因子共振才下重注，避免单信号误导。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head (战绩分析, 球员评分等基本面)\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:20:17.103648"
+    },
+    {
+      "date": "2026-06-18",
+      "reflection": "离散极度凝聚配合亚盘低水保护是跨联赛可靠的上盘因子，无论深盘还是半一盘，只要离散方向明确且水位持续压低，均可重仓介入。退盘上水大球受阻在世界杯低进球预期场次再次验证其有效性。核心盈利模式是离散与盘口水位的方向共振，而非单纯看数字阈值。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, over-under-crown, fair-odds, eu-odds-pinnacle\n🔇 噪声slug: betfair-buysell, match-head\n📐 因子归因: 4 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:23:29.738645"
+    },
+    {
+      "date": "2026-06-19",
+      "reflection": "主胜离散极度凝聚(0.01~0.07级别)配合盘口深开或升盘低水，是强上盘信号，欧赔下沉增强信心。离散凝聚在平局方向时，往往配合下盘低水制造陷阱，切忌盲目追下盘，必须结合亚盘深度：若亚盘深开或维持低位，上盘反而可靠。今日两笔重注和中注均基于离散主胜凝聚+升盘低水共振，成功率高，验证该模式可复用为因子；试探单被平局离散误导，确认该方向不可跟。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, match-head\n🔇 噪声slug: over-under-crown, betfair-buysell\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:25:37.206477"
+    },
+    {
+      "date": "2026-06-20",
+      "reflection": "离散凝聚是锚点：凝聚+低水=正路打穿，凝聚+高水=诱上出下。欧赔单向降水配合亚盘背离必须依赖离散验证，缺失离散的深盘盘口变化极易形成误导。当日唯一亏损正是离散缺失下的错误博冷。\n📡 有效slug: fair-odds, discrete-odds, asian-handicap-pinnacle, eu-odds-pinnacle\n🔇 噪声slug: match-head, betfair-buysell, over-under-crown\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:29:02.028835"
+    },
+    {
+      "date": "2026-06-21",
+      "reflection": "赢利的order_1和order_2均利用离散凝聚结合盘口异常信号；order_1针对极端深盘的高水诱上，order_2依靠退盘时的离散凝聚强盘。失败的order_3同样使用“凝聚高水诱下”，但实力差和盘口深度未达极端值，导致诱下失效。此因子需在实力差距极大、盘口已到极限时更可靠；中等差距时，高水可能是真实看好强方穿盘，需慎用。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: over-under-crown\n📐 因子归因: 4 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:32:23.593860"
+    },
+    {
+      "date": "2026-06-22",
+      "reflection": "离散凝聚仍然是核心信号，但须结合凝聚程度与盘口动作。离散极低（<0.1）配合升盘常是制造上盘热度的杀招，而正常低凝聚配合退盘或低水才是可靠的正向因子。今后面对离散极低盘口示好需降仓或回避。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, eu-odds-pinnacle, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:33:47.487250"
+    },
+    {
+      "date": "2026-06-23",
+      "reflection": "今日三场均以离散凝聚+欧赔走低为基底，亚盘皆升盘示强，但水位分化形成不同逻辑：order_0降水为降低赔付，order_2高水为阻上。尤其是order_2高水升盘成功捕到高赔，证明“升盘高水阻上”因子有效，未来类似场景可将试探注提至15-20%仓位。盘口深度与水位的反向信号值得作为可复用因子记录。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:35:49.205208"
+    },
+    {
+      "date": "2026-06-24",
+      "reflection": "四个赢单均围绕离散异常凝聚信号展开，无论退盘、深盘还是下盘受让，离散的极致收紧方向与亚盘水位或盘口变化形成共振，是核心可复用规律。退盘结合离散凝聚多为诱下，深盘震荡时离散凝聚能过滤噪音锁定穿盘方向，下盘关注平局离散低点与高水阻挡的配合。这些信号跨联赛可复用，应作为激进投注的优先扫描因子。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: over-under-crown, betfair-buysell, match-head\n📐 因子归因: 4 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:38:13.212599"
+    },
+    {
+      "date": "2026-06-25",
+      "reflection": "三场均出现深盘或退盘时离散和欧赔同向凝聚，上盘几乎全部打出；高水反而成为阻力，非真诱下。当离散毫不松动时，应坚信其指示方向并敢于重注，退盘仅是市场干扰。资金上，高置信度信号匹配高仓位是利润来源，连胜时按计划加码，但不可突破单注上限以避免回撤失控。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:41:42.116322"
+    },
+    {
+      "date": "2026-06-26",
+      "reflection": "深盘高水（受两球以上）配合离散凝聚是典型诱上陷阱，不宜追强，应警惕或反向下盘；离散极低在浅盘下容易形成一致乐观杀上盘，可逆势小注搏下盘。未来深盘操作需结合盘口深度与水位高度综合判断，避免盲目相信离散凝聚。\n📡 有效slug: eu-odds-pinnacle, asian-handicap-pinnacle, fair-odds\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:44:27.005918"
+    },
+    {
+      "date": "2026-06-27",
+      "reflection": "今日三注两赢一输，欧赔走势叠加离散凝聚的因子依然高效（order0欧赔走低+离散凝聚，order1退盘+离散凝聚），但order2的\"离散凝聚同向下盘\"因子首次失效。关键差异：order0/1是强队深盘穿盘模式，order2是平手盘低水保护模式。离散凝聚在深盘下指向强队可信，在浅盘下指向平局或下盘需更谨慎，需结合欧赔方向性走势验证。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:46:22.241187"
+    },
+    {
+      "date": "2026-06-28",
+      "reflection": "离散凝聚必须结合水位方向判断。低水或临场降水强化信号成为穿盘利器；高水或升水则构成诱饵，即使离散极低也易输盘。退盘但保持低水且离散不散是机构示弱诱下的惯用套路，可信度高。平局离散激增时离散一方凝聚只适合走水保护，不宜重注妄想独赢。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head, over-under-crown, betfair-buysell\n📐 因子归因: 4 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:50:09.870211"
+    },
+    {
+      "date": "2026-06-29",
+      "reflection": "本场再次验证退盘离散凝聚上盘因子的有效性：亚盘从半一退至半球低水，离散客胜极度压缩，欧赔抬高配合退盘制造不稳，实为阻上诱下。它与之前多单盈利逻辑一致，因子稳定。今后遇到类似退盘+低水+离散凝聚的组合，可放大仓位，尤其当欧赔协同示弱时。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:51:49.703627"
+    },
+    {
+      "date": "2026-06-30",
+      "reflection": "退盘后的回升高水是机构制造恐慌的成功阻上，而直接升盘过深加高水则是诱上陷阱。离散凝聚在深盘高水场景下容易失效。盘口变化方向（退/升）与高水结合才是核心判断依据，不能单看离散值的绝对高低。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:53:47.836370"
+    },
+    {
+      "date": "2026-07-01",
+      "reflection": "赢单共同点：让球方离散凝聚且亚盘给出低水或退盘后低水，市场通过水位设阻而非真实看衰；输单揭示浅盘下离散凝聚平局易形成诱下陷阱，平跌凝聚并非可靠下盘信号，反而指向上盘。后市需重点观察离散方向与亚盘水位的配合关系，单一离散凝聚不可盲信。\n📡 有效slug: eu-odds-pinnacle, asian-handicap-pinnacle, fair-odds\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:56:17.743710"
+    },
+    {
+      "date": "2026-07-02",
+      "reflection": "离散值的关键不在凝聚方向，而在与盘口水位的配合。当凝聚方盘口反向高水时形成诱杀，可抓下盘；当凝聚方盘口顺势降水升盘且欧赔下沉时，上盘穿盘概率极高。单一离散凝聚（如平局凝聚）若无盘赔配合则不可靠，需严格结合水位与升降盘做判断。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, eu-odds-pinnacle\n🔇 噪声slug: match-head, fair-odds, over-under-crown, betfair-buysell\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T00:59:03.867057"
+    },
+    {
+      "date": "2026-07-03",
+      "reflection": "两场共同核心是离散极度凝聚，且均搭配亚盘非低水（甚至高水），机构通过水位与盘口制造上盘不稳，但离散数据提前暴露真实防范。深盘和升盘的高水形态并非诱盘，而是阻上信号，这种结构下上盘仍能打出。未来遇到离散凝聚且亚盘给高水的组合，可视为积极信号，若同时伴有升盘动作则确定性更强。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, fair-odds\n🔇 噪声slug: match-head, over-under-crown, betfair-buysell\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T01:00:28.270254"
+    },
+    {
+      "date": "2026-07-04",
+      "reflection": "跨场规律：离散凝聚配合超高水往往是诱盘陷阱，机构借离散信号制造上盘信心，实际高水赔付压力大不看好穿盘。此前离散凝聚高水诱下因子已多次盈利但今日失效，说明该因子需结合盘口深度（如-2以上）反向警惕。资金上连败后坚决缩仓，置信度最高的一注失利后必须降低后续仓位，顺势收缩。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T01:02:33.693072"
+    },
+    {
+      "date": "2026-07-05",
+      "reflection": "离散凝聚在欧赔走低+低水时是强上盘确认，在非低水甚至高水时是机构诱下阻上的保护手法；两种均可信，但前者确定性更高值得重注。公平盘实力差、必发、大小球等信号在本批案例中贡献不大，保持忽略。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: betfair-buysell, over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T01:04:44.421963"
+    },
+    {
+      "date": "2026-07-06",
+      "reflection": "跨场共性：赢单离散凝聚方均获水位保护（中高水阻上或低水保护），且盘口深度与公平盘偏差不大；输单离散凝聚伴随深盘超高水升盘，市场诱盘特征明显。离散凝聚是必要条件，水位合理性及盘口深度匹配才是充分条件。新增“离散凝聚升盘诱杀”因子，专门捕捉深盘诱盘陷阱。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head, betfair-buysell\n📐 因子归因: 4 笔订单已关联到因子",
+      "recorded_at": "2026-07-08T01:07:33.266727"
+    }
+  ]
+}

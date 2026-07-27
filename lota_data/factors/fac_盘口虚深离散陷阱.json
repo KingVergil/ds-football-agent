@@ -1,0 +1,11 @@
+{
+  "id": "fac_盘口虚深离散陷阱",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "betfair-buysell",
+    "eu-odds-pinnacle"
+  ],
+  "content": "盘口明显深于公平盘实力差时离散凝聚可能为诱盘陷阱",
+  "updated_at": "2026-07-24T10:15:34.165962"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_fairodadvantage",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "当公平盘算出主队实力占优(如公平盘差>0.3)，但亚盘给出主队受让时，存在盘口错配价值，投注主队。",
+  "updated_at": "2026-07-03T13:45:15.867133"
+}

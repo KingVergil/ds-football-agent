@@ -1,0 +1,10 @@
+{
+  "id": "fac_退盘升水阻上盘",
+  "slugs": [
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "eu-odds-pinnacle"
+  ],
+  "content": "亚盘让球发生退盘且上盘水位不降反升时，机构用高水阻挡上盘流入，真实方向为下盘",
+  "updated_at": "2026-07-04T15:21:59.806196"
+}

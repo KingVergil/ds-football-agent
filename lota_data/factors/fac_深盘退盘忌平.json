@@ -1,0 +1,10 @@
+{
+  "id": "fac_深盘退盘忌平",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "初始亚盘定位偏深（超过平半）后发生退盘，即使终盘变为浅盘，初始定位已暴露实力差距，平局条件不牢固。",
+  "updated_at": "2026-07-07T18:58:08.230572"
+}

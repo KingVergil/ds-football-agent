@@ -1,0 +1,11 @@
+{
+  "id": "fac_退盘升盘示强",
+  "slugs": [
+    "fair-odds",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "betfair-buysell"
+  ],
+  "content": "盘口先退再升回原盘并维持低水，示强震荡后依旧给予赔付保护",
+  "updated_at": "2026-07-06T17:23:56.311691"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fac_盘口背离小注小",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "大小球盘口向小球方向退盘且维持大球高水，与公平盘预期背离时，小球跑出概率极高",
+  "updated_at": "2026-07-06T15:32:53.234448"
+}

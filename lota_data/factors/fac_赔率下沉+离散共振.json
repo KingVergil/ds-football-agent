@@ -1,0 +1,12 @@
+{
+  "id": "fac_赔率下沉+离散共振",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "今日3红2黑，盈利关键在双因子共振（离散+赔率or离散+低水）。离散凝聚单独使用在深盘或高水时失效率上升。order_0的高水不退盘成为反向信号，说明机构的诱盘行为可以覆盖离散信号。order_2世界杯深盘缺资金确认是盲点。后续：离散凝聚必须搭配水位保护或赔率下沉才成因子；高水不退盘单独列为诱上检测因子。",
+  "updated_at": "2026-07-06T16:15:04.754113"
+}

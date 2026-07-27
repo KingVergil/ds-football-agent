@@ -1,0 +1,11 @@
+{
+  "id": "fac_退盘背离小球",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "over-under-crown"
+  ],
+  "content": "公平进球预期高于盘口，但盘口逆向退盘，大球水位抬升，背离指向小球。",
+  "updated_at": "2026-07-07T12:22:56.161746"
+}

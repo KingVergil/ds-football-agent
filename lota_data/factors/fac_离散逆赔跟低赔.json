@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散逆赔跟低赔",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "当离散指数最优方向与欧赔低赔方矛盾时，若低赔方赔率持续下沉且亚盘给予水位保护，则跟随低赔方。",
+  "updated_at": "2026-07-23T14:39:29.043095"
+}

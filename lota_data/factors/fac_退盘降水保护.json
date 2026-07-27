@@ -1,0 +1,12 @@
+{
+  "id": "fac_退盘降水保护",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "盘口先升后降，退盘同时上盘水位维持在极低区间，机构主动控赔防范上盘打出。",
+  "updated_at": "2026-07-07T23:06:55.299786"
+}

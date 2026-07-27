@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚对立极高失效弃",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "仅当离散高度凝聚于一方且另一方极端分歧时方向才有效，若双方离散均高企则视为无效噪音，不依赖此信号下单",
+  "updated_at": "2026-07-07T16:09:02.126642"
+}

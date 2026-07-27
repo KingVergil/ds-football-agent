@@ -1,0 +1,12 @@
+{
+  "id": "fac_平局离散极低防诱",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "当平局离散处于极端低位，无论欧赔如何凝聚，都要提防平局打出，盘口方向不宜盲目追随",
+  "updated_at": "2026-07-06T16:35:17.741139"
+}

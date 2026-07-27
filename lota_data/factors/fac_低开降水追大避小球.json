@@ -1,0 +1,12 @@
+{
+  "id": "fac_低开降水追大避小球",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "大小球盘口低开时，若大球水位持续下降则追大球，小球水位下降则放弃小球操作",
+  "updated_at": "2026-07-06T10:51:01.497579"
+}

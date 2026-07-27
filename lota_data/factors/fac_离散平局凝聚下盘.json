@@ -1,0 +1,10 @@
+{
+  "id": "fac_离散平局凝聚下盘",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "离散指数平局值极低时，受让方下盘不败概率高",
+  "updated_at": "2026-07-27T09:42:06.761661"
+}

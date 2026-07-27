@@ -1,0 +1,12 @@
+{
+  "id": "fac_平赔顶高分胜负",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "平赔被刻意抬升，分流资金至胜负两侧，降低平局打出概率",
+  "updated_at": "2026-07-06T14:24:34.222079"
+}

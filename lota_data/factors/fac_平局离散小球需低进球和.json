@@ -1,0 +1,12 @@
+{
+  "id": "fac_平局离散小球需低进球和",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "离散平局极端低位预示小球仅当公平盘预期总进球同样偏低时有效，预期进球高则信号失效",
+  "updated_at": "2026-07-06T17:59:25.416414"
+}

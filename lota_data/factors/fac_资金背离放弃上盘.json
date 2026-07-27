@@ -1,0 +1,11 @@
+{
+  "id": "fac_资金背离放弃上盘",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "当必发资金净流入方向与盘赔示强方向相反时，放弃上盘投注，防止爆冷。",
+  "updated_at": "2026-07-18T12:51:02.016082"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚需水位保护",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "离散凝聚信号必须搭配中低水或赔率下沉确认，高水环境下离散凝聚容易被机构诱盘行为覆盖",
+  "updated_at": "2026-07-06T16:16:54.696322"
+}

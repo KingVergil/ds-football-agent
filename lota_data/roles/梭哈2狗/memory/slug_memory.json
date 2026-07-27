@@ -1,0 +1,463 @@
+{
+  "updated_at": "2026-07-27T00:07:25.077596",
+  "slug_stats": {
+    "match-head": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "fair-odds": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "eu-odds-pinnacle": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "asian-handicap-pinnacle": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "over-under-crown": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "betfair-buysell": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    },
+    "discrete-odds": {
+      "appearances": 25,
+      "profitable_days": 19,
+      "loss_days": 6,
+      "flat_days": 0
+    }
+  },
+  "day_slugs": {
+    "2026-06-11": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-12": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-13": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-14": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-15": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-16": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-17": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-18": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-19": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-20": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-21": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-22": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-23": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-24": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-25": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-26": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-27": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-28": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-29": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-06-30": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-01": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-02": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-03": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-04": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-05": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-06": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-07": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-08": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-09": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-10": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-11": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-12": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-13": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-14": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-15": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-16": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-17": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-18": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-19": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-20": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-21": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-22": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-23": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-24": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-25": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-07-26": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ]
+  }
+}

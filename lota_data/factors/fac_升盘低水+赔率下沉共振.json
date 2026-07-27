@@ -1,0 +1,12 @@
+{
+  "id": "fac_升盘低水+赔率下沉共振",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "本场是典型赔率与盘口同步变化趋向强队的案例，两个因子同时触发时可信度极高。目前仅一场无法跨场验证，后续需观察因子单独出现时是否依然有效，若离散凝聚配合浅盘升水可能失效，需警惕组合条件的依赖性。",
+  "updated_at": "2026-07-04T16:50:51.394605"
+}

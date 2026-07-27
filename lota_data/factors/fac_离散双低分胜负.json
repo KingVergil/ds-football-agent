@@ -1,0 +1,10 @@
+{
+  "id": "fac_离散双低分胜负",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "主胜和客胜离散均处于低位，平局离散高企，比赛倾向分胜负，不宜博平局或下盘。",
+  "updated_at": "2026-07-17T14:35:32.269670"
+}

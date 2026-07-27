@@ -1,0 +1,11 @@
+{
+  "id": "fac_资金背离不可逆推",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "当离散极值但资金流向背离时，不宜直接反向操作，因极值可能反映真实防范。",
+  "updated_at": "2026-07-27T09:41:08.531018"
+}

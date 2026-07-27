@@ -1,0 +1,13 @@
+{
+  "id": "fac_深盘水位验证",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "match-head"
+  ],
+  "content": "深盘必须获得低水位保护才算有效信号，高水位的深盘即使离散凝聚也不可信，属于因子生效的必要条件。",
+  "updated_at": "2026-07-06T10:26:45.182737"
+}

@@ -1,0 +1,2441 @@
+{
+  "updated_at": "2026-07-11T15:49:45.092077",
+  "factor_perf": {
+    "欧赔跳水不败": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 17.0,
+      "total_return": 0.85,
+      "status": "dormant",
+      "desc": "欧赔主胜临盘急剧下沉且平负赔大幅拉升，对应亚盘深盘低水，主队高概率不败",
+      "first_seen": "2026-06-13",
+      "last_seen": "2026-06-13",
+      "history": [
+        {
+          "date": "2026-06-13",
+          "hit": true,
+          "profit": 17.0,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4459824"
+        }
+      ]
+    },
+    "欧亚背离": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -20.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-13",
+      "last_seen": "2026-06-13",
+      "history": [
+        {
+          "date": "2026-06-13",
+          "hit": false,
+          "profit": -20.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459827"
+        }
+      ]
+    },
+    "升盘不降水即上盘": {
+      "total": 8,
+      "hit": 5,
+      "miss": 1,
+      "push": 2,
+      "profit": 110.18,
+      "total_return": 4.664761904761905,
+      "status": "active",
+      "desc": "亚盘临场升盘后上盘水位持续高位不下调，多为阻买操作，上盘易打出",
+      "first_seen": "2026-06-13",
+      "last_seen": "2026-07-09",
+      "history": [
+        {
+          "date": "2026-06-13",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        },
+        {
+          "date": "2026-06-14",
+          "hit": null,
+          "profit": 11.23,
+          "return_ratio": 0.5347619047619048,
+          "lota_id": "Lota4468110"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 22.0,
+          "return_ratio": 1.1,
+          "lota_id": "Lota4468118"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 21.78,
+          "return_ratio": 0.9900000000000001,
+          "lota_id": "Lota4459825"
+        },
+        {
+          "date": "2026-06-25",
+          "hit": true,
+          "profit": 29.87,
+          "return_ratio": 1.03,
+          "lota_id": "Lota4459823"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 32.1,
+          "return_ratio": 1.07,
+          "lota_id": "Lota4468133"
+        },
+        {
+          "date": "2026-07-03",
+          "hit": true,
+          "profit": 28.2,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4459727"
+        },
+        {
+          "date": "2026-07-09",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4556506"
+        }
+      ]
+    },
+    "主胜赔大幅下沉": {
+      "total": 9,
+      "hit": 6,
+      "miss": 1,
+      "push": 2,
+      "profit": 108.71000000000001,
+      "total_return": 5.154761904761905,
+      "status": "active",
+      "desc": "初盘至终盘主胜赔持续大幅走低，配合实力差优势，是主队不败的先行信号",
+      "first_seen": "2026-06-13",
+      "last_seen": "2026-07-09",
+      "history": [
+        {
+          "date": "2026-06-13",
+          "hit": true,
+          "profit": 17.0,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4459824"
+        },
+        {
+          "date": "2026-06-13",
+          "hit": true,
+          "profit": 22.2,
+          "return_ratio": 1.1099999999999999,
+          "lota_id": "Lota4459827"
+        },
+        {
+          "date": "2026-06-14",
+          "hit": null,
+          "profit": 11.23,
+          "return_ratio": 0.5347619047619048,
+          "lota_id": "Lota4468110"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 17.2,
+          "return_ratio": 0.86,
+          "lota_id": "Lota4468120"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 21.78,
+          "return_ratio": 0.9900000000000001,
+          "lota_id": "Lota4459825"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": null,
+          "profit": 0.0,
+          "return_ratio": 0.0,
+          "lota_id": "Lota4460966"
+        },
+        {
+          "date": "2026-07-02",
+          "hit": true,
+          "profit": 26.1,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4459725"
+        },
+        {
+          "date": "2026-07-03",
+          "hit": true,
+          "profit": 28.2,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4459727"
+        },
+        {
+          "date": "2026-07-09",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4556506"
+        }
+      ]
+    },
+    "赔率下沉离散凝聚": {
+      "total": 16,
+      "hit": 14,
+      "miss": 2,
+      "push": 0,
+      "profit": 264.88,
+      "total_return": 11.280000000000001,
+      "status": "active",
+      "desc": "欧赔低赔方持续下沉且该方向离散异常凝聚，无视水位高低追随凝聚方向",
+      "first_seen": "2026-06-13",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-06-13",
+          "hit": true,
+          "profit": 17.0,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4459824"
+        },
+        {
+          "date": "2026-06-13",
+          "hit": true,
+          "profit": 22.2,
+          "return_ratio": 1.1099999999999999,
+          "lota_id": "Lota4459827"
+        },
+        {
+          "date": "2026-06-14",
+          "hit": true,
+          "profit": 19.74,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4468112"
+        },
+        {
+          "date": "2026-06-14",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460947"
+        },
+        {
+          "date": "2026-06-15",
+          "hit": true,
+          "profit": 19.11,
+          "return_ratio": 0.9099999999999999,
+          "lota_id": "Lota4460914"
+        },
+        {
+          "date": "2026-06-15",
+          "hit": true,
+          "profit": 18.48,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460953"
+        },
+        {
+          "date": "2026-06-16",
+          "hit": true,
+          "profit": 20.16,
+          "return_ratio": 0.96,
+          "lota_id": "Lota4460920"
+        },
+        {
+          "date": "2026-06-17",
+          "hit": true,
+          "profit": 17.2,
+          "return_ratio": 0.86,
+          "lota_id": "Lota4460967"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 20.46,
+          "return_ratio": 0.93,
+          "lota_id": "Lota4460942"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 21.78,
+          "return_ratio": 0.9900000000000001,
+          "lota_id": "Lota4459825"
+        },
+        {
+          "date": "2026-06-22",
+          "hit": true,
+          "profit": 27.56,
+          "return_ratio": 1.06,
+          "lota_id": "Lota4460924"
+        },
+        {
+          "date": "2026-06-25",
+          "hit": true,
+          "profit": 29.29,
+          "return_ratio": 1.01,
+          "lota_id": "Lota4460943"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 26.4,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4468130"
+        },
+        {
+          "date": "2026-07-03",
+          "hit": true,
+          "profit": 30.0,
+          "return_ratio": 1.0,
+          "lota_id": "Lota4459728"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480336"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": true,
+          "profit": 31.5,
+          "return_ratio": 0.9,
+          "lota_id": "Lota4467082"
+        }
+      ]
+    },
+    "离散凝聚低水保护": {
+      "total": 22,
+      "hit": 22,
+      "miss": 0,
+      "push": 0,
+      "profit": 534.09,
+      "total_return": 19.050000000000004,
+      "status": "active",
+      "desc": "离散值一个方向异常低位凝聚，同时对应盘口搭配低水，机构真实防范而非诱盘，追随凝聚方向",
+      "first_seen": "2026-06-14",
+      "last_seen": "2026-07-08",
+      "history": [
+        {
+          "date": "2026-06-14",
+          "hit": true,
+          "profit": 18.69,
+          "return_ratio": 0.89,
+          "lota_id": "Lota4468111"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 17.6,
+          "return_ratio": 0.8800000000000001,
+          "lota_id": "Lota4460932"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 17.4,
+          "return_ratio": 0.8699999999999999,
+          "lota_id": "Lota4460935"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 16.6,
+          "return_ratio": 0.8300000000000001,
+          "lota_id": "Lota4460973"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 18.92,
+          "return_ratio": 0.8600000000000001,
+          "lota_id": "Lota4468116"
+        },
+        {
+          "date": "2026-06-21",
+          "hit": true,
+          "profit": 20.25,
+          "return_ratio": 0.81,
+          "lota_id": "Lota4460915"
+        },
+        {
+          "date": "2026-06-22",
+          "hit": true,
+          "profit": 21.58,
+          "return_ratio": 0.83,
+          "lota_id": "Lota4460957"
+        },
+        {
+          "date": "2026-06-23",
+          "hit": true,
+          "profit": 23.76,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460927"
+        },
+        {
+          "date": "2026-06-23",
+          "hit": true,
+          "profit": 23.49,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4460971"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 22.96,
+          "return_ratio": 0.8200000000000001,
+          "lota_id": "Lota4468122"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 26.32,
+          "return_ratio": 0.9400000000000001,
+          "lota_id": "Lota4460974"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 24.65,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4460928"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 26.1,
+          "return_ratio": 0.9,
+          "lota_id": "Lota4460925"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 25.52,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460922"
+        },
+        {
+          "date": "2026-07-02",
+          "hit": true,
+          "profit": 26.1,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4459725"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 24.3,
+          "return_ratio": 0.81,
+          "lota_id": "Lota4480394"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 25.5,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4480399"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": true,
+          "profit": 33.95,
+          "return_ratio": 0.9700000000000001,
+          "lota_id": "Lota4480329"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": true,
+          "profit": 29.4,
+          "return_ratio": 0.84,
+          "lota_id": "Lota4467086"
+        },
+        {
+          "date": "2026-07-07",
+          "hit": true,
+          "profit": 32.9,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4459804"
+        },
+        {
+          "date": "2026-07-08",
+          "hit": true,
+          "profit": 30.8,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4459806"
+        },
+        {
+          "date": "2026-07-08",
+          "hit": true,
+          "profit": 27.3,
+          "return_ratio": 0.78,
+          "lota_id": "Lota4556524"
+        }
+      ]
+    },
+    "离散逆赔跟低赔": {
+      "total": 8,
+      "hit": 6,
+      "miss": 2,
+      "push": 0,
+      "profit": 101.94000000000001,
+      "total_return": 3.97,
+      "status": "active",
+      "desc": "离散极值与欧赔低赔方矛盾时，跟随欧赔低赔方向，若仍有分歧搏更高赔方向",
+      "first_seen": "2026-06-14",
+      "last_seen": "2026-07-05",
+      "history": [
+        {
+          "date": "2026-06-14",
+          "hit": true,
+          "profit": 20.16,
+          "return_ratio": 0.96,
+          "lota_id": "Lota4468115"
+        },
+        {
+          "date": "2026-06-14",
+          "hit": true,
+          "profit": 20.16,
+          "return_ratio": 0.96,
+          "lota_id": "Lota4468114"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": false,
+          "profit": -28.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468123"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 26.32,
+          "return_ratio": 0.9400000000000001,
+          "lota_id": "Lota4460977"
+        },
+        {
+          "date": "2026-07-03",
+          "hit": true,
+          "profit": 30.6,
+          "return_ratio": 1.02,
+          "lota_id": "Lota4459729"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480378"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 30.9,
+          "return_ratio": 1.03,
+          "lota_id": "Lota4468137"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 31.8,
+          "return_ratio": 1.06,
+          "lota_id": "Lota4467085"
+        }
+      ]
+    },
+    "极端离散深盘博下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "离散极端低位出现在深盘高水方时，该方赢盘难度大，博下盘更安全",
+      "first_seen": "2026-06-14",
+      "last_seen": "2026-06-14",
+      "history": [
+        {
+          "date": "2026-06-14",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460941"
+        }
+      ]
+    },
+    "离散凝聚": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-14",
+      "last_seen": "2026-06-14",
+      "history": [
+        {
+          "date": "2026-06-14",
+          "hit": null,
+          "profit": 0.0,
+          "return_ratio": 0.0,
+          "lota_id": "Lota4460944"
+        }
+      ]
+    },
+    "欧赔抬升跟下盘": {
+      "total": 3,
+      "hit": 1,
+      "miss": 2,
+      "push": 0,
+      "profit": -24.0,
+      "total_return": -1.15,
+      "status": "retired",
+      "desc": "欧赔主胜方向持续抬升，亚盘降盘高水，且离散背离走高，下盘方向更可信。",
+      "first_seen": "2026-06-15",
+      "last_seen": "2026-06-18",
+      "history": [
+        {
+          "date": "2026-06-15",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460917"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 17.0,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4468121"
+        },
+        {
+          "date": "2026-06-18",
+          "hit": false,
+          "profit": -20.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460976"
+        }
+      ]
+    },
+    "平局大热不出": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "平赔持续下跌且平局离散异常凝聚，平局概率反而极低，应排除平局选胜负高赔方。",
+      "first_seen": "2026-06-15",
+      "last_seen": "2026-06-15",
+      "history": [
+        {
+          "date": "2026-06-15",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460950"
+        }
+      ]
+    },
+    "离散极值逆势": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "某选项离散呈极端高或极端低，该选项反而不易打出，应逆势选择对立方向。",
+      "first_seen": "2026-06-15",
+      "last_seen": "2026-06-15",
+      "history": [
+        {
+          "date": "2026-06-15",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "赔率低位不降即冷": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "dormant",
+      "desc": "欧赔某方向跌破1.10极端低位且赔率无进一步下沉空间时，该方向易冷，即使水位微调也难以打出，需警惕深盘陷阱",
+      "first_seen": "2026-06-16",
+      "last_seen": "2026-06-16",
+      "history": [
+        {
+          "date": "2026-06-16",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460923"
+        }
+      ]
+    },
+    "赔率抬升离散乱流": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "赔率单边持续抬升但离散无方向的比赛，非冷门可靠信号，博高赔容易踩坑，应视为无信号场次",
+      "first_seen": "2026-06-16",
+      "last_seen": "2026-06-16",
+      "history": [
+        {
+          "date": "2026-06-16",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460959"
+        }
+      ]
+    },
+    "退盘风力无凝聚": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "盘口退让伴随离散无凝聚时，退盘并非示弱信号，风向不稳不应作为下盘依据",
+      "first_seen": "2026-06-16",
+      "last_seen": "2026-06-16",
+      "history": [
+        {
+          "date": "2026-06-16",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460956"
+        }
+      ]
+    },
+    "实力接近矛盾选边": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -21.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "实力差接近零时，若欧赔方向明确但亚盘退让形成信号矛盾，不触发高赔策略，应转向观察离散凝聚方向",
+      "first_seen": "2026-06-16",
+      "last_seen": "2026-06-16",
+      "history": [
+        {
+          "date": "2026-06-16",
+          "hit": false,
+          "profit": -21.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460956"
+        }
+      ]
+    },
+    "欧升亚挺上盘": {
+      "total": 4,
+      "hit": 2,
+      "miss": 2,
+      "push": 0,
+      "profit": 0.26000000000000156,
+      "total_return": -0.07999999999999996,
+      "status": "retired",
+      "desc": "欧赔抬升但亚盘坚挺不退盘，是庄家看好上盘的表现，跟主队。",
+      "first_seen": "2026-06-17",
+      "last_seen": "2026-06-19",
+      "history": [
+        {
+          "date": "2026-06-17",
+          "hit": false,
+          "profit": -20.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460926"
+        },
+        {
+          "date": "2026-06-17",
+          "hit": true,
+          "profit": 19.8,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4460929"
+        },
+        {
+          "date": "2026-06-17",
+          "hit": false,
+          "profit": -20.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460970"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 20.46,
+          "return_ratio": 0.93,
+          "lota_id": "Lota4460939"
+        }
+      ]
+    },
+    "乱流跟强队": {
+      "total": 3,
+      "hit": 3,
+      "miss": 0,
+      "push": 0,
+      "profit": 61.59,
+      "total_return": 2.71,
+      "status": "dormant",
+      "desc": "离散无序且赔率震荡时，遵循实力差稍优一方并在亚盘选择低水保护端",
+      "first_seen": "2026-06-17",
+      "last_seen": "2026-06-23",
+      "history": [
+        {
+          "date": "2026-06-17",
+          "hit": true,
+          "profit": 19.8,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4460929"
+        },
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 20.46,
+          "return_ratio": 0.93,
+          "lota_id": "Lota4460939"
+        },
+        {
+          "date": "2026-06-23",
+          "hit": true,
+          "profit": 21.33,
+          "return_ratio": 0.7899999999999999,
+          "lota_id": "Lota4460968"
+        }
+      ]
+    },
+    "赔率下沉资金共振": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 16.4,
+      "total_return": 0.82,
+      "status": "dormant",
+      "desc": "欧赔持续下沉方向与离散凝聚一致，且必发对应方向买卖净流入时，坚定跟进。",
+      "first_seen": "2026-06-18",
+      "last_seen": "2026-06-18",
+      "history": [
+        {
+          "date": "2026-06-18",
+          "hit": true,
+          "profit": 16.4,
+          "return_ratio": 0.82,
+          "lota_id": "Lota4468119"
+        }
+      ]
+    },
+    "抬升示弱勿追下": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "dormant",
+      "desc": "主胜赔大幅抬升但实力差为正（主队略强），离散并非真正乱流时，多为示弱阻上，反追主队。",
+      "first_seen": "2026-06-18",
+      "last_seen": "2026-06-18",
+      "history": [
+        {
+          "date": "2026-06-18",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "矛盾搏高赔": {
+      "total": 2,
+      "hit": 1,
+      "miss": 1,
+      "push": 0,
+      "profit": -7.02,
+      "total_return": 0.09000000000000008,
+      "status": "retired",
+      "desc": "当所有信号矛盾无法判断方向时，直接选择赔率更高的一方。",
+      "first_seen": "2026-06-19",
+      "last_seen": "2026-07-01",
+      "history": [
+        {
+          "date": "2026-06-19",
+          "hit": true,
+          "profit": 23.98,
+          "return_ratio": 1.09,
+          "lota_id": "Lota4459821"
+        },
+        {
+          "date": "2026-07-01",
+          "hit": false,
+          "profit": -31.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459722"
+        }
+      ]
+    },
+    "离散异常收敛": {
+      "total": 8,
+      "hit": 8,
+      "miss": 0,
+      "push": 0,
+      "profit": 208.78,
+      "total_return": 7.21,
+      "status": "active",
+      "desc": "离散值单一方向急剧收紧至极低，市场预期高度统一，无视水位高低追随该方向",
+      "first_seen": "2026-06-20",
+      "last_seen": "2026-07-08",
+      "history": [
+        {
+          "date": "2026-06-20",
+          "hit": true,
+          "profit": 24.0,
+          "return_ratio": 1.0,
+          "lota_id": "Lota4459828"
+        },
+        {
+          "date": "2026-06-20",
+          "hit": true,
+          "profit": 21.36,
+          "return_ratio": 0.89,
+          "lota_id": "Lota4460911"
+        },
+        {
+          "date": "2026-06-25",
+          "hit": true,
+          "profit": 27.26,
+          "return_ratio": 0.9400000000000001,
+          "lota_id": "Lota4460946"
+        },
+        {
+          "date": "2026-07-01",
+          "hit": true,
+          "profit": 26.66,
+          "return_ratio": 0.86,
+          "lota_id": "Lota4459721"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 25.5,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4480399"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 28.5,
+          "return_ratio": 0.95,
+          "lota_id": "Lota4468139"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 28.2,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4468140"
+        },
+        {
+          "date": "2026-07-08",
+          "hit": true,
+          "profit": 27.3,
+          "return_ratio": 0.78,
+          "lota_id": "Lota4556524"
+        }
+      ]
+    },
+    "实力碾压方向下沉": {
+      "total": 23,
+      "hit": 21,
+      "miss": 2,
+      "push": 0,
+      "profit": 483.94999999999993,
+      "total_return": 17.35,
+      "status": "active",
+      "desc": "公平盘实力差明确碾压时，欧赔强方持续下沉，为正向实力体现，追随强队方向",
+      "first_seen": "2026-06-20",
+      "last_seen": "2026-07-09",
+      "history": [
+        {
+          "date": "2026-06-20",
+          "hit": true,
+          "profit": 24.0,
+          "return_ratio": 1.0,
+          "lota_id": "Lota4459828"
+        },
+        {
+          "date": "2026-06-20",
+          "hit": true,
+          "profit": 22.56,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4460945"
+        },
+        {
+          "date": "2026-06-21",
+          "hit": true,
+          "profit": 26.5,
+          "return_ratio": 1.06,
+          "lota_id": "Lota4460954"
+        },
+        {
+          "date": "2026-06-23",
+          "hit": true,
+          "profit": 23.76,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460927"
+        },
+        {
+          "date": "2026-06-23",
+          "hit": true,
+          "profit": 23.49,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4460971"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 28.28,
+          "return_ratio": 1.01,
+          "lota_id": "Lota4468124"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 26.04,
+          "return_ratio": 0.9299999999999999,
+          "lota_id": "Lota4468127"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": true,
+          "profit": 26.32,
+          "return_ratio": 0.9400000000000001,
+          "lota_id": "Lota4460933"
+        },
+        {
+          "date": "2026-06-25",
+          "hit": true,
+          "profit": 29.87,
+          "return_ratio": 1.03,
+          "lota_id": "Lota4460912"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 24.65,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4460928"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 26.1,
+          "return_ratio": 0.9,
+          "lota_id": "Lota4460925"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": true,
+          "profit": 25.52,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460922"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 26.4,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4468130"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 25.2,
+          "return_ratio": 0.84,
+          "lota_id": "Lota4460978"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 26.4,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4460975"
+        },
+        {
+          "date": "2026-07-01",
+          "hit": true,
+          "profit": 26.66,
+          "return_ratio": 0.86,
+          "lota_id": "Lota4459721"
+        },
+        {
+          "date": "2026-07-03",
+          "hit": true,
+          "profit": 30.0,
+          "return_ratio": 1.0,
+          "lota_id": "Lota4459728"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 26.1,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4467081"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 28.5,
+          "return_ratio": 0.95,
+          "lota_id": "Lota4468139"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 28.2,
+          "return_ratio": 0.94,
+          "lota_id": "Lota4468140"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": true,
+          "profit": 29.4,
+          "return_ratio": 0.84,
+          "lota_id": "Lota4467086"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459802"
+        },
+        {
+          "date": "2026-07-09",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4556506"
+        }
+      ]
+    },
+    "升盘低水封杀": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -24.0,
+      "total_return": -1.0,
+      "status": "dormant",
+      "desc": "亚盘终盘升盘且上盘水位控制在低位，为真实力体现；若升盘后水位高位不下调则为诱盘陷阱",
+      "first_seen": "2026-06-20",
+      "last_seen": "2026-06-20",
+      "history": [
+        {
+          "date": "2026-06-20",
+          "hit": false,
+          "profit": -24.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460948"
+        }
+      ]
+    },
+    "离散凝聚抗退盘": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 22.75,
+      "total_return": 0.91,
+      "status": "dormant",
+      "desc": "当主胜离散异常凝聚而亚盘主动退盘示弱时，无视退盘继续跟随主队。",
+      "first_seen": "2026-06-21",
+      "last_seen": "2026-06-21",
+      "history": [
+        {
+          "date": "2026-06-21",
+          "hit": true,
+          "profit": 22.75,
+          "return_ratio": 0.91,
+          "lota_id": "Lota4460918"
+        }
+      ]
+    },
+    "升盘不降水即上盘(失效": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -25.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-21",
+      "last_seen": "2026-06-21",
+      "history": [
+        {
+          "date": "2026-06-21",
+          "hit": false,
+          "profit": -25.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460951"
+        }
+      ]
+    },
+    "触发深盘冷门警示)": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -25.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-21",
+      "last_seen": "2026-06-21",
+      "history": [
+        {
+          "date": "2026-06-21",
+          "hit": false,
+          "profit": -25.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460951"
+        }
+      ]
+    },
+    "深盘连续升盘示冷": {
+      "total": 3,
+      "hit": 1,
+      "miss": 1,
+      "push": 1,
+      "profit": -4.82,
+      "total_return": -0.07000000000000006,
+      "status": "active",
+      "desc": "欧赔让球方持续下沉，盘口连升但上盘水位始终不退至低水，诱上信号强烈，博下盘。",
+      "first_seen": "2026-06-21",
+      "last_seen": "2026-06-27",
+      "history": [
+        {
+          "date": "2026-06-21",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        },
+        {
+          "date": "2026-06-22",
+          "hit": true,
+          "profit": 24.18,
+          "return_ratio": 0.9299999999999999,
+          "lota_id": "Lota4460965"
+        },
+        {
+          "date": "2026-06-27",
+          "hit": false,
+          "profit": -29.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460969"
+        }
+      ]
+    },
+    "实力碾压追低赔": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "公平盘实力差明确碾压，欧赔方向大幅下沉时，无视亚盘高水直接跟强队。",
+      "first_seen": "2026-06-21",
+      "last_seen": "2026-06-21",
+      "history": [
+        {
+          "date": "2026-06-21",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "欧亚同步低水追强": {
+      "total": 2,
+      "hit": 2,
+      "miss": 0,
+      "push": 0,
+      "profit": 49.14,
+      "total_return": 1.8900000000000001,
+      "status": "dormant",
+      "desc": "欧赔方向下沉与亚盘降水升盘同步，且水位进入低水区，强队方向打出概率极高。",
+      "first_seen": "2026-06-22",
+      "last_seen": "2026-06-22",
+      "history": [
+        {
+          "date": "2026-06-22",
+          "hit": true,
+          "profit": 27.56,
+          "return_ratio": 1.06,
+          "lota_id": "Lota4460924"
+        },
+        {
+          "date": "2026-06-22",
+          "hit": true,
+          "profit": 21.58,
+          "return_ratio": 0.83,
+          "lota_id": "Lota4460957"
+        }
+      ]
+    },
+    "欧沉亚退下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -26.0,
+      "total_return": -1.0,
+      "status": "dormant",
+      "desc": "欧赔方向明确下沉，亚盘却反向退盘，属于欧亚背离，上盘无力，跟下盘。",
+      "first_seen": "2026-06-22",
+      "last_seen": "2026-06-22",
+      "history": [
+        {
+          "date": "2026-06-22",
+          "hit": false,
+          "profit": -26.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460921"
+        }
+      ]
+    },
+    "深盘连续升盘示冷 → 应启用深盘升盘追强不追冷": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -27.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-23",
+      "last_seen": "2026-06-23",
+      "history": [
+        {
+          "date": "2026-06-23",
+          "hit": false,
+          "profit": -27.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460930"
+        }
+      ]
+    },
+    "深盘离散凝聚防冷": {
+      "total": 2,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
+      "profit": -56.0,
+      "total_return": -2.0,
+      "status": "retired",
+      "desc": "亚盘让一球及以上深盘时，若离散过度凝聚于让球方，警惕上盘不胜。",
+      "first_seen": "2026-06-24",
+      "last_seen": "2026-06-24",
+      "history": [
+        {
+          "date": "2026-06-24",
+          "hit": false,
+          "profit": -28.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468125"
+        },
+        {
+          "date": "2026-06-24",
+          "hit": false,
+          "profit": -28.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460936"
+        }
+      ]
+    },
+    "离散平局极值防平": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -28.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "离散平局数值异常极低时，即使低赔在某一方，也慎防出平。",
+      "first_seen": "2026-06-24",
+      "last_seen": "2026-06-24",
+      "history": [
+        {
+          "date": "2026-06-24",
+          "hit": false,
+          "profit": -28.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468126"
+        }
+      ]
+    },
+    "离散逆赔跟低赔失效": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -28.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-24",
+      "last_seen": "2026-06-24",
+      "history": [
+        {
+          "date": "2026-06-24",
+          "hit": false,
+          "profit": -28.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468126"
+        }
+      ]
+    },
+    "抬升离散高阻上": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -29.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "欧赔大幅抬升方向离散极高且平局离散极低时，多为阻上操作，可追该方向。",
+      "first_seen": "2026-06-25",
+      "last_seen": "2026-06-25",
+      "history": [
+        {
+          "date": "2026-06-25",
+          "hit": false,
+          "profit": -29.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459826"
+        }
+      ]
+    },
+    "弱侧凝聚防诱": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -14.5,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "赔率大幅下沉方向离散极度凝聚但实力差不够碾压时，常为诱盘，宜反向选择。",
+      "first_seen": "2026-06-25",
+      "last_seen": "2026-06-25",
+      "history": [
+        {
+          "date": "2026-06-25",
+          "hit": null,
+          "profit": -14.5,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4460940"
+        }
+      ]
+    },
+    "\"深盘升盘示冷防穿\"": {
+      "total": 2,
+      "hit": 0,
+      "miss": 0,
+      "push": 2,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-26",
+      "last_seen": "2026-06-26",
+      "history": [
+        {
+          "date": "2026-06-26",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4460952"
+        },
+        {
+          "date": "2026-06-26",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4460919"
+        }
+      ]
+    },
+    "\"离散极聚高水忌热\"": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-26",
+      "last_seen": "2026-06-26",
+      "history": [
+        {
+          "date": "2026-06-26",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460916"
+        }
+      ]
+    },
+    "\"乱流跟低水保护\"": {
+      "total": 2,
+      "hit": 0,
+      "miss": 0,
+      "push": 2,
+      "profit": 26.25,
+      "total_return": 0.875,
+      "status": "active",
+      "desc": "",
+      "first_seen": "2026-06-26",
+      "last_seen": "2026-06-26",
+      "history": [
+        {
+          "date": "2026-06-26",
+          "hit": null,
+          "profit": 13.65,
+          "return_ratio": 0.455,
+          "lota_id": "Lota4460955"
+        },
+        {
+          "date": "2026-06-26",
+          "hit": null,
+          "profit": 12.6,
+          "return_ratio": 0.42,
+          "lota_id": "Lota4460949"
+        }
+      ]
+    },
+    "\"平赔离散极低不下盘\"": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-26",
+      "last_seen": "2026-06-26",
+      "history": [
+        {
+          "date": "2026-06-26",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459829"
+        }
+      ]
+    },
+    "离散平极低博下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 11.16,
+      "total_return": 0.38482758620689655,
+      "status": "active",
+      "desc": "平局离散异常低位时，主让浅盘不稳，博下盘低水受保护，防平保赢半。",
+      "first_seen": "2026-06-27",
+      "last_seen": "2026-06-27",
+      "history": [
+        {
+          "date": "2026-06-27",
+          "hit": null,
+          "profit": 11.16,
+          "return_ratio": 0.38482758620689655,
+          "lota_id": "Lota4460958"
+        }
+      ]
+    },
+    "实力碾压追随深盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "公平盘实力差明确碾压时，亚盘连续升盘为正向实力体现，应追随强队方向而非示冷博冷。",
+      "first_seen": "2026-06-27",
+      "last_seen": "2026-06-27",
+      "history": [
+        {
+          "date": "2026-06-27",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "离散平局凝聚防下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -15.0,
+      "total_return": -0.5,
+      "status": "retired",
+      "desc": "离散平局值异常凝聚且欧赔平赔高耸，防范平局/下盘首选",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4468128"
+        }
+      ]
+    },
+    "反常水位追弱势方": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 25.5,
+      "total_return": 0.85,
+      "status": "active",
+      "desc": "实力占优方亚盘水位异常高企而弱势方低水，且离散无明确凝聚时，跟弱势方",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 25.5,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4468129"
+        }
+      ]
+    },
+    "欧赔下沉必发卖压悖论防冷": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -15.0,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "主胜赔大幅下沉但必发主胜卖压明显大于买盘时，主队不易穿盘",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4468134"
+        }
+      ]
+    },
+    "深盘升盘示冷不穿": {
+      "total": 2,
+      "hit": 0,
+      "miss": 0,
+      "push": 2,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "极端深盘背景下连续升盘且上盘维持高水，常见上盘赢球输盘",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4460937"
+        },
+        {
+          "date": "2026-06-28",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4460931"
+        }
+      ]
+    },
+    "欧赔倾向离散凝聚方不败": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 25.5,
+      "total_return": 0.85,
+      "status": "active",
+      "desc": "实力均衡时，赔率低赔方且离散凝聚，该方向至少不败",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": true,
+          "profit": 25.5,
+          "return_ratio": 0.85,
+          "lota_id": "Lota4460934"
+        }
+      ]
+    },
+    "乱流跟低水保护": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-06-28",
+      "last_seen": "2026-06-28",
+      "history": [
+        {
+          "date": "2026-06-28",
+          "hit": null,
+          "profit": 0.0,
+          "return_ratio": 0.0,
+          "lota_id": "Lota4460972"
+        }
+      ]
+    },
+    "弱队离散凝聚反买": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -32.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "离散极度凝聚于实力较弱的受让方时，即使欧赔走低，也多为诱导，应反追实力更强方。",
+      "first_seen": "2026-06-29",
+      "last_seen": "2026-06-29",
+      "history": [
+        {
+          "date": "2026-06-29",
+          "hit": false,
+          "profit": -32.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459717"
+        }
+      ]
+    },
+    "欧赔抬升反向追强": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -32.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "客胜赔大幅抬升但实力差支持客队、亚盘未明显降盘时，为示弱阻买，继续追客队方向。",
+      "first_seen": "2026-06-29",
+      "last_seen": "2026-06-29",
+      "history": [
+        {
+          "date": "2026-06-29",
+          "hit": false,
+          "profit": -32.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459717"
+        }
+      ]
+    },
+    "客胜拉升阻买上盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -15.5,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "客胜赔大幅拉升而主胜赔稳定,亚盘不退盘但上盘维持高水,阻买意图明确,跟随主队上盘",
+      "first_seen": "2026-06-30",
+      "last_seen": "2026-06-30",
+      "history": [
+        {
+          "date": "2026-06-30",
+          "hit": null,
+          "profit": -15.5,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4459720"
+        }
+      ]
+    },
+    "沉赔升退防下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -31.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "主胜赔大幅下沉但深盘连续升盘后临场退回,上盘高水抵挡不住资金,需防上盘不胜",
+      "first_seen": "2026-06-30",
+      "last_seen": "2026-06-30",
+      "history": [
+        {
+          "date": "2026-06-30",
+          "hit": false,
+          "profit": -31.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459718"
+        }
+      ]
+    },
+    "抬赔退盘追下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 13.64,
+      "total_return": 0.44,
+      "status": "active",
+      "desc": "主胜赔持续大幅抬升且亚盘同时退盘,上盘高水下盘低水保护,示弱为真弱,追下盘",
+      "first_seen": "2026-06-30",
+      "last_seen": "2026-06-30",
+      "history": [
+        {
+          "date": "2026-06-30",
+          "hit": null,
+          "profit": 13.64,
+          "return_ratio": 0.44,
+          "lota_id": "Lota4459719"
+        }
+      ]
+    },
+    "离散平局极低博下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -31.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-07-01",
+      "last_seen": "2026-07-01",
+      "history": [
+        {
+          "date": "2026-07-01",
+          "hit": false,
+          "profit": -31.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459723"
+        }
+      ]
+    },
+    "欧赔示强防冷": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "非碾压格局下，欧赔低赔方（尤其是主队）赔率持续下沉，若无离散凝聚或资金流入配合，宜逆向博上盘对面",
+      "first_seen": "2026-07-01",
+      "last_seen": "2026-07-01",
+      "history": [
+        {
+          "date": "2026-07-01",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "平赔凝聚示弱主胜": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "平赔异常凝聚并大幅下降，但主胜赔抬升、亚盘高水阻上，此时平局难出，应追主队",
+      "first_seen": "2026-07-01",
+      "last_seen": "2026-07-01",
+      "history": [
+        {
+          "date": "2026-07-01",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "深盘高水离散博下": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "深盘且上盘高水下离散凝聚与欧赔下沉,宜博下盘防赢球输盘",
+      "first_seen": "2026-07-02",
+      "last_seen": "2026-07-02",
+      "history": [
+        {
+          "date": "2026-07-02",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459724"
+        }
+      ]
+    },
+    "浅盘离散乱跟冷": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -15.0,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "实力接近盘口离散不凝聚方向矛盾时,倾向受让冷门方向",
+      "first_seen": "2026-07-02",
+      "last_seen": "2026-07-02",
+      "history": [
+        {
+          "date": "2026-07-02",
+          "hit": null,
+          "profit": -15.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4459726"
+        }
+      ]
+    },
+    "平局离散凝聚防上盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -32.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "平局离散值急剧收敛至极端低位，同时主客离散高企，无论欧赔平赔升降均应回避上盘。",
+      "first_seen": "2026-07-04",
+      "last_seen": "2026-07-04",
+      "history": [
+        {
+          "date": "2026-07-04",
+          "hit": false,
+          "profit": -32.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4467087"
+        }
+      ]
+    },
+    "低赔高水离散不凝搏下盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -16.0,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "当低赔方亚盘高水且离散未形成单边凝聚时，市场热度与机构阻力矛盾，宜搏高赔下盘。",
+      "first_seen": "2026-07-04",
+      "last_seen": "2026-07-04",
+      "history": [
+        {
+          "date": "2026-07-04",
+          "hit": null,
+          "profit": -16.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4459797"
+        }
+      ]
+    },
+    "深盘升盘高水防输半": {
+      "total": 2,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
+      "profit": -48.0,
+      "total_return": -1.5,
+      "status": "retired",
+      "desc": "深盘背景下亚盘连续升盘且上盘水位居高不下，易导致赢球输盘损失，应转投下盘。",
+      "first_seen": "2026-07-04",
+      "last_seen": "2026-07-04",
+      "history": [
+        {
+          "date": "2026-07-04",
+          "hit": false,
+          "profit": -32.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459731"
+        },
+        {
+          "date": "2026-07-04",
+          "hit": null,
+          "profit": -16.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4459732"
+        }
+      ]
+    },
+    "实力差距非碾压离散聚焦平局": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -16.0,
+      "total_return": -0.5,
+      "status": "dormant",
+      "desc": "公平盘主客实力差非碾压(≤1.0)时，若离散指数在平局方向异常收敛，预示平局概率陡增，上盘无胜。",
+      "first_seen": "2026-07-04",
+      "last_seen": "2026-07-04",
+      "history": [
+        {
+          "date": "2026-07-04",
+          "hit": null,
+          "profit": -16.0,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4459732"
+        }
+      ]
+    },
+    "平赔凝聚防上盘": {
+      "total": 3,
+      "hit": 2,
+      "miss": 1,
+      "push": 0,
+      "profit": 28.949999999999996,
+      "total_return": 0.8099999999999999,
+      "status": "active",
+      "desc": "平局离散急剧收敛至极低位，主客离散高企，此时平局难出，应博上盘对面受让",
+      "first_seen": "2026-07-05",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-07-05",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480378"
+        },
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 26.4,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4468138"
+        },
+        {
+          "date": "2026-07-06",
+          "hit": true,
+          "profit": 32.55,
+          "return_ratio": 0.9299999999999999,
+          "lota_id": "Lota4467083"
+        }
+      ]
+    },
+    "离散凝聚高水诱下": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 31.5,
+      "total_return": 1.05,
+      "status": "active",
+      "desc": "离散凝聚配合高水，并非阻买而是诱下盘，反追凝聚方向",
+      "first_seen": "2026-07-05",
+      "last_seen": "2026-07-05",
+      "history": [
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 31.5,
+          "return_ratio": 1.05,
+          "lota_id": "Lota4459801"
+        }
+      ]
+    },
+    "深盘升盘示冷防穿": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 24.9,
+      "total_return": 0.83,
+      "status": "active",
+      "desc": "极端深盘连续升盘且上盘水位居高不下，机构制造阻上假象，防上盘赢球输盘，博下盘",
+      "first_seen": "2026-07-05",
+      "last_seen": "2026-07-05",
+      "history": [
+        {
+          "date": "2026-07-05",
+          "hit": true,
+          "profit": 24.9,
+          "return_ratio": 0.83,
+          "lota_id": "Lota4459800"
+        }
+      ]
+    },
+    "退盘低水不败": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "亚盘出现退盘时，若上盘水位大幅压低至低水区间，上盘不败概率高。",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-07-06",
+          "hit": null,
+          "profit": 0.0,
+          "return_ratio": 0.0,
+          "lota_id": "Lota4480363"
+        }
+      ]
+    },
+    "升盘升水防穿": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -35.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "深盘下亚盘连续升盘且上盘水位同时升高，机构诱上，强队难穿盘。",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-07-06",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480336"
+        }
+      ]
+    },
+    "离散缺失防强队": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "当离散指数缺失时，仅凭实力差和赔率下沉追强队风险极高，应防范爆冷。",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-07-06",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "实力差大高水追": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "实力差距明显但盘口偏浅，强队水位高企时高水阻下，强队仍可打出。",
+      "first_seen": "2026-07-06",
+      "last_seen": "2026-07-06",
+      "history": [
+        {
+          "date": "2026-07-06",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "退盘示弱勿追低水": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -35.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "实力差距微弱时，亚盘退盘并伴随低水方离散收敛，往往真实看衰而非阻买，不宜追低水方。",
+      "first_seen": "2026-07-07",
+      "last_seen": "2026-07-07",
+      "history": [
+        {
+          "date": "2026-07-07",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4467084"
+        }
+      ]
+    },
+    "离散两边高平低追受让": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 15.93,
+      "total_return": 0.4551428571428571,
+      "status": "active",
+      "desc": "主胜与客胜离散均极高而平局离散低位凝聚时，平局预期极强，受让方打平即可赢盘，应选受让方。",
+      "first_seen": "2026-07-07",
+      "last_seen": "2026-07-07",
+      "history": [
+        {
+          "date": "2026-07-07",
+          "hit": null,
+          "profit": 15.93,
+          "return_ratio": 0.4551428571428571,
+          "lota_id": "Lota4467080"
+        }
+      ]
+    },
+    "离散极端收敛防反向": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -35.0,
+      "total_return": -1.0,
+      "status": "retired",
+      "desc": "离散值在某方极端收敛至接近零，但公平盘实力差明确反向时，市场过度一致易形成陷阱，应逆势追实力强队。",
+      "first_seen": "2026-07-07",
+      "last_seen": "2026-07-07",
+      "history": [
+        {
+          "date": "2026-07-07",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459805"
+        }
+      ]
+    },
+    "退盘降水保护强队": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 30.8,
+      "total_return": 0.88,
+      "status": "active",
+      "desc": "机构主动退盘示弱，同时上盘水位同步走低，形成赔付保护，强队穿盘概率增大。",
+      "first_seen": "2026-07-08",
+      "last_seen": "2026-07-08",
+      "history": [
+        {
+          "date": "2026-07-08",
+          "hit": true,
+          "profit": 30.8,
+          "return_ratio": 0.88,
+          "lota_id": "Lota4459806"
+        }
+      ]
+    },
+    "实际应启用升盘不退水追强": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": -17.5,
+      "total_return": -0.5,
+      "status": "active",
+      "desc": "",
+      "first_seen": "2026-07-08",
+      "last_seen": "2026-07-08",
+      "history": [
+        {
+          "date": "2026-07-08",
+          "hit": null,
+          "profit": -17.5,
+          "return_ratio": -0.5,
+          "lota_id": "Lota4556518"
+        }
+      ]
+    },
+    "平客离散封杀冷门": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 28.7,
+      "total_return": 0.82,
+      "status": "active",
+      "desc": "平局和客胜离散极度高企时，对应方向市场分歧极大，冷门难以打出，正路方向更可靠。",
+      "first_seen": "2026-07-08",
+      "last_seen": "2026-07-08",
+      "history": [
+        {
+          "date": "2026-07-08",
+          "hit": true,
+          "profit": 28.7,
+          "return_ratio": 0.82,
+          "lota_id": "Lota4556510"
+        }
+      ]
+    },
+    "升盘高水忌上": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "临场升盘后上盘水位坚挺高企，非阻买而是真实高水阻力，上盘大概率输盘。",
+      "first_seen": "2026-07-09",
+      "last_seen": "2026-07-09",
+      "history": [
+        {
+          "date": "2026-07-09",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "离散低位凝聚正路": {
+      "total": 3,
+      "hit": 2,
+      "miss": 1,
+      "push": 0,
+      "profit": 31.5,
+      "total_return": 0.9000000000000001,
+      "status": "active",
+      "desc": "离散值在主胜方向异常低位凝聚，平客离散高企封杀，配合欧赔下沉则无视亚盘水位高低追正路",
+      "first_seen": "2026-07-10",
+      "last_seen": "2026-07-10",
+      "history": [
+        {
+          "date": "2026-07-10",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4556471"
+        },
+        {
+          "date": "2026-07-10",
+          "hit": true,
+          "profit": 28.0,
+          "return_ratio": 0.8,
+          "lota_id": "Lota4556475"
+        },
+        {
+          "date": "2026-07-10",
+          "hit": true,
+          "profit": 38.5,
+          "return_ratio": 1.1,
+          "lota_id": "Lota4459808"
+        }
+      ]
+    },
+    "深盘高水阻上追强": {
+      "total": 2,
+      "hit": 1,
+      "miss": 1,
+      "push": 0,
+      "profit": 3.5,
+      "total_return": 0.10000000000000009,
+      "status": "active",
+      "desc": "一球以上深盘配合离散凝聚和资金流向，高水形成心理障碍诱下，实为保护上盘",
+      "first_seen": "2026-07-10",
+      "last_seen": "2026-07-10",
+      "history": [
+        {
+          "date": "2026-07-10",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4556471"
+        },
+        {
+          "date": "2026-07-10",
+          "hit": true,
+          "profit": 38.5,
+          "return_ratio": 1.1,
+          "lota_id": "Lota4459808"
+        }
+      ]
+    },
+    "离散逆基本面防冷": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 27.65,
+      "total_return": 0.7899999999999999,
+      "status": "active",
+      "desc": "离散极端凝聚方向与公平盘实力差方向背离时，欧赔低赔在强队侧，逆向跟随实力强队",
+      "first_seen": "2026-07-10",
+      "last_seen": "2026-07-10",
+      "history": [
+        {
+          "date": "2026-07-10",
+          "hit": true,
+          "profit": 27.65,
+          "return_ratio": 0.7899999999999999,
+          "lota_id": "Lota4556481"
+        }
+      ]
+    }
+  }
+}

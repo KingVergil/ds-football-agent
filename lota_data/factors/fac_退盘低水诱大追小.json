@@ -1,0 +1,11 @@
+{
+  "id": "fac_退盘低水诱大追小",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "over-under-crown"
+  ],
+  "content": "大小球盘口主动退盘但大球水位维持低水或进一步压低，制造大球易出假象，实为诱大，应追小球",
+  "updated_at": "2026-07-06T14:23:20.283973"
+}

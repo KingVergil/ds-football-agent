@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚退盘下盘",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "eu-odds-pinnacle"
+  ],
+  "content": "某一方离散极度凝聚，但亚盘主动退盘且下盘获得低水保护，示强诱买上盘，下盘不败",
+  "updated_at": "2026-07-21T10:29:34.931739"
+}

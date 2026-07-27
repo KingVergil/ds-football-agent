@@ -1,0 +1,11 @@
+{
+  "id": "fac_盘口反复弃信号",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "over-under-crown",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "大小球盘在临场1小时内频繁升跌或跳盘，原有小球/大球信号失效，放弃该注",
+  "updated_at": "2026-07-06T14:51:49.669344"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_深盘低水保护上盘",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "discrete-odds"
+  ],
+  "content": "当让球方盘口深度≥一球且维持低水区间，欧赔离散极端低位，机构防范上盘穿盘。",
+  "updated_at": "2026-07-07T18:35:50.736514"
+}

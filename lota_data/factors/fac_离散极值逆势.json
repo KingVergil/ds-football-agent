@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散极值逆势",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "某选项离散呈极端高或极端低，该选项反而不易打出，应逆势选择对立方向。",
+  "updated_at": "2026-07-11T14:42:20.331486"
+}

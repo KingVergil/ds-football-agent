@@ -1,0 +1,11 @@
+{
+  "id": "fac_退盘非低水防上盘",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "亚盘主动退盘但上盘水位未降至极低保护区间，示弱可能真实看衰，上盘打出概率降低。",
+  "updated_at": "2026-07-27T09:41:08.530550"
+}

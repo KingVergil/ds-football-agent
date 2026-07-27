@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚平局买盘冷平",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "当离散在强队方向极度凝聚，但必发平局买盘呈现净流入时，平局风险显著，不宜重注上盘。",
+  "updated_at": "2026-07-27T09:41:08.529630"
+}

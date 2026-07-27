@@ -1,0 +1,11 @@
+{
+  "id": "fac_平离散低下盘不败",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "betfair-buysell"
+  ],
+  "content": "平局离散值为全场最低时，受让下盘不败概率高，尤其深盘或平半盘。",
+  "updated_at": "2026-07-26T12:50:07.813483"
+}

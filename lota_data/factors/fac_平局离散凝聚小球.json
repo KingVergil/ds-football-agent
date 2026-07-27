@@ -1,0 +1,13 @@
+{
+  "id": "fac_平局离散凝聚小球",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "betfair-buysell"
+  ],
+  "content": "平局离散极端低位且主客离散高企时，盘口低水倾向小球",
+  "updated_at": "2026-07-06T20:42:44.936123"
+}

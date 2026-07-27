@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散回升放弃",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "早期离散凝聚但临场阶段明显回升，原方向信号失效，应放弃投注",
+  "updated_at": "2026-07-24T10:10:10.198642"
+}

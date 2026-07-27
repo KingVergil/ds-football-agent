@@ -1,0 +1,11 @@
+{
+  "id": "fac_深盘高水冷门信号",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
+  ],
+  "content": "深盘下上盘水位过高且对手资金大量涌入，即使离散凝聚也易出冷门（赢球输盘或不胜）。",
+  "updated_at": "2026-07-18T12:51:02.018392"
+}

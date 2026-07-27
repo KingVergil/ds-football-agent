@@ -1,0 +1,12 @@
+{
+  "id": "fac_资金背离升盘防走水",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "盘口从浅盘升盘示强，赔率走低，但若大额资金净卖出该方向，则赢球输盘风险高，应轻注。",
+  "updated_at": "2026-07-08T01:00:23.749252"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "fac_对手赢盘率警戒",
+  "slugs": [
+    "match-head",
+    "fair-odds",
+    "eu-odds-pinnacle"
+  ],
+  "content": "当弱队近期赢盘率畸高时，即使强队深盘低水也要警惕冷门。",
+  "updated_at": "2026-07-06T15:10:00.389643"
+}

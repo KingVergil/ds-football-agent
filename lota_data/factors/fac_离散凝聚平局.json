@@ -1,0 +1,13 @@
+{
+  "id": "fac_离散凝聚平局",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "discrete-odds",
+    "betfair-buysell"
+  ],
+  "content": "离散指数中平局值明显低于胜负两端，市场平局预期一致",
+  "updated_at": "2026-07-16T10:56:59.805789"
+}

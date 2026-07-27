@@ -1,0 +1,11 @@
+{
+  "id": "fac_水位背离指数",
+  "slugs": [
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "欧赔离散或必发资金明显倾向某一方，但亚盘水位反向抬升形成赔付压力，这种背离预示反方向更安全",
+  "updated_at": "2026-07-06T14:15:04.664099"
+}

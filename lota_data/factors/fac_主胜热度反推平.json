@@ -1,0 +1,13 @@
+{
+  "id": "fac_主胜热度反推平",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "over-under-crown"
+  ],
+  "content": "当必发主胜买盘占比畸形偏高而平赔未随之飙升时，市场过热方向往往打出困难，反向增加平局概率",
+  "updated_at": "2026-07-07T18:38:16.536219"
+}

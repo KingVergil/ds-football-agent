@@ -1,0 +1,11 @@
+{
+  "id": "fac_深盘临界防下盘",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "公平盘实力差与让球深度接近时，深盘过热概率高，优先考虑受让下盘。",
+  "updated_at": "2026-07-04T17:08:32.135847"
+}

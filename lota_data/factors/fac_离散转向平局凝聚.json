@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散转向平局凝聚",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "fair-odds",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "离散凝聚方向从强队转向平局，平局离散快速收紧，预示深盘下盘",
+  "updated_at": "2026-07-26T12:41:47.825028"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚赔升防冷",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "离散凝聚但对应方赔率未降反升，警惕盘赔背离导致的冷门",
+  "updated_at": "2026-07-24T10:10:10.198238"
+}

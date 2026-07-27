@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚需低水",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "discrete-odds",
+    "betfair-buysell"
+  ],
+  "content": "离散指数极端凝聚于强队方向时，需配合亚盘低水保护才可靠，否则可能成为热度陷阱。",
+  "updated_at": "2026-07-07T18:42:54.228570"
+}

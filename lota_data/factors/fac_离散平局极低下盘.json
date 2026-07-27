@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散平局极低下盘",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle",
+    "fair-odds"
+  ],
+  "content": "离散平局值极端低位且高水阻上，下盘不败",
+  "updated_at": "2026-07-27T09:46:26.479020"
+}

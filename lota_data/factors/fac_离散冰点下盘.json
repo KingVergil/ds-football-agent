@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散冰点下盘",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "fair-odds"
+  ],
+  "content": "平局或下盘方离散降至极端低位，同时上盘离散走高，下盘不败概率高",
+  "updated_at": "2026-07-24T10:10:10.196150"
+}

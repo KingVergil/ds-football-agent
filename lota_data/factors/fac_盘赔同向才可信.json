@@ -1,0 +1,11 @@
+{
+  "id": "fac_盘赔同向才可信",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "欧赔走势、亚盘水位、必发资金必须至少两个与离散因子同向，一旦出现背离（如退盘、赔率反向）立即放弃，不勉强",
+  "updated_at": "2026-07-07T16:09:02.128805"
+}

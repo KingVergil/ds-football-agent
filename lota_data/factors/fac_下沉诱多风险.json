@@ -1,0 +1,12 @@
+{
+  "id": "fac_下沉诱多风险",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "强优势方赔率临场急剧下沉，若缺乏离散同步凝聚或必发资金单向大单支撑，常为过度受热后的冷门信号。",
+  "updated_at": "2026-07-06T14:27:36.248882"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fac_平局凝聚退盘下盘",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "离散平局极度凝聚，同时亚盘从深盘退至浅盘，下盘水位升高，博下盘高水。",
+  "updated_at": "2026-07-19T12:11:09.203049"
+}

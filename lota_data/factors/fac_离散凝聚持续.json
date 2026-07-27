@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚持续",
+  "slugs": [
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "discrete-odds"
+  ],
+  "content": "离散值在主胜或上盘方向极度凝聚，并且该凝聚状态稳定延续至开赛前未出现明显反弹，形成可靠信号。",
+  "updated_at": "2026-07-06T10:23:15.776036"
+}

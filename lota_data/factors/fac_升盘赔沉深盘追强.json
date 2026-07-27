@@ -1,0 +1,12 @@
+{
+  "id": "fac_升盘赔沉深盘追强",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "低赔方欧赔持续下沉且亚盘连续升盘至深盘，顺势追强",
+  "updated_at": "2026-07-17T14:29:23.484249"
+}

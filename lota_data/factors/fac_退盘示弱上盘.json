@@ -1,0 +1,12 @@
+{
+  "id": "fac_退盘示弱上盘",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "深盘下亚盘出现主动退盘动作（如从一球退半/一），搭配离散极低或资金净买入时，上盘往往打出。",
+  "updated_at": "2026-07-06T01:01:52.711195"
+}

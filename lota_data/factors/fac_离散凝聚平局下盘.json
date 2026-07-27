@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散凝聚平局下盘",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "betfair-buysell",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "离散指数平局数值极端低位，市场一致看好平局，受让方不败概率高。",
+  "updated_at": "2026-07-23T14:42:00.145398"
+}

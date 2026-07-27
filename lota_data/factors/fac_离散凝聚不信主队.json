@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚不信主队",
+  "slugs": [
+    "discrete-odds",
+    "fair-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "当离散在客胜或平局方向极度凝聚，主胜离散高企时，主队难以赢盘，亚盘坚决投注客队",
+  "updated_at": "2026-07-16T10:59:41.761184"
+}

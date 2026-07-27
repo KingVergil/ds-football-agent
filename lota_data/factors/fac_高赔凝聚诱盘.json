@@ -1,0 +1,12 @@
+{
+  "id": "fac_高赔凝聚诱盘",
+  "slugs": [
+    "fair-odds",
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "当离散极端凝聚在高赔方（弱势方），尤其与公平盘实力差背离时，多为诱盘信号，不宜重注。",
+  "updated_at": "2026-07-08T01:11:37.191451"
+}
