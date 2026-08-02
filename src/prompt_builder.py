@@ -381,7 +381,8 @@ class PromptBuilder:
             from .factor_registry import FactorRegistry
             exclude = set(kwargs.get("cross_factor_exclude", []) or [])
             fr = FactorRegistry(exclude_roles=exclude)
-            cross_factor_text = fr.format_for_prompt(current_date=day_date, window_days=7, min_samples=3)
+            # 自适应选择：最近 N 单 + 衰减加权 + 休眠过滤，避免固定时间窗口
+            cross_factor_text = fr.format_for_prompt(current_date=day_date, adaptive=True)
         breakdown["cross_agent_factors"] = count_tokens(cross_factor_text)
 
         # ── 5. 拼接 ──

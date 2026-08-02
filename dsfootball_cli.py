@@ -58,13 +58,14 @@ def cmd_init(agent: Agent, args: list, alpha: bool = False):
     print(f"用户 '{agent.user}' 已初始化 (资金 {capital}){tag}")
 
 
-def cmd_analyze(agent: Agent, day: str, live: bool = False, jingcai_only: bool = False):
+def cmd_analyze(agent: Agent, day: str, live: bool = False, jingcai_only: bool = False,
+                prefetched: bool = False):
     if live:
         from src.providers.deepseek import DeepSeekProvider
         agent.set_provider(DeepSeekProvider())
 
     print(f"足球日 {day}")
-    result = agent.analyze(day, live=live, jingcai_only=jingcai_only)
+    result = agent.analyze(day, live=live, jingcai_only=jingcai_only, prefetched=prefetched)
     print(f"  比赛: {result['matches_count']} 场")
     print(f"  Prompt: {result['prompt_tokens']} tokens")
 
@@ -352,6 +353,7 @@ if __name__ == "__main__":
     if cmd == "dashboard":
         import json, re
         from collections import defaultdict
+        from datetime import datetime as _dt, timezone, timedelta
         from src.data_manager import DataManager
         dm = DataManager()
 
@@ -424,7 +426,17 @@ if __name__ == "__main__":
                         if score and len(score) >= 3:
                             print(f"  ✅ score补全: {lid} {home} vs {away} → {score}")
                     if not score or len(score) < 3:
-                        print(f"  ⚠️ score缺失: {lid} {home} vs {away} (order_score={order_stored_score!r})")
+                        # 未开赛的不报 warning（比分空缺是正常的）
+                        now_bj = _dt.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+                        is_future = False
+                        if time:
+                            try:
+                                if _dt.strptime(time, "%Y-%m-%d %H:%M") > now_bj:
+                                    is_future = True
+                            except ValueError:
+                                pass
+                        if not is_future:
+                            print(f"  ⚠️ score缺失: {lid} {home} vs {away} (order_score={order_stored_score!r})")
     
                 all_orders.append(dict(
                     agent=a_name, capital=capital,
@@ -462,18 +474,158 @@ if __name__ == "__main__":
                     curve.append({"date": dt, "capital": round(running, 0)})
                 curves[a_name] = curve
 
-        payload = json.dumps({"orders": all_orders, "curves": curves}, ensure_ascii=False, default=str)
+        # ── 因子面板数据（自适应选择结果）──
+        from src.memory import AgentMemory
+        from src.factor_registry import FactorRegistry
+        factors = {}
+        for a_name in agents_list:
+            try:
+                mem = AgentMemory(a_name)
+                mem.load()
+                main, aux, dormant = mem.factors.selected_active()
+                fp = mem.factors.factor_perf
+                factors[a_name] = {
+                    "total": len(fp),
+                    "dormant": dormant,
+                    "retired": sum(1 for v in fp.values() if v.get("status") == "retired"),
+                    "main": [
+                        {
+                            "name": fid, "n": p["n"], "hits": p["hits"],
+                            "w_return": round(p["w_return"], 2),
+                            "shrunk": round(p["shrunk_rate"], 3),
+                            "desc": (s.get("desc", "") or "")[:70],
+                        }
+                        for fid, s, p in main
+                    ],
+                    "aux": [
+                        {
+                            "name": fid,
+                            "n": p["n"] if p else 0,
+                            "w_return": round(p["w_return"], 2) if p else 0.0,
+                        }
+                        for fid, s, p in aux
+                    ],
+                }
+            except Exception as e:
+                factors[a_name] = {"error": str(e)}
+        cross_text = FactorRegistry().format_for_prompt(adaptive=True)
+
+        payload = json.dumps({
+            "orders": all_orders,
+            "curves": curves,
+            "factors": factors,
+            "cross_factors": cross_text,
+            "generated_at": _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }, ensure_ascii=False, default=str)
 
         html_path = Path("lota_data/dashboard.html")
-        html = html_path.read_text(encoding="utf-8")
-        EMBED_MARKER = "/*__DATA_EMBED__*/"
-        if EMBED_MARKER in html:
-            html = html.replace(f"const EMBED = {EMBED_MARKER}", f"const EMBED = {payload}")
-        else:
-            import re
-            html = re.sub(r"const EMBED = \{.*?\};", f"const EMBED = {payload};", html, flags=re.DOTALL)
-        html_path.write_text(html, encoding="utf-8")
+
+        def _write_dashboard(payload_str: str, meta_refresh: str = "") -> None:
+            html = html_path.read_text(encoding="utf-8")
+            EMBED_MARKER = "/*__DATA_EMBED__*/"
+            if EMBED_MARKER in html:
+                html = html.replace(f"const EMBED = {EMBED_MARKER}", f"const EMBED = {payload_str}")
+            else:
+                import re
+                # 用函数替换：re.sub 的字符串替换会把 payload 里的 \n 转义解释成真实换行
+                html = re.sub(
+                    r"const EMBED = \{.*?\};",
+                    lambda m: f"const EMBED = {payload_str};",
+                    html,
+                    flags=re.DOTALL,
+                )
+            if meta_refresh:
+                html = html.replace("<!--__META_REFRESH__-->", meta_refresh)
+            html_path.write_text(html, encoding="utf-8")
+
+        _write_dashboard(payload)
         print(f"✅ dashboard.html 已刷新 ({len(all_orders)} 条订单, {sum(len(v) for v in curves.values())} 个资金数据点)")
+
+        # ── watch 模式：每 N 分钟自动重新生成 + 页面 meta 自动刷新 ──
+        watch_minutes = 0
+        if "--watch" in sys.argv:
+            try:
+                watch_minutes = int(sys.argv[sys.argv.index("--watch") + 1])
+            except (ValueError, IndexError):
+                watch_minutes = 10
+        if watch_minutes > 0:
+            import time as _t
+            import os
+            import subprocess
+            meta = f'<meta http-equiv="refresh" content="{watch_minutes * 60}">'
+            _write_dashboard(payload, meta_refresh=meta)
+            os.system(f'open "{html_path}"')
+            print(f"⏱ watch 模式: 每 {watch_minutes} 分钟自动刷新 (Ctrl+C 退出)")
+            root = str(Path(__file__).resolve().parent)
+            while True:
+                _t.sleep(watch_minutes * 60)
+                try:
+                    subprocess.run(
+                        [sys.executable, str(Path(__file__).resolve()), "dashboard"],
+                        cwd=root,
+                    )
+                    print(f"  ⏱ {_dt.now().strftime('%H:%M:%S')} 已自动刷新")
+                except Exception as e:
+                    print(f"  ⚠️ watch 刷新失败: {e}")
+        sys.exit(0)
+
+    if cmd == "prefetch":
+        """预取足球日窗口内所有候选比赛的 compact-fet + tags，供并发 analyze 共用。
+
+        用法: python dsfootball_cli.py prefetch [YYYY-MM-DD]
+        """
+        from datetime import date as _date
+        from src.environment import get_football_day, football_day_calendar_dates
+        from src.data_manager import DataManager
+        from src.tools import compact_fet_to_tags, save_tagged_sections
+
+        day_str = sys.argv[2] if len(sys.argv) > 2 else None
+        if day_str:
+            try:
+                d = _date.fromisoformat(day_str)
+            except ValueError:
+                print(f"[prefetch] 日期格式错误: {day_str}")
+                sys.exit(1)
+        else:
+            # 与 batch_agents.sh 的 live 语义一致：12:00 前 → 昨天
+            now = _dt.now()
+            d = now.date() if now.hour >= 12 else now.date() - timedelta(days=1)
+        start, end = get_football_day(d)
+        cal_dates = football_day_calendar_dates(d)
+
+        dm = DataManager()
+        dm.set_live_mode(True)  # 未开赛场次强制刷新，拒绝旧缓存
+        jingcai_only = "--jingcai" in sys.argv
+
+        all_matches = []
+        for cd in cal_dates:
+            ms = dm.fetch_matches_by_date(cd, lottery_type="all")
+            if ms:
+                dm.save_matches_cache(cd, ms)
+            all_matches += ms or []
+
+        candidates = [
+            m for m in all_matches
+            if start <= m.get("match_time", "") <= end
+            and m.get("lota_id")
+            and m.get("home_name", "?") not in ("", "?")
+            and m.get("away_name", "?") not in ("", "?")
+            and (not jingcai_only or m.get("jingcai_number"))
+        ]
+        ok = fail = 0
+        for m in candidates:
+            lid = m["lota_id"]
+            data = dm.get_compact_fet(lid)
+            if not data:
+                fail += 1
+                print(f"  ⚠️ prefetch 失败: {lid} {m.get('home_name','?')} vs {m.get('away_name','?')}")
+                continue
+            sections = compact_fet_to_tags(lid, data)
+            if sections:
+                save_tagged_sections(lid, sections)
+            ok += 1
+        dm.set_live_mode(False)
+        print(f"✅ prefetch 完成: {ok}/{len(candidates)} 场 compact-fet + tags 已缓存 (窗口 {start[:10]})")
         sys.exit(0)
 
     if len(sys.argv) < 3:
@@ -498,12 +650,14 @@ if __name__ == "__main__":
     live = "--no-live" not in rest
     jingcai = "--jingcai" in rest
     alpha = "--alpha" in rest
-    rest = [a for a in rest if a not in ("--live", "--no-live", "--jingcai", "--alpha")]
+    prefetched = "--prefetched" in rest
+    rest = [a for a in rest if a not in ("--live", "--no-live", "--jingcai", "--alpha", "--prefetched")]
 
     if action == "init":
         cmd_init(agent, rest, alpha=alpha)
     elif action == "analyze":
-        cmd_analyze(agent, rest[0] if rest else None, live=live, jingcai_only=jingcai)
+        cmd_analyze(agent, rest[0] if rest else None, live=live, jingcai_only=jingcai,
+                    prefetched=prefetched)
     elif action == "settle":
         cmd_settle(agent, rest[0] if rest else None, live=live)
     elif action == "factor-review":

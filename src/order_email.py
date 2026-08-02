@@ -139,6 +139,7 @@ def save_snapshot(agent_name: str, football_day: str, orders: list[dict]) -> Non
                 "pick": o["pick"],
                 "handicap": o.get("handicap"),
                 "odds": o.get("odds"),
+                "bet_size": o.get("bet_size"),
             }
             for o in orders
         ],
@@ -165,12 +166,19 @@ def detect_changes(
         "has_changes": bool
       }
     """
-    result = {"new": [], "changed": [], "has_changes": False}
+    result = {"new": [], "changed": [], "removed": [], "has_changes": False}
 
     if snapshot is None:
         return result
 
     snapshot_map = {s["lota_id"]: s for s in snapshot.get("orders", [])}
+    current_ids = {o["lota_id"] for o in current_orders}
+
+    # 检测移除：上次快照有、当前不在 pending 中的
+    for sid, s in snapshot_map.items():
+        if sid not in current_ids:
+            result["removed"].append(s)
+            result["has_changes"] = True
 
     for o in current_orders:
         lid = o["lota_id"]
@@ -190,6 +198,9 @@ def detect_changes(
             if old.get("odds") != o.get("odds"):
                 entry["old_odds"] = old.get("odds")
                 changed = True
+            if old.get("bet_size") != o.get("bet_size"):
+                entry["old_bet_size"] = old.get("bet_size")
+                changed = True
             if changed:
                 result["changed"].append(entry)
                 result["has_changes"] = True
@@ -201,21 +212,29 @@ def detect_changes(
 # 邮件正文
 # ═══════════════════════════════════════════════
 
+_SPF_MAP = {"H": "主胜", "D": "平", "A": "客胜"}  # 胜平负 pick → 中文
+
+
 def _pick_display(order: dict) -> str:
-    """将 pick 转为队名显示。"""
+    """将 pick 转为显示文本。让球→队名，胜平负→主胜/平/客胜，大小球保留原值。"""
     pick = order["pick"]
+    bet_type = order.get("bet_type", "")
+    if bet_type == "胜平负":
+        return _SPF_MAP.get(pick, pick)
     home = order.get("home_name", "")
     away = order.get("away_name", "")
     if pick == "H":
         return home
     elif pick == "A":
         return away
-    # 大小球 / 胜平负 保留原值
     return pick
 
 
 def _old_pick_display(old_pick: str, order: dict) -> str:
-    """将旧 pick 转为队名。"""
+    """将旧 pick 转为显示文本。"""
+    bet_type = order.get("bet_type", "")
+    if bet_type == "胜平负":
+        return _SPF_MAP.get(old_pick, old_pick)
     if old_pick == "H":
         return order.get("home_name", "H")
     elif old_pick == "A":
@@ -247,6 +266,18 @@ def build_email_body(
     new_ids = {o["lota_id"] for o in changes.get("new", [])}
     changed_map = {c["order"]["lota_id"]: c for c in changes.get("changed", [])}
 
+    # ── 计算仓位百分比（需要资金数据）──
+    # role.capital 是已扣下注后的可用余额，总资金 = 可用 + 当前已锁
+    capital = None
+    try:
+        role_path = ROLES_DIR / agent_name / f"{agent_name}.json"
+        if role_path.exists():
+            role_data = json.loads(role_path.read_text(encoding="utf-8"))
+            pending_bets = sum(o.get("bet_size", 0) for o in orders)
+            capital = (role_data.get("capital") or 0) + pending_bets
+    except Exception:
+        pass
+
     now = datetime.now()
     rows_html = ""
     row_idx = 0
@@ -269,7 +300,7 @@ def build_email_body(
                 finished_count = sum(1 for x in orders[i-1:])  # 包括当前
                 rows_html += f"""
         <tr style="background:#eee">
-            <td colspan="9" style="padding:6px 10px;font-size:12px;color:#888;text-align:center">
+            <td colspan="10" style="padding:6px 10px;font-size:12px;color:#888;text-align:center">
                 ── 已结束 ({finished_count} 场) ──
             </td>
         </tr>"""
@@ -292,6 +323,7 @@ def build_email_body(
 
         new_badge = '<span style="background:#27ae60;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">NEW</span>' if lid in new_ids else ""
 
+        pct = f"{o.get('bet_size', 0) / capital * 100:.1f}%" if capital and capital > 0 else "-"
         rows_html += f"""
         <tr style="background:{bg}">
             <td style="padding:6px 8px;text-align:center;color:{'#bbb' if is_finished_row else '#999'}">{i}{new_badge}</td>
@@ -303,6 +335,7 @@ def build_email_body(
             <td style="padding:6px 12px;font-weight:bold;color:{'#bbb' if is_finished_row else '#c0392b'};min-width:90px">{pick}</td>
             <td style="padding:6px 12px;text-align:center;min-width:60px;color:{text_color}">{hc_str}</td>
             <td style="padding:6px 12px;text-align:center;min-width:60px;color:{text_color}">{odds}</td>
+            <td style="padding:6px 12px;text-align:center;min-width:50px;font-weight:bold;color:{text_color}">{pct}</td>
         </tr>"""
 
         # 变化子行：选择/让球/赔率 各列显示旧值
@@ -332,6 +365,15 @@ def build_email_body(
             else:
                 odds_cell = ""
 
+            # 仓位列 (bet_size 变动 → 仓位%变化)
+            old_bet = c.get("old_bet_size")
+            if old_bet is not None and capital and capital > 0:
+                old_pct = f"{old_bet / capital * 100:.1f}%"
+                new_pct = f"{o.get('bet_size', 0) / capital * 100:.1f}%"
+                pct_cell = f"{old_pct} → {new_pct}"
+            else:
+                pct_cell = ""
+
             rows_html += f"""
         <tr style="background:{sub_bg};font-size:11px;color:#e74c3c">
             <td style="padding:1px 8px;text-align:center">↳</td>
@@ -339,18 +381,35 @@ def build_email_body(
             <td style="padding:1px 12px">{pick_cell}</td>
             <td style="padding:1px 12px;text-align:center">{hc_cell}</td>
             <td style="padding:1px 12px;text-align:center">{odds_cell}</td>
+            <td style="padding:1px 12px;text-align:center">{pct_cell}</td>
         </tr>"""
+
+    # ── 计算近 2h 订单数 ──
+    two_h = now + timedelta(hours=2)
+    near_count = 0
+    for o in orders:
+        try:
+            mt = datetime.strptime(o["match_time"], "%Y-%m-%d %H:%M:%S")
+            if mt <= two_h:
+                near_count += 1
+        except ValueError:
+            pass
+    time_hint = f"近2h {near_count}单" if near_count > 0 else f"剩余 {len(orders)}单"
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,SF Pro Display,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#333;max-width:780px;margin:0 auto;padding:20px">
+<body style="font-family:-apple-system,SF Pro Display,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#333;max-width:900px;margin:0 auto;padding:20px">
+
+    <div style="background:#fff8e1;border:1px solid #f0c36d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#7a5c00">
+        ⏰ <b>提示：</b>除 12 点附近的邮件外，请参考未来 3 小时内的比赛。
+    </div>
 
     <div style="margin-bottom:16px">
         <span style="font-size:18px;font-weight:bold">{agent_name}</span>
         <span style="color:#999;margin:0 8px">·</span>
         <span>足球日 {football_day}</span>
         <span style="color:#999;margin:0 8px">·</span>
-        <span style="color:#e67e22">{len(orders)} 单待结算</span>
+        <span style="color:#e67e22">{time_hint} 待结算</span>
     </div>
 
     <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -365,6 +424,7 @@ def build_email_body(
                 <th style="padding:8px 10px;text-align:left">选择</th>
                 <th style="padding:8px 10px;text-align:center">让球</th>
                 <th style="padding:8px 10px;text-align:center">赔率</th>
+                <th style="padding:8px 10px;text-align:center">仓位</th>
             </tr>
         </thead>
         <tbody>
@@ -372,6 +432,53 @@ def build_email_body(
         </tbody>
     </table>
 
+"""
+
+    # ── 已移除订单 ──
+    removed = changes.get("removed", [])
+    if removed:
+        removed_rows = ""
+        for r in removed:
+            lid = r.get("lota_id", "")
+            match = tools.lookup_match(lid) or {}
+            home = match.get("home_name", "?")
+            away = match.get("away_name", "?")
+            pick = r.get("pick", "")
+            if pick == "H": pick_name = home
+            elif pick == "A": pick_name = away
+            else: pick_name = pick
+            old_pct = f"{r.get('bet_size', 0) / capital * 100:.1f}%" if capital and capital > 0 else "-"
+            removed_rows += f"""
+        <tr style="background:#fafafa;color:#bbb;font-size:12px">
+            <td style="padding:4px 8px;text-align:center">✕</td>
+            <td style="padding:4px 6px" colspan="4">{home} vs {away}</td>
+            <td style="padding:4px 12px;text-decoration:line-through">{pick_name}</td>
+            <td style="padding:4px 12px;text-align:center" colspan="2">-</td>
+            <td style="padding:4px 12px;text-align:center">{old_pct}</td>
+        </tr>"""
+
+        removed_html = f"""
+    <div style="margin-top:20px">
+        <div style="font-size:13px;color:#999;margin-bottom:8px">🗑 已移除 ({len(removed)} 单)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+                <tr style="background:#e0e0e0;color:#999">
+                    <th style="padding:4px 8px;text-align:center"></th>
+                    <th style="padding:4px 6px;text-align:left" colspan="4">比赛</th>
+                    <th style="padding:4px 12px;text-align:left">选择</th>
+                    <th style="padding:4px 12px;text-align:center" colspan="2"></th>
+                    <th style="padding:4px 12px;text-align:center">原仓位</th>
+                </tr>
+            </thead>
+            <tbody>{removed_rows}</tbody>
+        </table>
+    </div>"""
+    else:
+        removed_html = ""
+
+    html += removed_html
+
+    html += f"""
     <div style="margin-top:20px;font-size:12px;color:#aaa">
         {agent_name} · 自动发送 | {datetime.now().strftime('%Y-%m-%d %H:%M')}
     </div>
@@ -426,7 +533,7 @@ def send_order_email(agent_name: str = "均注狗", day_str: str | None = None) 
     subject = f"[{agent_name}] 足球日 {football_day} 待结算订单 ({len(orders)}单)"
 
     # 5. 发送
-    ok = send_email(subject, body, mail_cfg="163", is_html=True)
+    ok = send_email(subject, body, mail_cfg="163", is_html=True, agent_name=agent_name)
     if not ok:
         return False
 

@@ -115,6 +115,12 @@ def fetch_compact_fet(lota_id: str) -> Optional[dict]:
 def _ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """原子写入：先写临时文件再替换，避免并发进程读到半截文件。"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
 def get_cached_match(lota_id: str) -> Optional[dict]:
     feat = get_cached_compact_fet(lota_id)
     if feat:
@@ -130,6 +136,7 @@ def lookup_match(lota_id: str) -> Optional[dict]:
 
     与 get_cached_match 的区别：
       - 特征文件中同时检查 feat.match 和 feat.data.match
+      - 若无结构化 match，从 compact_fet 文本解析队名
       - matches 扫描使用 lottery_type="all"，避免因缺少 lottery_type 字段而漏掉比赛
     """
     feat = get_cached_compact_fet(lota_id)
@@ -137,6 +144,22 @@ def lookup_match(lota_id: str) -> Optional[dict]:
         match = feat.get("match") or (feat.get("data") or {}).get("match")
         if match:
             return match
+        # fallback: 从 compact_fet 文本解析
+        fet_text = feat.get("compact_fet", "")
+        if fet_text:
+            import re
+            vs_m = re.search(r'对战[：:]\s*(.+?)\s*🆚\s*(.+?)(?:\n|$)', fet_text)
+            if vs_m:
+                lg_m = re.search(r'联赛类型[：:]\s*(.+?)(?:\s*[｜|])', fet_text)
+                tm_m = re.search(r'时间[：:]\s*([\d\-:\s]+)', fet_text)
+                return {
+                    "home_name": vs_m.group(1).strip(),
+                    "away_name": vs_m.group(2).strip(),
+                    "league_name": lg_m.group(1).strip() if lg_m else "",
+                    "match_time": (tm_m.group(1).strip()[:19] if tm_m else ""),
+                    "score": feat.get("score", ""),
+                    "state": feat.get("state", 0),
+                }
     for d in _recent_dates(30):
         for m in get_cached_matches(d, lottery_type="all"):
             if m.get("lota_id") == lota_id:
@@ -174,8 +197,10 @@ def get_cached_compact_fet(lota_id: str) -> Optional[dict]:
 def save_compact_fet_cache(lota_id: str, data: dict) -> None:
     _ensure_dir(FEATURES_DIR)
     data["_cached_at"] = datetime.now().isoformat()
-    (FEATURES_DIR / f"{lota_id}.json").write_text(
-        json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(
+        FEATURES_DIR / f"{lota_id}.json",
+        json.dumps(data, ensure_ascii=False),
+    )
 
 def _recent_dates(days: int = 30) -> list[str]:
     return [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
@@ -229,9 +254,13 @@ def _extract_compact_fet_text(data: dict | None, lota_id: str) -> str:
 
 def save_tagged_sections(lota_id: str, sections: dict[str, str]) -> None:
     _ensure_dir(TAGS_DIR)
-    (TAGS_DIR / f"{lota_id}.json").write_text(
-        json.dumps({"lota_id": lota_id, "generated_at": datetime.now().isoformat(), "sections": sections},
-                   ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(
+        TAGS_DIR / f"{lota_id}.json",
+        json.dumps(
+            {"lota_id": lota_id, "generated_at": datetime.now().isoformat(), "sections": sections},
+            ensure_ascii=False,
+        ),
+    )
 
 def load_tagged_sections(lota_id: str) -> Optional[dict]:
     path = TAGS_DIR / f"{lota_id}.json"
@@ -481,5 +510,4 @@ def extract_odds(lota_id: str, data: dict = None) -> dict:
             }
 
     return result
-
 

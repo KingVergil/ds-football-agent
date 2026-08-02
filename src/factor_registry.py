@@ -16,6 +16,8 @@ import json
 from pathlib import Path
 from datetime import date as _date
 
+from .factor_select import factor_profile, FACTOR_SAMPLE_WINDOW, FACTOR_SMALL_SAMPLE
+
 ROLES_DIR = Path(__file__).parent.parent / "lota_data" / "roles"
 FACTORS_DIR = Path(__file__).parent.parent / "lota_data" / "factors"
 
@@ -165,7 +167,9 @@ class FactorRegistry:
     def format_for_prompt(self, current_date: str = None,
                           include_retired: bool = False,
                           window_days: int = 0,
-                          min_samples: int = 0) -> str:
+                          min_samples: int = 0,
+                          adaptive: bool = False,
+                          max_factors: int = 25) -> str:
         """
         格式化因子注册表 → LLM prompt 可用文本。
         按时间分组，标注来源角色。
@@ -174,7 +178,13 @@ class FactorRegistry:
             window_days: >0 时启用滚动窗口过滤，仅展示窗口内 ≥min_samples
                          且总回报 >0 的因子。统计数字也基于窗口重算。
             min_samples: 窗口内最低样本数（配合 window_days 使用）。
+            adaptive: 用自适应因子选择（最近 N 单 + 衰减加权 + 休眠过滤），
+                      替代固定时间窗口；用于 live prompt。
+            max_factors: adaptive 模式下的最大展示数量。
         """
+        if adaptive:
+            return self._format_adaptive_prompt(max_factors=max_factors)
+
         factors = self.get_all_factors(before_date=current_date,
                                        include_retired=include_retired,
                                        window_days=window_days,
@@ -213,6 +223,51 @@ class FactorRegistry:
                     lines.append(f"     slugs: {', '.join(f['slugs'][:5])}")
             lines.append("")
 
+        return "\n".join(lines)
+
+    def _format_adaptive_prompt(self, max_factors: int = 25) -> str:
+        """
+        自适应版跨 Agent 因子注册表：
+          每个因子取最近 N 次触发，指数衰减加权计算单注回报，
+          只展示 近期触发 >=2 次 且 加权回报 >0 的因子，按回报降序取 Top-K。
+        """
+        if not self._cache:
+            self.refresh()
+        rows = []
+        for role_name, factor_perf in self._cache.items():
+            for factor_name, fdata in factor_perf.items():
+                if fdata.get("status") in ("retired", "dormant"):
+                    continue
+                p = factor_profile(fdata)
+                if p is None or p["dormant"]:
+                    continue
+                if p["n"] < 2 or p["w_return"] <= 0:
+                    continue
+                rows.append((factor_name, role_name, fdata, p))
+        rows.sort(key=lambda x: -x[3]["w_return"])
+        rows = rows[:max_factors]
+
+        if not rows:
+            return "(跨Agent因子注册表: 近窗口内无正回报因子)"
+
+        lines = [
+            "## 📐 跨Agent因子注册表（自适应: 最近N单·衰减加权·仅正回报）",
+            f"  {len(rows)} 个因子 | 来自 {len({r[1] for r in rows})} 个Agent",
+            "  ⚠️ 样本<5 的因子仅作方向参考，仓位减半/试探",
+            "",
+        ]
+        for factor_name, role_name, fdata, p in rows:
+            small = f" ⚠️样本少({p['n']}单)" if p["n"] < FACTOR_SMALL_SAMPLE else ""
+            lines.append(
+                f"  ✅ `{factor_name}` [{role_name}] 近{p['n']}单 命中{p['hits']}/{p['n']} "
+                f"加权回报{p['w_return']:+.2f} 收缩命中{p['shrunk_rate']:.0%}{small}"
+            )
+            desc = fdata.get("desc", "")
+            if desc:
+                lines.append(f"     {desc[:100]}")
+            slugs = fdata.get("slugs") or []
+            if slugs:
+                lines.append(f"     slugs: {', '.join(slugs[:5])}")
         return "\n".join(lines)
 
     def summary(self) -> str:

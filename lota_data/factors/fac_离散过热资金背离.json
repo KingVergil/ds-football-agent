@@ -1,0 +1,10 @@
+{
+  "id": "fac_离散过热资金背离",
+  "slugs": [
+    "discrete-odds",
+    "betfair-buysell",
+    "fair-odds"
+  ],
+  "content": "当离散指数在让球方极度凝聚，但必发资金显示受让方买盘强劲或让球方卖盘大增，则下盘不败。",
+  "updated_at": "2026-07-31T10:11:35.614489"
+}

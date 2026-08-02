@@ -1,16 +1,6 @@
 {
-  "updated_at": "2026-07-26T12:47:54.635602",
+  "updated_at": "2026-07-30T11:07:11.182912",
   "reflections": [
-    {
-      "date": "2026-06-14",
-      "reflection": "赢场多因子共振（必发买盘、浅盘、小球不退、平赔横盘、离散温和），输场触发多项反向因子（平赔上扬、小球升水、离散过热）。核心教训：离散平局跌落至极低并非出手理由，须结合赔率走向和资金流向，若离散低位而平赔反升，是典型高位诱平陷阱。因子共振点越多，命中率越高。\n📡 有效slug: discrete-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T00:14:17.811908"
-    },
-    {
-      "date": "2026-06-18",
-      "reflection": "两场平局信号看似共振，但均出现隐蔽破坏因子：离散平局攀升、平赔剧烈震荡、大小球诱盘。平局狙击除满足基本面外，必须严审赔率波动和离散趋势，任何一方出现方向性异动都应放弃，等待更稳定的出手机会。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell, discrete-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T00:18:54.007060"
-    },
     {
       "date": "2026-06-19",
       "reflection": "该场虽满足浅盘、平赔下行、必发买盘等平局信号，但公平盘实力差已超出预设阈值，且大小球临场反转加剧风险，主胜凝聚进一步削弱平局基础。今后需将“实力接近”作为平局投注的第一道滤网，任何表面共振若突破核心约束都应放弃。因子“公平盘实力差警戒”将与现有“小球升水示险”互补，强化对虚假平局信号的识别。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
@@ -100,6 +90,16 @@
       "date": "2026-07-25",
       "reflection": "两场韩K联均满足实力接近、浅盘小球、离散平局低位、必发平买，但平赔均无下行甚至抬升，最终无平。平赔走势是平局第一风向标，未来必须要求平赔临场下行或至少稳定，否则其他信号再强也不出手。离散平局值若临场扩散也需警惕。\n📡 有效slug: eu-odds-pinnacle, discrete-odds, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 平赔未下行却重注，连黑未降仓。核心信号必须共振，平赔下行优先级最高，缺失则仓位减半或放弃。",
       "recorded_at": "2026-07-26T12:47:54.634513"
+    },
+    {
+      "date": "2026-07-28",
+      "reflection": "本场虽有多条平局信号触发，但亚盘从主让平半逆转为客让平半，欧赔平赔未普遍收敛，且必发平局买盘未占优，实际指向客胜。单场孤例无法提炼可复用因子，需警惕浅盘方向突变与必发资金未配合的信号组合。未来此类信号不完美时宁可休息。\n📡 有效slug: fair-odds, asian-handicap-pinnacle, eu-odds-pinnacle, betfair-buysell\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 1 笔订单已关联到因子\n💰 资金教训: 连败时必发买盘弱、亚盘方向逆转等非典型信号应放弃，即便其他信号满足也需更严筛选；小注须真正足够小，避免连续回撤。",
+      "recorded_at": "2026-07-29T11:38:10.738116"
+    },
+    {
+      "date": "2026-07-29",
+      "reflection": "本场为孤例，无对比。信号组合：亚盘浅盘受半球，大小球2.5小球低水，离散无极端低位，必发平局买盘大于卖盘。公平盘实力差虽大，但浅盘受让得以平衡。此类模式待多场验证。\n📡 有效slug: fair-odds, asian-handicap-pinnacle, over-under-crown, discrete-odds, betfair-buysell, eu-odds-pinnacle\n🔇 噪声slug: match-head\n💰 资金教训: 连败中严格按3%执行，控制风险。信号明确时小注也能盈利。",
+      "recorded_at": "2026-07-30T11:07:11.179076"
     }
   ]
 }

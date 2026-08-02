@@ -67,13 +67,14 @@ def _get_cfg(mail_cfg: dict | str | None = None) -> dict | None:
     return dict(mail_cfg)
 
 
-def _resolve_recipients(cfg: dict) -> list[str]:
-    """解析收件人列表，支持按行登记有效时间窗口。
+def _resolve_recipients(cfg: dict, agent_name: str = "") -> list[str]:
+    """解析收件人列表，支持按行登记有效时间窗口和 agent 过滤。
 
-    文件格式: 邮箱[, 生效开始时间, 失效时间]
+    文件格式: 邮箱[, 生效开始时间, 失效时间, agent过滤]
+    agent过滤: 逗号分隔的 agent 名，* 或空 = 全部
     时间格式: YYYY-MM-DD HH:MM:SS，可省略一个或两个都省略。
     """
-    # 1. cfg 里直接指定的
+    # 1. cfg 里直接指定的（测试用，忽略 agent 过滤）
     if cfg.get("to_addrs"):
         return cfg["to_addrs"]
 
@@ -91,6 +92,14 @@ def _resolve_recipients(cfg: dict) -> list[str]:
             email = parts[0]
             valid_from = parts[1] if len(parts) > 1 and parts[1] else None
             valid_until = parts[2] if len(parts) > 2 and parts[2] else None
+            # agent 过滤: 第 4 列起全部合并（兼容 agent 名中含逗号或空列导致切分过多）
+            agent_filter = ",".join(p.strip() for p in parts[3:] if p.strip()) if len(parts) > 3 else ""
+
+            # agent 过滤: 指定了 agent 列 → 只发给匹配的
+            if agent_filter and agent_name:
+                allowed = {a.strip() for a in agent_filter.split(",") if a.strip()}
+                if "*" not in allowed and agent_name not in allowed:
+                    continue
 
             # 检查时间窗口
             if valid_from:
@@ -153,8 +162,8 @@ def _is_within_valid_window(cfg: dict) -> bool:
     return True
 
 
-def send_email(subject: str, body: str, mail_cfg: dict | str | None = None, *, is_html: bool = False) -> bool:
-    """发送邮件。mail_cfg=None 则尝试 QQ 环境变量。"""
+def send_email(subject: str, body: str, mail_cfg: dict | str | None = None, *, is_html: bool = False, agent_name: str = "") -> bool:
+    """发送邮件。mail_cfg=None 则尝试 QQ 环境变量。agent_name 用于收件人 agent 过滤。"""
     cfg = _get_cfg(mail_cfg)
     if cfg is None:
         print("[email] ERROR: 无邮件配置。请传入 mail_cfg 或设置 QQ_EMAIL_ADDR", file=sys.stderr)
@@ -170,7 +179,7 @@ def send_email(subject: str, body: str, mail_cfg: dict | str | None = None, *, i
     password = cfg["password"]
     use_ssl = cfg.get("use_ssl", port == 465)
     from_addr = cfg.get("from_addr", user)
-    to_addrs = _resolve_recipients(cfg)
+    to_addrs = _resolve_recipients(cfg, agent_name=agent_name)
 
     if not to_addrs:
         print("[email] ERROR: 无收件人", file=sys.stderr)
