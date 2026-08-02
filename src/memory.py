@@ -15,6 +15,13 @@ from datetime import datetime
 from collections import defaultdict
 from typing import Optional
 
+from .factor_select import (
+    factor_profile,
+    FACTOR_SAMPLE_WINDOW,
+    FACTOR_SMALL_SAMPLE,
+    FACTOR_MAX_MAIN,
+)
+
 
 DATA_ROOT = Path(__file__).parent.parent / "lota_data"
 # MEMORY_DIR 改为按角色隔离: roles/{name}/memory/
@@ -373,25 +380,79 @@ class FactorMemory:
     def get_performance(self, factor_id: str) -> dict:
         return self.factor_perf.get(factor_id, {"total": 0, "hit": 0, "miss": 0, "push": 0, "profit": 0.0, "status": "active"})
 
+    # ── 因子选择（注入 prompt 前）：样本窗 + 衰减加权 + 自适应休眠 ──
+
+    def selected_active(self) -> tuple[list[tuple[str, dict, dict]], list[tuple[str, dict, dict]], int]:
+        """
+        返回 (main, aux, dormant_count)：
+          main — 窗口内 n>=2 且加权回报>0 的活跃因子（按加权回报降序，最多 12 个）
+          aux  — 窗口内样本不足 / 加权回报<=0 的因子（观察区，慎用）
+          dormant_count — 超过 3×平均触发间隔未触发（或已被 review 标记 dormant）的因子数
+        """
+        if not self._loaded or not self.factor_perf:
+            return [], [], 0
+        main, aux, dormant_count = [], [], 0
+        for fid, s in self.factor_perf.items():
+            status = s.get("status", "active")
+            if status == "retired":
+                continue
+            if status == "dormant":
+                dormant_count += 1
+                continue
+            prof = factor_profile(s)
+            if prof is None:
+                continue
+            if prof["dormant"]:
+                dormant_count += 1
+                continue
+            item = (fid, s, prof)
+            if prof["n"] >= 2 and prof["w_return"] > 0:
+                main.append(item)
+            else:
+                aux.append(item)
+        main.sort(key=lambda x: -x[2]["w_return"])
+        aux.sort(key=lambda x: -x[2]["w_return"] if x[2] else 0)
+        return main[:FACTOR_MAX_MAIN], aux[:6], dormant_count
+
     def perf_text(self) -> str:
         if not self._loaded or not self.factor_perf:
             return ""
-        active = []
+        main, aux, dormant_count = self.selected_active()
         retired = []
         for fid, s in self.factor_perf.items():
-            (active if s.get("status", "active") != "retired" else retired).append((fid, s))
+            if s.get("status", "active") == "retired":
+                retired.append((fid, s))
         lines = []
-        if active:
-            lines.append("📐 活跃因子:")
-            for fid, s in sorted(active, key=lambda x: -x[1]["total"])[:15]:
-                denom = s["total"] - s["push"]
-                rate = f"{s['hit']/denom*100:.0f}%" if denom > 0 else "-"
+        if main:
+            lines.append(
+                f"📐 活跃因子（最近{FACTOR_SAMPLE_WINDOW}单·衰减加权·按加权单注回报排序）:"
+            )
+            lines.append("    ⚠️ 样本<5 的因子仅作方向参考，仓位减半/试探")
+            for fid, s, p in main:
+                small = f" ⚠️样本少({p['n']}单)" if p["n"] < FACTOR_SMALL_SAMPLE else ""
+                lifetime = s.get("total_return", s.get("profit", 0.0))
+                lines.append(
+                    f"  {fid} [近{p['n']}单({p['first_seen_recent'][5:]}~"
+                    f"{p['last_seen_recent'][5:]}) 命中{p['hits']}/{p['n']} "
+                    f"加权回报{p['w_return']:+.2f} 收缩命中{p['shrunk_rate']:.0%}"
+                    f"{small} | 累计{s['total']}单 回报{lifetime:+.2f}]"
+                )
                 desc = s.get("desc", "")
-                desc_part = f" | {desc[:60]}" if desc else ""
-                first = s.get("first_seen", "")
-                last = s.get("last_seen", "")
-                date_str = f" [{first}" + (f"~{last}" if last != first else "") + "]" if first else ""
-                lines.append(f"  {fid}{date_str}: {s['total']}次 命中{rate} 回报率{s.get('total_return', s['profit']):+.2f}{desc_part}")
+                if desc:
+                    lines.append(f"     {desc[:80]}")
+        if aux:
+            lines.append("📉 近期走弱/样本不足因子（除非强信号否则勿用）:")
+            for fid, s, p in aux:
+                if p:
+                    lines.append(
+                        f"  ⚠️ {fid}: 近{p['n']}单 加权回报{p['w_return']:+.2f}"
+                    )
+                else:
+                    lines.append(f"  ⚠️ {fid}: 近{FACTOR_SAMPLE_WINDOW}单无记录")
+        if not main and not aux:
+            lines.append("📐 活跃因子: (近窗口内无触发，暂无推荐因子)")
+        if dormant_count:
+            lines.append(f"  (另有 {dormant_count} 个因子超过 3×平均触发间隔未激活/已休眠)")
         if retired:
             lines.append("🪦 已退役因子 (避免使用):")
             for fid, s in retired[:10]:
@@ -402,11 +463,10 @@ class FactorMemory:
         """
         从 lota_data/factors/fac_*.json 读取活跃因子的详细定义（slugs + content）。
         与 perf_text() 互补：perf 展示统计，本方法展示因子含义。
+        只输出 perf_text() 中入选的因子定义，避免全量定义挤占 prompt。
         """
-        active_names = {
-            fid.lower() for fid, s in self.factor_perf.items()
-            if s.get("status", "active") != "retired"
-        }
+        main, aux, _ = self.selected_active()
+        active_names = {fid.lower() for fid, _, _ in main} | {fid.lower() for fid, _, _ in aux}
         if not active_names:
             return ""
 

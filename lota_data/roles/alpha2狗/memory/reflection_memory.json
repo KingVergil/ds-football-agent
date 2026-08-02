@@ -1,26 +1,6 @@
 {
-  "updated_at": "2026-07-27T09:39:57.443202",
+  "updated_at": "2026-07-31T10:11:35.616804",
   "reflections": [
-    {
-      "date": "2026-07-01",
-      "reflection": "本场是深盘强者模式典范：实力差悬殊，离散凝聚，盘口水位多重保护。亚盘升盘再退盘的示弱动作常见于穿盘，结合极高客胜赔率确认冷门无望。跨场规律：获得离散、盘赔、实力三合一支持的深盘上盘值得用凯利满额(15%)下注，但单场上限不可逾越。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: betfair-buysell, over-under-crown\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:16:00.436386"
-    },
-    {
-      "date": "2026-07-02",
-      "reflection": "两场深盘对比显示，离散凝聚程度必须与赔率动态结合判断。离散极端低位（<1.0）若伴随赔率停滞甚至回弹，形成“凝聚-停滞背离”，预示穿盘无力；反之离散适度凝聚（5-8）且赔率同步下沉、亚盘升盘低水，构成正向共振。因子体系应将这两种情景独立，避免单向依赖深盘实力碾压离散锁定。资金管理上，离散极端信号出现时仓位应自动减半。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:19:10.981253"
-    },
-    {
-      "date": "2026-07-03",
-      "reflection": "两场均为实力优势方让球，离散凝聚与资金流入共振，上盘方向明确。深盘搭配客胜离散极高时可信度更高；而浅盘升盘时若平局离散异常高企，冷平风险不可忽视，应主动降仓防平。因子组合中，离散凝聚为内核，升盘与欧赔下沉提供动能，异常离散作减分项。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 2 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:21:00.093745"
-    },
-    {
-      "date": "2026-07-05",
-      "reflection": "三场中离散凝聚都是核心信号，但赢单均伴有升盘或盘赔背离后离散确认，输单则是退盘低水凝聚。由此提炼出两个新因子：退盘凝聚低水诱上（危险信号）和盘赔背离离散追强（机会信号）。资金管理上，共振因子可顶格15%仓位，单薄因子需打折至10%或跳过，今日最大教训是退盘凝聚低水不应下注。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:24:59.936202"
-    },
     {
       "date": "2026-07-06",
       "reflection": "离散凝聚是强信号，但必须与水位、盘口方向和公平盘实力差共振。让球方凝聚配中高水诱下有效，配超高水则诱上风险；受让方凝聚配舒适水位往往诱下，上盘正路。实力差不支撑的深盘，离散凝聚需降级处理。动态校准仓位，不靠固定份额硬扛。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, eu-odds-pinnacle, fair-odds\n🔇 噪声slug: betfair-buysell, over-under-crown, match-head\n📐 因子归因: 4 笔订单已关联到因子",
@@ -100,6 +80,26 @@
       "date": "2026-07-26",
       "reflection": "成功场次(0,3,4)均表现出离散极度凝聚+赔率同向强化或退盘低水保护，失败场次(2,5)存在离散不够极致或赔率背离。离散凝聚因子需结合赔率方向与离散绝对值，极端低离散(如<1.0)信号更强，背离时宁可错过。平离散冰点因子对下盘保护有效，但需平离散极低且对手离散高企。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子\n💰 资金教训: 离散凝聚但赔率反向时立即下调胜率或跳过，不因历史胜率高而盲目重注；单场数据矛盾时保守使用凯利。",
       "recorded_at": "2026-07-27T09:39:57.441922"
+    },
+    {
+      "date": "2026-07-27",
+      "reflection": "离散极度凝聚是强信号，若欧赔同向则方向可信，无论亚盘水位高低。order_0低水保护增强信号，order_1高水未影响离散效果，表明离散凝聚本身权重更高。两场均无必发资金明显背离，共振时需侧重离散与欧赔。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 两注均超凯利上限按15%执行，单日总仓位30%符合纪律。离散凝聚+赔率同向共振时胜率高，可维持上限仓位，但需避免过度集中。",
+      "recorded_at": "2026-07-28T10:26:33.878481"
+    },
+    {
+      "date": "2026-07-28",
+      "reflection": "两场共同点：公平盘实力差或ELO均指向客队占优，但主队意外获得让球资格（平半、半一），离散指数在主胜或平局方向极度凝聚，形成热力聚集，最终均为客胜。此类盘口与实力背离且离散过热的场次，是典型的诱上格局，可提炼为'实力逆差让球诱主'因子，反向操作客队回报显著。\n📡 有效slug: fair-odds, asian-handicap-pinnacle, discrete-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 离散信号与公平盘实力方向矛盾时风险极高，应削减仓位至半额或跳过，盲目跟从离散凝聚极易遭遇反打。",
+      "recorded_at": "2026-07-29T11:35:43.319514"
+    },
+    {
+      "date": "2026-07-29",
+      "reflection": "两场共性：离散极端值方向并非绝对，第一场离散凝聚在低赔方直接打出，第二场平离散极低而低赔离散高，低赔方最终打出，验证‘离散逆赔跟低赔’因子。必发客胜卖盘巨大实为诱空，离散+赔率矛盾时低赔方更可靠。离散极值凝聚（无论哪一侧）总是重要信号，但需结合赔率与资金方向，单因子不如多因子共振稳定。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, betfair-buysell, fair-odds, asian-handicap-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 两单均接近仓位上限且全赢，凯利计算准确。连续命中时勿主动降p，严格按公式执行；卖盘巨量背离时反而可作反向信号参考，但需离散同向验证。",
+      "recorded_at": "2026-07-30T11:02:29.787648"
+    },
+    {
+      "date": "2026-07-30",
+      "reflection": "order_1与order_2均出现离散指数在让球方极度凝聚，但必发资金明显流向受让方，导致下盘打出。order_0离散凝聚但资金均衡，上盘顺利跑出。因此，离散过热多伴风险，资金方向是关键验证。当离散与资金同向时，上盘可信；当二者背离，则下盘机会显现。此模式可复用。\n📡 有效slug: discrete-odds, betfair-buysell, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 反向操作需资金背离信号支撑，无明确资金反向时不轻易反向。离散与资金背离时，可适度下注受让方，但仓位不宜超过正常水平。",
+      "recorded_at": "2026-07-31T10:11:35.615503"
     }
   ]
 }

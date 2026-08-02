@@ -31,6 +31,7 @@ class AgentState(TypedDict, total=False):
     day_date: str
     live: bool
     jingcai_only: bool  # 只拉竞彩比赛，减少数量加速测试
+    prefetched: bool    # 数据已由外部预取（prefetch 命令），跳过强制刷新
     capital: float
 
     # role 不可序列化，存引用
@@ -117,6 +118,7 @@ def node_fetch_matches(state: AgentState) -> AgentState:
     """从 DataManager 获取足球日比赛"""
     rt = _rt(state)
     day_date = state["day_date"]
+
     print(f"  🔍 拉取比赛...", end=" ", flush=True)
     d = date.fromisoformat(day_date)
 
@@ -128,8 +130,8 @@ def node_fetch_matches(state: AgentState) -> AgentState:
     all_matches = []
     for cd in cal_dates:
         matches = rt.dm.get_cached_matches(cd, lottery_type=ltype)
-        # live模式强制刷新缓存（避免用过期数据）
-        if state.get("live") or not matches:
+        # live模式强制刷新缓存（避免用过期数据）；prefetched 波次已由外部预取，直接用缓存
+        if not state.get("prefetched") and (state.get("live") or not matches):
             matches = rt.dm.fetch_matches_by_date(cd, lottery_type=ltype)
             if matches:
                 rt.dm.save_matches_cache(cd, matches)
@@ -188,43 +190,36 @@ def node_fetch_features(state: AgentState) -> AgentState:
     cached = 0
     fetched = 0
     failed = 0
-    refreshed = 0
-
-    now_str = _now_bj()
 
     for m in safe:
         lid = m.get("lota_id", "")
         if not lid:
             continue
 
-        # 未开赛比赛(match_time > now)强制刷新即时盘，避免用几小时前的过期快照下单；
-        # 历史/已开赛比赛(回测场景)不刷新，沿用缓存，也避免拉到已完赛数据。
-        force = m.get("match_time", "") > now_str
-        data = rt.dm.get_compact_fet(lid, refresh=force)
+        # get_compact_fet 内部已有 TTL 策略：
+        #   - 已完场 → 缓存永久有效
+        #   - live/upcoming → 缓存 120s，过期自动刷新
+        data = rt.dm.get_compact_fet(lid)
         if data is None:
             failed += 1
-        elif force:
-            refreshed += 1
         elif data.get("_cached_at") and not data.get("_api_failed"):
-            # 从缓存命中（没有触发 API）
             cached += 1
         else:
             fetched += 1
 
-    if refreshed:
-        print(f"[features] {refreshed}/{len(safe)} 场未开赛已强制刷新即时盘")
-
-    if rt.session and (cached + fetched + failed + refreshed) > 0:
+    if rt.session and (cached + fetched + failed) > 0:
         rt.session.tool_call("fetch_features", {
             "total": len(safe),
             "cached": cached,
             "fetched": fetched,
-            "refreshed": refreshed,
             "failed": failed,
-        }, f"预取 compact-fet: {cached} cached, {fetched} new, {refreshed} refreshed, {failed} failed")
+        }, f"预取 compact-fet: {cached} cached, {fetched} fetched, {failed} failed")
 
     if failed > 0:
         print(f"[features] {failed}/{len(safe)} 场 compact-fet 获取失败（将用 match list 兜底）")
+
+    # 在拉完 matches + features 之后再检查数据新鲜度（避免基于旧缓存误报）
+    rt.dm.check_data_freshness(state["day_date"])
 
     return state
 
@@ -301,7 +296,26 @@ def node_build_prompt(state: AgentState) -> AgentState:
         sp = rt.builder.ensure_baseline()
 
     safe = state.get("safe_matches", [])
-    match_tasks = [{"lota_id": m["lota_id"]} for m in safe if m.get("lota_id")]
+
+    # 🔒 过滤无特征数据（_api_failed）的比赛：不进 LLM prompt
+    clean_safe = []
+    api_failed_count = 0
+    for m in safe:
+        lid = m.get("lota_id", "")
+        if not lid:
+            continue
+        feat = rt.dm.get_compact_fet(lid)
+        if feat is None:
+            # node_fetch_features 已尝试拉取，None = API 失败或 negative cache（_api_failed）
+            api_failed_count += 1
+            print(f"  ⚠️ 跳过无特征数据比赛: {lid} ({m.get('home_name', '')} vs {m.get('away_name', '')})")
+        else:
+            clean_safe.append(m)
+
+    if api_failed_count:
+        print(f"  🔒 过滤 {api_failed_count} 场无特征数据比赛，剩余 {len(clean_safe)} 场进入 LLM")
+
+    match_tasks = [{"lota_id": m["lota_id"]} for m in clean_safe if m.get("lota_id")]
 
     # 获取刚结算的订单（优先 runtime，fallback 磁盘）
     settled_orders = rt.last_settled_orders
@@ -358,7 +372,7 @@ def node_build_prompt(state: AgentState) -> AgentState:
             "settlement_review": len(settled_orders),
         }, f"{result['token_count']} tokens (budget {result['budget']})")
 
-    return {**state, "prompt": result}
+    return {**state, "prompt": result, "safe_matches": clean_safe}
 
 
 def node_call_llm(state: AgentState) -> AgentState:
@@ -458,13 +472,24 @@ def node_parse_orders(state: AgentState) -> AgentState:
         if lid not in safe_ids:
             print(f"  ⚠️ LLM 输出未知 lota_id {lid}（不在当天 {len(safe)} 场比赛中），尝试队名重匹配...")
             reason = parsed.get("reason", "") + block
+            parsed_reason = parsed.get("reason", "")
             matched = None
+            # 先按队名匹配
             for m in safe:
                 home = m.get("home_name", "")
                 away = m.get("away_name", "")
                 if home and away and (home[:2] in reason or away[:2] in reason):
                     matched = m
                     break
+            # 队名匹配失败时，尝试按 reason 中出现的 lota_id 匹配
+            if not matched:
+                for m in safe:
+                    m_lid = m.get("lota_id", "")
+                    if m_lid:
+                        m_nid = m_lid.replace("Lota", "").replace("lota", "")
+                        if m_lid in parsed_reason or m_nid in parsed_reason:
+                            matched = m
+                            break
             if matched:
                 print(f"  🔄 重匹配 {lid} → {matched['lota_id']} ({matched.get('home_name','')} vs {matched.get('away_name','')})")
                 lid = matched["lota_id"]
@@ -472,6 +497,30 @@ def node_parse_orders(state: AgentState) -> AgentState:
             else:
                 print(f"  🚫 无法匹配合法比赛，跳过订单 (原始 lota_id={lid})")
                 continue
+        else:
+            # 🔒 队名交叉校验：lid 在 safe_ids 中，但需验证 reason 中的队名是否与
+            # lid 的实际比赛一致。防止 LLM 把 A 场的分析贴到 B 场的合法 ID 上（"张冠李戴"）。
+            reason = parsed.get("reason", "") + block
+            match_info = next((m for m in safe if m["lota_id"] == lid), None)
+            if match_info:
+                home = match_info.get("home_name", "")
+                away = match_info.get("away_name", "")
+                if home and away and len(home) >= 2 and len(away) >= 2:
+                    home_ok = home[:2] in reason
+                    away_ok = away[:2] in reason
+                    # LLM 可能只用 ID 引用比赛而不写队名（如 "Lota4467584 主队..."）
+                    # 检查 parsed reason 中是否包含 lota_id 或纯数字ID
+                    parsed_reason = parsed.get("reason", "")
+                    numeric_id = lid.replace("Lota", "").replace("lota", "")
+                    id_in_reason = lid in parsed_reason or numeric_id in parsed_reason
+                    if not home_ok and not away_ok:
+                        if id_in_reason:
+                            print(f"  ✅ 队名交叉校验: {lid} reason中未出现队名但引用了ID，视为通过")
+                        else:
+                            # reason 中既无队名也无 ID — 纯分析性语言（如只讨论离散/盘口/水位）。
+                            # 此时无证据表明"张冠李戴"，lota_id 本身已验证在 safe_ids 中，放行但标 warning。
+                            print(f"  ⚠️ 队名交叉校验跳过: {lid} ({home} vs {away}) reason中无队名/ID，无法交叉验证但放行（请人工检查）")
+                            # 不 continue，继续处理该订单
 
         if not parsed.get("odds"):
             odds = rt.dm.get_odds(lid)
@@ -508,11 +557,128 @@ def node_parse_orders(state: AgentState) -> AgentState:
     return {**state, "orders": orders}
 
 
+# ── 下单后数据尾点打印（仅供人工核对数据新鲜度，不进 LLM）──
+
+_FET_SERIES_ORDER = [
+    "离散指数",
+    "欧盘:Pinnacle",
+    "欧盘:澳门",
+    "亚盘:Crown",
+    "亚盘:澳门",
+    "亚盘:Pinnacle",
+    "大小球:Pinnacle",
+    "大小球:Crown",
+    "大小球:澳门",
+]
+
+_FET_SECTION_RE = re.compile(r"(离散指数|欧盘|亚盘|大小球)(:[^ ]*)?\s+t=")
+_FET_POINT_RE = re.compile(r"(?:Δt\+|OPt-)(\d+)m")
+
+
+def _parse_fet_series(text: str) -> dict[str, list[str]]:
+    """解析 compact-fet 各赔率系列（兼容"数据点与下一段表头挤一行"的脏文本）。"""
+    sections: dict[str, list[str]] = {}
+    cur = None
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        hdrs = list(_FET_SECTION_RE.finditer(s))
+        if hdrs:
+            # 表头前的残留（可能是上一段最后的数据点，服务器缺换行导致）
+            pre = s[: hdrs[0].start()].strip()
+            if _FET_POINT_RE.match(pre) and cur:
+                sections.setdefault(cur, []).append(pre)
+            for i, h in enumerate(hdrs):
+                cur = s[h.start() : h.end()].split(" t=")[0].strip()
+                sections.setdefault(cur, [])
+                nxt = hdrs[i + 1].start() if i + 1 < len(hdrs) else len(s)
+                mid = s[h.end() : nxt].strip()
+                if _FET_POINT_RE.match(mid):
+                    sections.setdefault(cur, []).append(mid)
+        elif _FET_POINT_RE.match(s) and cur:
+            sections.setdefault(cur, []).append(s)
+    return sections
+
+
+def _fet_last_clock(sections: dict[str, list[str]], name: str, kickoff) -> datetime | None:
+    """该系列最新数据点对应的实际时间（开赛时间 - Δt 分钟）。"""
+    pts = sections.get(name) or []
+    vals = []
+    for p in pts:
+        m = _FET_POINT_RE.match(p)
+        if m:
+            vals.append(int(m.group(1)))
+    if not vals or kickoff is None:
+        return None
+    return kickoff - timedelta(minutes=vals[-1])
+
+
+def _fet_odds_tail(text: str, per_series: int = 2) -> list[str]:
+    """从 compact-fet 文本提取各赔率系列最近的几个数据点（Δt/OPt 行）。"""
+    sections = _parse_fet_series(text)
+    out = []
+    for name in _FET_SERIES_ORDER:
+        pts = sections.get(name) or []
+        if pts:
+            out.append(f"{name}: " + " | ".join(p[:90] for p in pts[-per_series:]))
+    if not out:
+        out = [ln.strip()[:120] for ln in text.strip().splitlines()[-3:]]
+    return out
+
+
+def _print_placed_fet_tail(rt, lid: str) -> None:
+    """打印该场 compact-fet 最近赔率点 + 缓存时间，方便感知数据是否新鲜。"""
+    feat = rt.dm.get_cached_compact_fet(lid) or {}
+    text = feat.get("compact_fet", "") or (feat.get("data") or {}).get("compact_fet", "")
+    cached_at = (feat.get("_cached_at") or "?")[:19]
+    m = rt.dm.get_cached_match(lid) or {}
+    home = m.get("home_name", "?")
+    away = m.get("away_name", "?")
+    mt = (m.get("match_time") or "?")[5:16]
+    if not text:
+        print(f"  📊 [{lid}] {home} vs {away} {mt} | fet_txt 无数据 (cached {cached_at})")
+        return
+    sections = _parse_fet_series(text)
+
+    # 开赛时间（从 fet 文本"时间:"字段解析）
+    kickoff = None
+    mtxt = re.search(r"时间[：:]\s*([\d\- :]+)", text)
+    if mtxt:
+        try:
+            kickoff = datetime.strptime(mtxt.group(1).strip()[:16], "%Y-%m-%d %H:%M")
+        except ValueError:
+            kickoff = None
+
+    clocks = {
+        name: _fet_last_clock(sections, name, kickoff)
+        for name in _FET_SERIES_ORDER
+    }
+    freshest = max((c for c in clocks.values() if c), default=None)
+
+    print(f"  📊 [{lid}] {home} vs {away} {mt} | cached {cached_at}")
+    stale_any = False
+    for name in _FET_SERIES_ORDER:
+        pts = sections.get(name) or []
+        if not pts:
+            continue
+        flag = ""
+        last_clock = clocks.get(name)
+        if last_clock and freshest and (freshest - last_clock) > timedelta(minutes=60):
+            flag = " ⚠️断更"
+            stale_any = True
+        line = " | ".join(p[:90] for p in pts[-2:])
+        print(f"      {name}: {line}{flag}")
+    if stale_any:
+        print("      ⚠️ 有系列最新点比最全系列晚 60 分钟以上，数据疑似断更")
+
+
 def node_place_orders(state: AgentState) -> AgentState:
     """下单"""
     rt = _rt(state)
     orders = state.get("orders", [])
     placed = 0
+    placed_lids: list[str] = []
 
     # 已有未结算订单的「市场」集合 (lota_id, bet_type) → 同一场同一盘口类型不重复下单。
     # 注意用 (lota_id, bet_type) 而非仅 lota_id：同一场亚盘+大小球是合法双单，不能误挡。
@@ -566,8 +732,15 @@ def node_place_orders(state: AgentState) -> AgentState:
             rt.role.place_order(o)
             pending_markets.add((o.get("lota_id"), o.get("bet_type")))
             placed += 1
+            placed_lids.append(o.get("lota_id", ""))
         except ValueError:
             break  # 资金不够，后续订单不再尝试
+
+    # 下单后自动打印 fet_txt 最近赔率点（不进 LLM，人工核对数据用）
+    if placed_lids:
+        print("\n  📊 下单数据尾点 (fet_txt):")
+        for lid in dict.fromkeys(placed_lids):
+            _print_placed_fet_tail(rt, lid)
 
     rt.role.save()
 
@@ -625,6 +798,8 @@ def node_fetch_scores(state: AgentState) -> AgentState:
     unsettled = state.get("unsettled_orders", [])
     day_date = state.get("day_date", "")
 
+    rt.dm.check_data_freshness(day_date)
+
     if not unsettled:
         return {**state, "scores": {}}
 
@@ -665,6 +840,19 @@ def node_fetch_scores(state: AgentState) -> AgentState:
                             sc = m.get("score", "")
                             if sc:
                                 scores[lid] = sc
+            except Exception:
+                pass
+
+    # 2.5. 逐 ID API 补缺 — 日期查询覆盖不到的（如缓存 state=-1 的坏数据），直接用 match by ID 拉
+    still_missing = lids_needed - set(scores.keys())
+    if still_missing:
+        for lid in list(still_missing):
+            try:
+                refreshed = rt.dm.refresh_score_match(lid)
+                if refreshed:
+                    sc = refreshed.get("score", "")
+                    if sc and refreshed.get("state") == 6:
+                        scores[lid] = sc
             except Exception:
                 pass
 
@@ -1482,12 +1670,14 @@ class Agent:
             rt.role = Role(name=self.user, capital=capital)
             rt.role.save()
 
-    def analyze(self, day_date: str, live: bool = False, jingcai_only: bool = False) -> dict:
+    def analyze(self, day_date: str, live: bool = False, jingcai_only: bool = False,
+                prefetched: bool = False) -> dict:
         """分析一天 → 返回 orders。
 
         live=True 时：
           1. 先 refresh_orders（退回未开赛订单，保留已开赛）
           2. 再调用 LLM 分析下单
+        prefetched=True 时：比赛列表/compact-fet/tags 已由外部预取，跳过强制刷新。
         """
         # live 模式：自动刷新当天订单
         if live:
@@ -1501,9 +1691,13 @@ class Agent:
                 "day_date": day_date,
                 "live": live,
                 "jingcai_only": jingcai_only,
+                "prefetched": prefetched,
             }
+            # live 模式：禁止 get_compact_fet 回退过期缓存（旧赔率进提示词）
+            DataManager().set_live_mode(live)
             result = self._analyze_graph.invoke(state)
         finally:
+            DataManager().set_live_mode(False)
             self._end_session(session)
 
         return {

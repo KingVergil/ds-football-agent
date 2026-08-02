@@ -2,8 +2,9 @@
   "id": "fac_赔率下沉追强",
   "slugs": [
     "discrete-odds",
-    "eu-odds-pinnacle"
+    "eu-odds-pinnacle",
+    "fair-odds"
   ],
-  "content": "欧赔主胜临场显著下沉，示好强队打出",
-  "updated_at": "2026-07-25T11:02:08.475222"
+  "content": "欧赔强队方向赔率持续显著下降，与离散凝聚形成共振，指向强队不败。",
+  "updated_at": "2026-07-28T10:28:43.723264"
 }

@@ -1,0 +1,10 @@
+{
+  "id": "fac_资金背离下盘",
+  "slugs": [
+    "betfair-buysell",
+    "asian-handicap-pinnacle",
+    "discrete-odds"
+  ],
+  "content": "必发主胜卖盘大于买盘，或客胜、平局有异常买入，结合亚盘主让高水，下盘机会大。",
+  "updated_at": "2026-08-01T13:34:41.089945"
+}

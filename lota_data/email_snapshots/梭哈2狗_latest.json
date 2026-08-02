@@ -1,0 +1,20 @@
+{
+  "sent_at": "2026-08-01 23:03:59",
+  "football_day": "2026-08-01",
+  "orders": [
+    {
+      "lota_id": "Lota4467614",
+      "pick": "A",
+      "handicap": 1.0,
+      "odds": 0.91,
+      "bet_size": 14224
+    },
+    {
+      "lota_id": "Lota4480444",
+      "pick": "H",
+      "handicap": -1.0,
+      "odds": 0.94,
+      "bet_size": 19550
+    }
+  ]
+}

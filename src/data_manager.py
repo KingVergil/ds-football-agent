@@ -78,6 +78,13 @@ def _headers() -> dict:
     return {"X-API-Key": _get_api_key(), "Content-Type": "application/json"}
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """原子写入：先写临时文件再替换，避免并发进程读到半截文件。"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _get(path: str, params: dict = None) -> dict | list | None:
     url = f"{BASE_URL}{path}"
     try:
@@ -101,11 +108,111 @@ class DataManager:
     """统一数据访问层 — 单例"""
 
     _instance = None
+    _live_strict = False  # live 模式标记：禁止用过期缓存兜底（见 get_compact_fet）
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    # ═══════════════════════════════════════════
+    # Data Freshness Check
+    # ═══════════════════════════════════════════
+
+    def set_live_mode(self, live: bool) -> None:
+        """设置 live 模式。live 模式下 get_compact_fet 刷新失败时拒绝回退旧缓存。"""
+        type(self)._live_strict = bool(live)
+
+    def check_data_freshness(self, day_date: str = None) -> bool:
+        """
+        检查数据管道是否健康。通过对比本地缓存中最新的特征数据时间戳
+        与当前时间的差距，如果超过 3 小时则发出警告。
+
+        同时检查当天比赛：如果已开赛的比赛中存在 state=-1
+        （数据未更新），则极可能数据管道中断（如 Celery 崩溃）。
+
+        Returns: True if fresh, False if stale.
+        """
+        now = datetime.now()
+        warn_msgs = []
+
+        # 1. 检查特征文件缓存的新鲜度
+        newest_cached = None
+        newest_lota_id = ""
+        feature_files = sorted(FEATURES_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        checked = 0
+        for fp in feature_files:
+            if checked >= 50:  # 采样最近 50 个文件
+                break
+            try:
+                data = json.loads(fp.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if data.get("_api_failed"):
+                continue
+            cached_at = data.get("_cached_at", "")
+            if cached_at:
+                try:
+                    ct = datetime.fromisoformat(cached_at)
+                    if newest_cached is None or ct > newest_cached:
+                        newest_cached = ct
+                        newest_lota_id = fp.stem
+                except Exception:
+                    pass
+            checked += 1
+
+        if newest_cached:
+            gap_h = (now - newest_cached).total_seconds() / 3600
+            if gap_h > 3:
+                warn_msgs.append(
+                    f"⚠️ 最新特征缓存({newest_lota_id}): {newest_cached.strftime('%m-%d %H:%M')}，"
+                    f"距今 {gap_h:.1f}h（阈值 3h）"
+                )
+
+        # 2. 检查已开赛比赛：state=-1 且 match_time 已过 → 数据管道可能中断
+        # 未来比赛 state=-1 属于正常（尚未入库），不报警
+        if day_date:
+            from datetime import date as _date, timedelta
+            now_str = now.strftime("%Y-%m-%d %H:%M")
+            cutoff_str = (now + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M")
+            for d in [day_date,
+                      (_date.fromisoformat(day_date) + timedelta(days=1)).isoformat()]:
+                try:
+                    matches = self.get_cached_matches(d, lottery_type="all")
+                except Exception:
+                    continue
+                stale_matches = []
+                for m in matches:
+                    mt = m.get("match_time", "")
+                    state = m.get("state", 0)
+                    # 只关注已开赛但 state=-1 的竞彩比赛（数据管道异常）
+                    if mt and state == -1 and mt <= now_str and m.get("jingcai_number"):
+                        # 精简格式：ID 主vs客
+                        stale_matches.append(
+                            f"{m.get('lota_id','?')} "
+                            f"{m.get('home_name','?')}vs{m.get('away_name','?')}"
+                        )
+                if stale_matches:
+                    warn_msgs.append(
+                        f"⚠️ {d}: {len(stale_matches)} 场 state=-1:"
+                    )
+                    for sm in stale_matches:
+                        warn_msgs.append(f"  · {sm}")
+
+        if warn_msgs:
+            print("")
+            print("┌──────────────────────────────────────────────┐")
+            print("│ 🔴 DATA FRESHNESS WARNING                     │")
+            print("├──────────────────────────────────────────────┤")
+            for msg in warn_msgs:
+                print(f"│ {msg}")
+            print("│                                              │")
+            print("│ 可能原因: Celery/MySQL 崩溃或 fet-text 未刷新 │")
+            print("│ 建议: 检查服务器状态后重新运行                │")
+            print("└──────────────────────────────────────────────┘")
+            print("")
+            return False
+        return True
 
     # ═══════════════════════════════════════════
     # Blacklist
@@ -177,17 +284,19 @@ class DataManager:
 
     def save_matches_cache(self, date_str: str, matches: list[dict]) -> None:
         """写入比赛列表缓存"""
-        (MATCHES_DIR / f"{date_str}.json").write_text(
-            json.dumps(matches, ensure_ascii=False), encoding="utf-8"
+        _atomic_write_text(
+            MATCHES_DIR / f"{date_str}.json",
+            json.dumps(matches, ensure_ascii=False),
         )
 
     def get_cached_match(self, lota_id: str) -> Optional[dict]:
         """从本地缓存查找单场比赛（扫描 matches + features）"""
         # 1. 从 features 缓存中获取（含 match 基础信息）
+        #    但跳过无效缓存（state=None/-1 表示网络错误时的占位数据）
         feat = self.get_cached_compact_fet(lota_id)
-        if feat:
+        if feat and not feat.get("_api_failed"):
             match = feat.get("match") or (feat.get("data") or {}).get("match")
-            if match:
+            if match and match.get("state") not in (None, -1):
                 return match
         # 2. 扫描 matches 目录（lottery_type="all" 避免默认 "jingcai" 过滤掉 None 值）
         for d in self._recent_dates(30):
@@ -201,6 +310,8 @@ class DataManager:
         通过 API 查询单场比赛最新比分/状态，更新写回 matches + features 缓存。
         仅对已完场(state==6)的比赛请求 API。返回 API match dict 或 None。
         """
+        now_bj = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+
         # 先查本地缓存判断是否需要请求 API
         cached = self.get_cached_match(lota_id)
         if cached:
@@ -208,8 +319,31 @@ class DataManager:
             score = cached.get("score", "")
             if state == 6 and score and score != ":" and len(score) >= 3:
                 return cached  # 已有完场比分，无需 API
-            if state not in (6, 0):  # 未开赛/进行中(state 0-5)，不请求 API
+            # state=-1 或 None：网络错误时的占位缓存，允许重新请求 API
+            if state in (None, -1):
+                pass  # 继续走 API 刷新
+            elif state not in (6, 0):  # 未开赛/进行中(state 0-5)，不请求 API
                 return None
+            # state==0（未开赛）→ 检查 match_time
+            mt = cached.get("match_time", "")
+            if mt and state == 0:
+                try:
+                    mt_clean = mt.replace("T", " ")[:16]
+                    if datetime.strptime(mt_clean, "%Y-%m-%d %H:%M") > now_bj:
+                        return None  # 尚未开赛，无需 API
+                except ValueError:
+                    pass
+        else:
+            # 无缓存匹配记录：从 features 缓存解析 match_time，若未开赛则跳过
+            feat = self.get_cached_compact_fet(lota_id)
+            if feat and not feat.get("_api_failed"):
+                mt = self._parse_match_time_from_fet(feat)
+                if mt:
+                    try:
+                        if datetime.strptime(mt, "%Y-%m-%d %H:%M") > now_bj:
+                            return None  # 尚未开赛，跳过 API
+                    except ValueError:
+                        pass
 
         fetched = self.fetch_match_by_id(lota_id)
         if not fetched:
@@ -418,34 +552,125 @@ class DataManager:
     def save_compact_fet_cache(self, lota_id: str, data: dict) -> None:
         """写入 compact-fet 缓存"""
         data["_cached_at"] = datetime.now().isoformat()
-        (FEATURES_DIR / f"{lota_id}.json").write_text(
-            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        _atomic_write_text(
+            FEATURES_DIR / f"{lota_id}.json",
+            json.dumps(data, ensure_ascii=False),
         )
+
+    # live / upcoming 比赛的 compact-fet 缓存有效期（秒）
+    COMPACT_FET_CACHE_TTL = 120
+
+    # negative cache（_api_failed）有效期：超时后允许重试，避免瞬时故障永久跳过
+    NEGATIVE_CACHE_TTL = 600  # 10 分钟
 
     def get_compact_fet(self, lota_id: str, refresh: bool = False) -> Optional[dict]:
         """
-        获取 compact-fet。优先本地缓存。如果缓存不存在或 refresh=True，走 API。
+        获取 compact-fet。缓存策略:
 
-        失败时写入 negative cache（_api_failed=True），避免后续重复请求同一 ID。
+          - 已完场 / 已开赛: 缓存直接用（开赛后赔率已锁定，无需刷新）
+          - 未开赛 (match_time > now): 缓存 COMPACT_FET_CACHE_TTL 秒有效，过期自动刷新
+          - live 模式下未开赛刷新失败: 拒绝回退过期缓存（见 _live_strict）
+          - refresh=True: 强制跳过缓存，直接走 API
+
+        失败时写入 negative cache（_api_failed=True），带 TTL 过期后可重试。
         """
         if not refresh:
             cached = self.get_cached_compact_fet(lota_id)
             if cached:
                 if cached.get("_api_failed"):
-                    return None  # 已知 API 失败，不再重试
-                return cached
+                    # negative cache 有 TTL，过期后允许重试
+                    cached_at = cached.get("_cached_at", "")
+                    if cached_at:
+                        try:
+                            ct = datetime.fromisoformat(cached_at)
+                            if (datetime.now() - ct).total_seconds() < self.NEGATIVE_CACHE_TTL:
+                                return None
+                        except Exception:
+                            pass
+                    # 过期或无法解析时间 → 走 API 重试（不直接 return None）
+
+                # 已完场比赛 → 缓存永久有效
+                if self._is_match_finished(cached):
+                    return cached
+
+                # 已开赛（match_time <= now）→ 直接用缓存，开赛后赔率已锁定
+                if not self._is_match_upcoming(cached):
+                    return cached
+
+                # 未开赛 → 检查 TTL（默认 2 分钟）
+                cached_at = cached.get("_cached_at", "")
+                if cached_at:
+                    try:
+                        ct = datetime.fromisoformat(cached_at)
+                        if (datetime.now() - ct).total_seconds() < self.COMPACT_FET_CACHE_TTL:
+                            return cached
+                    except Exception:
+                        pass
+                # 缓存过期，走 API
 
         data = self.fetch_compact_fet(lota_id)
         if data:
+            # 保留旧缓存中的 score（API 返回的 compact-fet 可能不含比分）
+            if not refresh:
+                old = self.get_cached_compact_fet(lota_id)
+                if old:
+                    old_score = (old.get("data") or {}).get("score", "")
+                    if old_score and old_score != ":":
+                        (data.get("data") or {})["score"] = old_score
             self.save_compact_fet_cache(lota_id, data)
         else:
-            # 写入 negative cache，避免后续 get_compact_fet / get_tags
-            # 等路径再次触发无效 API 请求
+            old = self.get_cached_compact_fet(lota_id)
+            if old and not old.get("_api_failed") and old.get("compact_fet"):
+                if self._live_strict and self._is_match_upcoming(old):
+                    # live 模式：禁止用过期缓存兜底（旧赔率会进提示词，误导分析）
+                    old_at = old.get("_cached_at", "") or "?"
+                    print(
+                        f"[data] 🔒 live 模式: {lota_id} compact-fet 刷新失败，"
+                        f"拒绝使用旧缓存 ({old_at})，跳过该场数据（未开赛场次）"
+                    )
+                    return None
+                # API 失败时：如果已有有效缓存（无 _api_failed），保留旧数据不覆盖
+                # 防止瞬时网络故障把正常缓存毒化成 _api_failed 桩
+                return old  # 保留旧的有效缓存，等下次 TTL 过期再重试
+            # 无旧缓存或旧缓存也是失败桩 → 写入 negative cache（带 TTL，见 NEGATIVE_CACHE_TTL）
             self.save_compact_fet_cache(lota_id, {
                 "_api_failed": True,
                 "lota_id": lota_id,
             })
         return data
+
+    def _is_match_finished(self, compact_fet: dict) -> bool:
+        """从 compact-fet 缓存判断比赛是否已完场"""
+        data = compact_fet.get("data") or {}
+        match = compact_fet.get("match") or data.get("match") or {}
+        # 优先看 state 字段
+        state = match.get("state") or data.get("state")
+        if state == 6:
+            return True
+        # 兜底：有实际比分也视为完场
+        score = data.get("score") or compact_fet.get("score") or ""
+        if score and score != ":" and len(score) >= 3:
+            return True
+        return False
+
+    def _is_match_upcoming(self, compact_fet: dict) -> bool:
+        """是否未开赛（match_time > now）。解析失败时按未开赛处理（保持严格刷新）。"""
+        mt = self._parse_match_time_from_fet(compact_fet)
+        if not mt:
+            return True
+        try:
+            return datetime.strptime(mt, "%Y-%m-%d %H:%M") > datetime.now()
+        except ValueError:
+            return True
+
+    @staticmethod
+    def _parse_match_time_from_fet(feat: dict) -> str:
+        """从 compact-fet 文本提取比赛时间 (YYYY-MM-DD HH:MM)"""
+        fet_text = feat.get("compact_fet") or ""
+        if not fet_text:
+            return ""
+        m = re.search(r'时间[：:]\s*([\d\-:\s]+)', fet_text)
+        return m.group(1).strip()[:16] if m else ""
 
     def get_compact_fet_text(self, lota_id: str) -> str:
         """获取 compact-fet 文本（用于 tag 提取）"""

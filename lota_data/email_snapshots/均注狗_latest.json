@@ -1,114 +1,118 @@
 {
-  "sent_at": "2026-07-26 21:44:38",
-  "football_day": "2026-07-26",
+  "sent_at": "2026-08-01 23:04:07",
+  "football_day": "2026-08-01",
   "orders": [
     {
-      "lota_id": "Lota4467104",
-      "pick": "A",
-      "handicap": 1.25,
-      "odds": 0.93
-    },
-    {
-      "lota_id": "Lota4467110",
+      "lota_id": "Lota4467571",
       "pick": "H",
-      "handicap": -1.25,
-      "odds": 0.87
+      "handicap": -0.25,
+      "odds": 1.03,
+      "bet_size": 27
     },
     {
-      "lota_id": "Lota4468157",
-      "pick": "H",
-      "handicap": -0.75,
-      "odds": 0.91
-    },
-    {
-      "lota_id": "Lota4468156",
-      "pick": "A",
-      "handicap": -0.0,
-      "odds": 1.0
-    },
-    {
-      "lota_id": "Lota4467621",
-      "pick": "H",
-      "handicap": -0.75,
-      "odds": 0.85
-    },
-    {
-      "lota_id": "Lota4468158",
-      "pick": "H",
-      "handicap": -1.5,
-      "odds": 0.97
-    },
-    {
-      "lota_id": "Lota4467106",
+      "lota_id": "Lota4468162",
       "pick": "H",
       "handicap": -1.0,
-      "odds": 0.84
+      "odds": 0.94,
+      "bet_size": 26
     },
     {
-      "lota_id": "Lota4467109",
+      "lota_id": "Lota4467614",
+      "pick": "A",
+      "handicap": 1.0,
+      "odds": 0.91,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4468163",
+      "pick": "H",
+      "handicap": 0.5,
+      "odds": 0.86,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4460408",
+      "pick": "H",
+      "handicap": -1.0,
+      "odds": 0.94,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4460414",
+      "pick": "A",
+      "handicap": -0.5,
+      "odds": 0.99,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4546333",
+      "pick": "A",
+      "handicap": -1.0,
+      "odds": 0.84,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4460415",
+      "pick": "A",
+      "handicap": -1.0,
+      "odds": 1.08,
+      "bet_size": 26
+    },
+    {
+      "lota_id": "Lota4460420",
       "pick": "H",
       "handicap": -0.5,
-      "odds": 0.93
+      "odds": 1.05,
+      "bet_size": 26
     },
     {
-      "lota_id": "Lota4467642",
+      "lota_id": "Lota4460424",
       "pick": "A",
-      "handicap": 0.25,
-      "odds": 0.78
+      "handicap": -0.25,
+      "odds": 0.81,
+      "bet_size": 26
     },
     {
-      "lota_id": "Lota4467639",
+      "lota_id": "Lota4460425",
       "pick": "A",
-      "handicap": 1.75,
-      "odds": 1.06
+      "handicap": -0.25,
+      "odds": 1.02,
+      "bet_size": 26
     },
     {
-      "lota_id": "Lota4467602",
-      "pick": "A",
-      "handicap": -0.75,
-      "odds": 1.06
+      "lota_id": "Lota4480444",
+      "pick": "H",
+      "handicap": -1.0,
+      "odds": 0.94,
+      "bet_size": 30
     },
     {
-      "lota_id": "Lota4467633",
-      "pick": "A",
-      "handicap": 1.25,
-      "odds": 1.08
-    },
-    {
-      "lota_id": "Lota4465754",
+      "lota_id": "Lota4480467",
       "pick": "A",
       "handicap": -0.0,
-      "odds": 0.86
+      "odds": 0.8,
+      "bet_size": 30
     },
     {
-      "lota_id": "Lota4465731",
+      "lota_id": "Lota4480474",
       "pick": "A",
-      "handicap": -1.25,
-      "odds": 0.82
+      "handicap": -0.25,
+      "odds": 0.94,
+      "bet_size": 30
     },
     {
-      "lota_id": "Lota4480465",
+      "lota_id": "Lota4468159",
       "pick": "H",
-      "handicap": 0.5,
-      "odds": 0.83
+      "handicap": -1.0,
+      "odds": 0.88,
+      "bet_size": 30
     },
     {
-      "lota_id": "Lota4480463",
-      "pick": "H",
-      "handicap": 0.5,
-      "odds": 0.9
-    },
-    {
-      "lota_id": "Lota4480499",
+      "lota_id": "Lota4467118",
       "pick": "H",
       "handicap": -0.75,
-      "odds": 0.96
-    },
-    {
-      "lota_id": "Lota4480462",
-      "pick": "H",
-      "handicap": -0.75,
-      "odds": 0.93
+      "odds": 1.03,
+      "bet_size": 27
     }
   ]
 }

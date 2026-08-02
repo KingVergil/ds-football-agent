@@ -1,26 +1,6 @@
 {
-  "updated_at": "2026-07-27T09:41:08.531990",
+  "updated_at": "2026-07-31T10:13:18.560605",
   "reflections": [
-    {
-      "date": "2026-07-01",
-      "reflection": "赢的单强队深盘得到赔率、离散、水位三重共振，机构防范态度明确；输的单平局信号强烈但最终未出，因实力差与盘口未指向平局，说明资金共振过热并非可靠信号，需结合公平盘判断诱盘风险。今日因子验证：深盘追强继续有效，平局过热防反可作为新的风控因子。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:20:02.728629"
-    },
-    {
-      "date": "2026-07-02",
-      "reflection": "本场美国深盘升盘、赔率下沉与极低离散形成三重共振，即使必发主胜方向净卖出，盘口仍走强，最终穿盘。这印证了“盘赔一致”优于“资金分歧”的逻辑。类似场景下，只要升盘赔沉与离散凝聚均出现，资金背离反而可能形成诱空，可轻注或正常注跟进，不应因资金异动放弃下注。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:23:06.053223"
-    },
-    {
-      "date": "2026-07-03",
-      "reflection": "本场是典型的“正路强穿”格局：离散凝聚锁定方向，赔率单向下沉无背离，盘口升盘且水位合理，资金净流入支持。三个验证信号全部同向，构成高可靠性投注场景。后续类似的多重共振应当优先捕捉，并敢于加码。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:24:55.381735"
-    },
-    {
-      "date": "2026-07-04",
-      "reflection": "离散极度收敛于让球方在深盘下并非好信号，往往意味着单一方向过热，配合高水易形成诱上格局。本场三面同向依然输盘，说明应加入“离散过热”反向因子——当离散值低于常规阈值且欧赔同步下沉时，反而要警惕赢球输盘。后续此类深盘需至少两个低赔保护信号（如水位0.85以下、必发无异常卖出）才考虑轻注。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T01:26:47.582952"
-    },
     {
       "date": "2026-07-05",
       "reflection": "三场盈利模式均围绕离散异常与盘赔联动展开, order_0是平局离散凝聚配合退盘降水形成保护, order_1是离散极致凝聚配合升盘赔沉形成进攻, order_2是离散看似凝聚但资金水位反向形成防反。离散值的极端程度决定方向强度, 但必须有至少一个维度(赔率/盘口/资金)共振验证, 孤立离散不构成因子。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 3 笔订单已关联到因子",
@@ -100,6 +80,26 @@
       "date": "2026-07-26",
       "reflection": "今日多场输盘源于离散凝聚方最终平局，共性为必发平局买盘净流入（order_1/3/6）；退盘中水未能穿盘（order_0）；资金背离防诱不宜反向（order_4/5）。因此后续需将平局买盘作为离散凝聚上盘的过滤条件，退盘需水位极低，资金背离勿盲目反向。\n📡 有效slug: discrete-odds, betfair-buysell, asian-handicap-pinnacle, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 7 笔订单已关联到因子\n💰 资金教训: 离散凝聚共振不保证必赢，平局资金异动时避免重注；单日连续亏损应停止追加，控制单注上限。",
       "recorded_at": "2026-07-27T09:41:08.531300"
+    },
+    {
+      "date": "2026-07-27",
+      "reflection": "两场比赛共同点：离散指数在获胜方极度凝聚至低位（0.88/0.31），且欧赔大幅下沉支持。该模式无论主客，均可作为强信号跟随。资金方向在第二场平局买入明显，增强可信度；第一场资金量小背离可忽略。离散与赔率共振是核心驱动力，亚盘水位变化为辅助验证。\n📡 有效slug: discrete-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 信号强且多方验证一致时应适当提高注码，避免过度保守；若资金背离但交易量极低可忽略，否则需降注或跳过。",
+      "recorded_at": "2026-07-28T10:27:19.811795"
+    },
+    {
+      "date": "2026-07-28",
+      "reflection": "本场欧赔、离散、必买高度共振指向主胜，但公平盘显示客队实力占优，亚盘深开半球降水形成诱盘，最终下盘打出。此类“明显示强但实力不足”的盘口具有较高陷阱风险，单场共振信号不能脱离公平盘支撑。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, discrete-odds, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子\n💰 资金教训: 当公平盘与盘口严重背离时，即使多信号共振也不宜重注，深度诱盘风险极高。",
+      "recorded_at": "2026-07-29T11:36:27.250781"
+    },
+    {
+      "date": "2026-07-29",
+      "reflection": "离散凝聚是有效信号，但必须配合至少一个同向验证（赔率下沉或必发净买入）。order_0离散平局低+资金主胜买入共振成功；order_1离散主胜低+赔率下沉共振成功；order_2离散平局低但赔率背离、资金无净买入，失败。因此提炼因子“离散凝聚同向验证”。资金管理上，强信号重注，弱信号轻注或跳过。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, betfair-buysell, asian-handicap-pinnacle\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 离散凝聚但数据验证不足时，不下重注。order_2仅凭离散和客胜卖出就重注，忽略赔率背离，导致大亏。",
+      "recorded_at": "2026-07-30T11:03:50.180363"
+    },
+    {
+      "date": "2026-07-30",
+      "reflection": "离散凝聚方向需与赔率同向方可靠。第一场客胜离散凝聚且赔率下沉，共振捕捉下盘。第二场平局离散凝聚但平赔未下沉，与低赔主胜矛盾，应遵循“离散逆赔跟低赔”坚定主胜，避免盲目跟离散。跨场证实方向共振是核心，矛盾时欧赔低赔方更可信。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell, fair-odds\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 第一场信号共振但只下200轻注偏保守；第二场数据验证有瑕疵却下400重注，应严格数据验证，背离即放弃，仓位与置信度匹配。",
+      "recorded_at": "2026-07-31T10:13:18.559635"
     }
   ]
 }
