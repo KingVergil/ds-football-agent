@@ -1,16 +1,6 @@
 {
-  "updated_at": "2026-07-30T11:07:11.182912",
+  "updated_at": "2026-08-03T10:09:10.363020",
   "reflections": [
-    {
-      "date": "2026-06-19",
-      "reflection": "该场虽满足浅盘、平赔下行、必发买盘等平局信号，但公平盘实力差已超出预设阈值，且大小球临场反转加剧风险，主胜凝聚进一步削弱平局基础。今后需将“实力接近”作为平局投注的第一道滤网，任何表面共振若突破核心约束都应放弃。因子“公平盘实力差警戒”将与现有“小球升水示险”互补，强化对虚假平局信号的识别。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T00:20:26.685166"
-    },
-    {
-      "date": "2026-06-24",
-      "reflection": "本场失败源于平赔走势、必发和亚盘三重负面信号共振，尽管公平盘和大小球初看支持平局，但临场动态完全否定。追平时必须重视负面因子的否决权，避免因部分信号达标而忽略矛盾点。可将此类反面案例纳入避雷清单，过滤相似场景。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, over-under-crown, betfair-buysell, discrete-odds\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-08T00:23:06.940085"
-    },
     {
       "date": "2026-06-28",
       "reflection": "本场平局打出依赖基本面均衡、盘口浅开与平赔剧烈收敛的共振。跨场可提炼“平赔急速收敛+平手盘”为核心组合因子，大小球小球方向作为辅助确认。离散值未极端凝聚并非否决条件，当平赔主动下压远胜离散干扰。后续需警惕平赔收敛但亚盘深开或大小球大球盘口的矛盾场景，此类将降低因子置信度。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 1 笔订单已关联到因子",
@@ -100,6 +90,16 @@
       "date": "2026-07-29",
       "reflection": "本场为孤例，无对比。信号组合：亚盘浅盘受半球，大小球2.5小球低水，离散无极端低位，必发平局买盘大于卖盘。公平盘实力差虽大，但浅盘受让得以平衡。此类模式待多场验证。\n📡 有效slug: fair-odds, asian-handicap-pinnacle, over-under-crown, discrete-odds, betfair-buysell, eu-odds-pinnacle\n🔇 噪声slug: match-head\n💰 资金教训: 连败中严格按3%执行，控制风险。信号明确时小注也能盈利。",
       "recorded_at": "2026-07-30T11:07:11.179076"
+    },
+    {
+      "date": "2026-08-03",
+      "reflection": "两场均为浅盘、实力接近、平赔下行且必发买盘占优，但最终一球分出胜负。order_0离散极度凝聚明确警示，未予采信是重大失误；order_1大小球盘口2.75已超阈值，亦应避雷。未来需综合考量离散凝聚程度与大小球盘口，当多条件亮起避雷信号时坚决放弃。平赔下行配合买盘过热易形成诱平陷阱，不宜单独作为追平依据。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, betfair-buysell, over-under-crown, asian-handicap-pinnacle\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 离散极端凝聚时未按避雷规则减注甚至放弃，导致大注亏损；连黑后应严格执行降低仓位至3%",
+      "recorded_at": "2026-08-02T13:47:23.648386"
+    },
+    {
+      "date": "2026-08-02",
+      "reflection": "单场分析：实力接近、浅盘、小球盘符合平局模型，必发平局买盘大于卖盘，但平赔从2.62升至2.8，离散从3.43升至10.27，说明机构和平局分歧加大，最终主胜2-0。平局狙击需赔率走势配合，仅资金买盘不足以支撑。比赛中后期离散扩大是危险信号。需强化平赔下行和离散收敛作为必要条件。\n📡 有效slug: fair-odds, asian-handicap-pinnacle, over-under-crown, betfair-buysell, discrete-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head\n💰 资金教训: 赔率和离散与资金流向背离时，应降低仓位。本场平赔上行离散扩大，仍下满注，忽略了赔率信号。未来当平赔走势不利，哪怕其他信号存在，也应减半或放弃。",
+      "recorded_at": "2026-08-03T10:09:10.362366"
     }
   ]
 }

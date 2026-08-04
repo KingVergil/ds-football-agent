@@ -671,7 +671,8 @@ def parse_order(response_text: str) -> dict | None:
             try:
                 bet_size = float(val)
             except ValueError:
-                result["skip"] = True  # 金额无法解析→跳过
+                bet_size = 0  # 金额无法解析→视为 0
+                result["skip"] = True
             if bet_size <= 0:
                 result["skip"] = True  # 金额0=skip
             else:

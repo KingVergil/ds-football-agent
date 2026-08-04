@@ -1,21 +1,6 @@
 {
-  "updated_at": "2026-08-01T13:36:22.517018",
+  "updated_at": "2026-08-03T10:13:05.241846",
   "reflections": [
-    {
-      "date": "2026-07-08",
-      "reflection": "今日赢单均出现离散凝聚（或平客离散封杀）配合亚盘低水保护，而输单因误判深盘升盘高水为示冷，实际“升盘不退水追强”因子有效。后续启用“升盘不退水追强”替代“深盘连续升盘示冷”，并强化“平客离散封杀”作为正路辅助判断。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: over-under-crown, match-head\n📐 因子归因: 5 笔订单已关联到因子",
-      "recorded_at": "2026-07-11T15:45:48.075100"
-    },
-    {
-      "date": "2026-07-09",
-      "reflection": "本轮案例再次验证：深盘（≥两球）连续升盘且临场水位不跌是强烈下盘信号，此时追强队即使欧赔大幅下沉也多为诱盘。数据缺失（无公平盘/离散）更应放大示冷置信度，未来遇类似场景果断转向下盘，不因高赔诱惑犹豫。\n📡 有效slug: eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: fair-odds, discrete-odds\n📐 因子归因: 1 笔订单已关联到因子",
-      "recorded_at": "2026-07-11T15:47:01.652050"
-    },
-    {
-      "date": "2026-07-10",
-      "reflection": "四场比赛中三场离散凝聚方向正确（order_0虽输盘但打出，因子信号本身有效），离散是当前最可靠锚点。关键区分：离散凝聚方向与实力差同向时跟随不疑；背离时需警惕离散被操控，应跟随实力强队而非离散表面信号。深盘高水在离散凝聚+资金流向一致时不是危险信号而是阻上诱下的保护机制，不宜反向博冷。\n📡 有效slug: fair-odds, discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 4 笔订单已关联到因子",
-      "recorded_at": "2026-07-11T15:49:45.092718"
-    },
     {
       "date": "2026-07-14",
       "reflection": "离散凝聚（异常收敛/低水保护）是最高频且胜率最高的正向因子，结合实力碾压方向下沉命中率极高；信号矛盾时搏高赔整体胜率可观，但需接受高波动；深盘升盘如无低水配合则诱上风险大，需逆向思考；离散逆赔跟低赔在离散平局异常凝聚时成功率下降，可转向离散平局极低防下盘；连续回撤需检查是否因子集体失效，而非盲目调整策略。",
@@ -100,6 +85,21 @@
       "date": "2026-07-31",
       "reflection": "两场均注成败对比：首场主队实力碾压兼平离散假凝聚警示解除，升盘阻买成功穿盘；次场主队优势不足，离散凝聚度低，浅盘无保护，输盘合理。均注策略下弱信号场次难免亏损，应接受系统内置的风险。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, fair-odds, eu-odds-pinnacle, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 均注2%是铁律，即便1.01超低水也须执行；深盘高水回报其实不低，勿因低赔率而动摇。",
       "recorded_at": "2026-08-01T13:36:22.509618"
+    },
+    {
+      "date": "2026-08-03",
+      "reflection": "深盘离散凝聚顺向整体正期望但非必胜，需警惕离散值极端低位（<0.1）可能过热；信号矛盾时选择高赔一侧在今日两场全部命中，展现一定可复制性，但样本量小需持续跟踪；离散凝聚平局时去下盘也值得关注。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle\n🔇 噪声slug: betfair-buysell, over-under-crown, match-head\n📐 因子归因: 11 笔订单已关联到因子\n💰 资金教训: 坚持2%均注无调整，避免因连红或连黑而改变仓位，纪律是第一盈利因子。",
+      "recorded_at": "2026-08-02T13:49:11.567700"
+    },
+    {
+      "date": "2026-08-01",
+      "reflection": "跨场核心规律：离散极值方向是强力信号但必须严格比较相对数值，平局离散若远低于胜离散则应追平局而非主胜；离散全面无凝聚时上盘极不可靠，应主动去下盘；平局离散极端低时常为陷阱，忌追平；实力与盘口背离时深盘上盘难穿。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, fair-odds, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown, betfair-buysell\n📐 因子归因: 5 笔订单已关联到因子\n💰 资金教训: 今天全败源于离散解读失误，不是仓位问题。均注2%无需调整，但必须提升方向判断精度，尤其警惕离散极值时误判方向。",
+      "recorded_at": "2026-08-02T14:50:31.646836"
+    },
+    {
+      "date": "2026-08-02",
+      "reflection": "离散凝聚因子虽长期有效但今日集中回调，无因子完美。矛盾信号博高赔在 order_0 和 order_2 中一赢一走，具备可复用性，建议纳入因子库。资金背离下盘两场全败，暂时谨慎。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, betfair-buysell\n🔇 噪声slug: match-head\n📐 因子归因: 14 笔订单已关联到因子\n💰 资金教训: 今日离散凝聚因子连续失效，但均注执行未受影响。信号矛盾博高赔因子两场均未亏损，后续可适度关注。",
+      "recorded_at": "2026-08-03T10:13:05.241319"
     }
   ]
 }

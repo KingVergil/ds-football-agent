@@ -1,0 +1,11 @@
+{
+  "id": "fac_离散极值追踪",
+  "slugs": [
+    "discrete-odds",
+    "asian-handicap-pinnacle",
+    "fair-odds",
+    "eu-odds-pinnacle"
+  ],
+  "content": "离散指数最低方向为真实市场共识，即使欧赔或盘口反向，也应跟随离散极值方向",
+  "updated_at": "2026-08-02T14:50:31.644185"
+}

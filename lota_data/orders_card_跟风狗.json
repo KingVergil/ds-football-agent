@@ -1,0 +1,97 @@
+{
+  "schema": "2.0",
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "template": "orange",
+    "title": {
+      "tag": "plain_text",
+      "content": "📧 今日订单 · 2026-08-02"
+    }
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**跟风狗** · 足球日 2026-08-02 · 剩余 5单 待结算"
+      },
+      {
+        "tag": "table",
+        "element_id": "orders_1",
+        "page_size": 10,
+        "row_height": "auto",
+        "header_style": {
+          "text_align": "center",
+          "text_size": "normal",
+          "background_style": "grey",
+          "text_color": "default",
+          "bold": true
+        },
+        "columns": [
+          {
+            "name": "time",
+            "display_name": "时间",
+            "width": "88px",
+            "data_type": "text",
+            "horizontal_align": "center"
+          },
+          {
+            "name": "matchup",
+            "display_name": "对阵",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "pick",
+            "display_name": "选择",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "status",
+            "display_name": "状态",
+            "width": "88px",
+            "data_type": "options",
+            "horizontal_align": "center"
+          }
+        ],
+        "rows": [
+          {
+            "time": "08-02 18:30",
+            "matchup": "韩K联\n**大田市民** vs 光州FC",
+            "pick": "**大田市民** -1 @0.91 · **10.0%**"
+          },
+          {
+            "time": "08-02 20:00",
+            "matchup": "芬超\n**VPS瓦萨** vs 图尔库国际",
+            "pick": "**图尔库国际** +0 @0.88 · **10.0%**"
+          },
+          {
+            "time": "08-02 22:30",
+            "matchup": "瑞典超\n**AIK索尔纳** vs 奥尔格里特",
+            "pick": "**AIK索尔纳** -1.25 @0.97 · **10.0%**"
+          },
+          {
+            "time": "08-02 23:00",
+            "matchup": "挪超\n**莫尔德** vs 萨普斯堡",
+            "pick": "**莫尔德** -0.75 @0.83 · **10.0%**"
+          },
+          {
+            "time": "08-03 05:00",
+            "matchup": "巴西杯\n**米拉索** vs 格雷米奥",
+            "pick": "**米拉索** -0.50 @0.99 · **10.0%**"
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "⏰ 除 12 点附近的邮件外，请参考未来 3 小时内的比赛。"
+      },
+      {
+        "tag": "markdown",
+        "content": "更新于 2026-08-02 16:01:09 · 群里说「今日单」刷新"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fac_下沉离散背离出冷",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "欧赔示好方赔率大幅下沉或亚盘深盘，但离散在该方向未凝聚甚至升高，而反向（平/客）离散异常凝聚，预示冷门",
+  "updated_at": "2026-08-02T14:53:17.109137"
+}

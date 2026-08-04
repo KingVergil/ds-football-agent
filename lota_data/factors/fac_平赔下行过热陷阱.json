@@ -1,0 +1,12 @@
+{
+  "id": "fac_平赔下行过热陷阱",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "over-under-crown",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "平赔临场大幅下行且必发买盘远超卖盘时，市场热度集中在平局往往导致分胜负",
+  "updated_at": "2026-08-02T13:47:23.646935"
+}

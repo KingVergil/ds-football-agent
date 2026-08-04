@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-02T01:10:58.547101",
+  "updated_at": "2026-08-03T10:09:10.360015",
   "factor_perf": {
     "平手盘均衡": {
       "total": 1,
@@ -1989,6 +1989,97 @@
       "history": [
         {
           "date": "2026-07-25",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "离散凝聚避平": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -60.0,
+      "total_return": -1.0,
+      "status": "active",
+      "desc": "平局离散指数极度低位时，市场过度一致看平反而平局难出，应予避开",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": false,
+          "profit": -60.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480474"
+        }
+      ]
+    },
+    "平赔下行过热陷阱": {
+      "total": 2,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
+      "profit": -107.0,
+      "total_return": -2.0,
+      "status": "active",
+      "desc": "平赔临场大幅下行且必发买盘远超卖盘时，市场热度集中在平局往往导致分胜负",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": false,
+          "profit": -60.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480474"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": false,
+          "profit": -47.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4467571"
+        }
+      ]
+    },
+    "大小球偏大避平": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -47.0,
+      "total_return": -1.0,
+      "status": "active",
+      "desc": "大小球盘口超过2.5球时说明机构防范进球较多，浅盘下平局难度增大",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": false,
+          "profit": -47.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4467571"
+        }
+      ]
+    },
+    "赔率上行避平": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "active",
+      "desc": "临场平赔未降反升时，即使资金有买盘也不宜追平局。",
+      "first_seen": "2026-08-02",
+      "last_seen": "2026-08-02",
+      "history": [
+        {
+          "date": "2026-08-02",
           "hit": null,
           "profit": 0,
           "return_ratio": 0.0,

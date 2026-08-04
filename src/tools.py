@@ -85,8 +85,14 @@ def _get(path: str, params: dict = None) -> dict | list | None:
 # ═══════════════════════════════════════════════
 
 def fetch_match_by_id(lota_id: str) -> Optional[dict]:
-    data = _get(f"/match/{lota_id}")
-    return data.get("data") if data else None
+    data = _get("/matches", {"lota_id": lota_id})
+    if not data:
+        return None
+    result = data.get("data") or {}
+    matches = result.get("matches") if isinstance(result, dict) else result
+    if isinstance(matches, list) and matches:
+        return matches[0]
+    return None
 
 def fetch_matches_by_date(date_str: str, lottery_type: str = "jingcai") -> list[dict]:
     params = {"date": date_str}
@@ -98,12 +104,13 @@ def fetch_matches_by_date(date_str: str, lottery_type: str = "jingcai") -> list[
     return matches if isinstance(matches, list) else []
 
 def fetch_matches_by_date_range(start: str, end: str, lottery_type: str = "jingcai") -> list[dict]:
-    params = {"start": start, "end": end}
+    params = {"start_date": start, "end_date": end}
     if lottery_type and lottery_type != "all":
         params["type"] = lottery_type
-    data = _get("/matches/range", params)
+    data = _get("/matches", params)
     if not data: return []
-    matches = data.get("data") or data.get("matches") or []
+    result = data.get("data") or {}
+    matches = result.get("matches") if isinstance(result, dict) else result
     return matches if isinstance(matches, list) else []
 
 def fetch_compact_fet(lota_id: str) -> Optional[dict]:
@@ -510,4 +517,3 @@ def extract_odds(lota_id: str, data: dict = None) -> dict:
             }
 
     return result
-

@@ -250,19 +250,26 @@ class DataManager:
 
     def fetch_matches_by_date_range(self, start: str, end: str, lottery_type: str = "jingcai") -> list[dict]:
         """API 查询日期范围内的比赛"""
-        params = {"start": start, "end": end}
+        params = {"start_date": start, "end_date": end}
         if lottery_type and lottery_type != "all":
             params["type"] = lottery_type
-        data = _get("/matches/range", params)
+        data = _get("/matches", params)
         if not data:
             return []
-        matches = data.get("data") or data.get("matches") or []
+        result = data.get("data") or {}
+        matches = result.get("matches") if isinstance(result, dict) else result
         return matches if isinstance(matches, list) else []
 
     def fetch_match_by_id(self, lota_id: str) -> Optional[dict]:
         """API 查询单场比赛详情（含比分）"""
-        data = _get(f"/matches/{lota_id}")
-        return data.get("data") if data else None
+        data = _get("/matches", {"lota_id": lota_id})
+        if not data:
+            return None
+        result = data.get("data") or {}
+        matches = result.get("matches") if isinstance(result, dict) else result
+        if isinstance(matches, list) and matches:
+            return matches[0]
+        return None
 
     def fetch_compact_fet(self, lota_id: str) -> Optional[dict]:
         """API 查询 compact-fet"""
@@ -322,17 +329,33 @@ class DataManager:
             # state=-1 或 None：网络错误时的占位缓存，允许重新请求 API
             if state in (None, -1):
                 pass  # 继续走 API 刷新
-            elif state not in (6, 0):  # 未开赛/进行中(state 0-5)，不请求 API
-                return None
-            # state==0（未开赛）→ 检查 match_time
-            mt = cached.get("match_time", "")
-            if mt and state == 0:
-                try:
-                    mt_clean = mt.replace("T", " ")[:16]
-                    if datetime.strptime(mt_clean, "%Y-%m-%d %H:%M") > now_bj:
-                        return None  # 尚未开赛，无需 API
-                except ValueError:
-                    pass
+            elif state == 0:
+                # 未开赛 → 检查 match_time
+                mt = cached.get("match_time", "")
+                if mt:
+                    try:
+                        mt_clean = mt.replace("T", " ")[:16]
+                        if datetime.strptime(mt_clean, "%Y-%m-%d %H:%M") > now_bj:
+                            return None  # 尚未开赛，无需 API
+                    except ValueError:
+                        pass
+            else:
+                # state 1-5：已开赛/进行中 → 只有开赛超过 3 小时仍未完场才允许刷新
+                # （比赛进行中不打 API 避免骚扰源端；踢完但缓存没更新的比赛借此补比分）
+                mt = cached.get("match_time", "")
+                elapsed_ok = False
+                if mt:
+                    try:
+                        mt_clean = mt.replace("T", " ")[:16]
+                        elapsed_ok = (
+                            datetime.strptime(mt_clean, "%Y-%m-%d %H:%M")
+                            + timedelta(hours=3)
+                            < now_bj
+                        )
+                    except ValueError:
+                        pass
+                if not elapsed_ok:
+                    return None
         else:
             # 无缓存匹配记录：从 features 缓存解析 match_time，若未开赛则跳过
             feat = self.get_cached_compact_fet(lota_id)

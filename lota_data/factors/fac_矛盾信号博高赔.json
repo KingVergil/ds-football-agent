@@ -1,0 +1,11 @@
+{
+  "id": "fac_矛盾信号博高赔",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "asian-handicap-pinnacle",
+    "betfair-buysell"
+  ],
+  "content": "当欧赔、离散、亚盘水位等多维信号矛盾无法明确方向时，选择亚盘赔率更高的一方博取高回报",
+  "updated_at": "2026-08-03T10:13:05.240540"
+}
