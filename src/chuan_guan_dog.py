@@ -17,7 +17,8 @@
       # 票型由 agent 自主决定；也可 --tickets 3串1,3过2 手动覆盖
   python3 -m src.chuan_guan_dog alpha [--exclude 均注狗]          # 开启 alpha（跨7狗因子+订单共识）
   python3 -m src.chuan_guan_dog analyze 2026-06-13 --alpha         # 开启后带 alpha 分析
-  python3 -m src.chuan_guan_dog backtest 2026-06-11 2026-08-03     # 迭代回测（逐日 analyze→settle）
+  python3 -m src.chuan_guan_dog backtest 2026-06-11 2026-08-03 [--review-interval 7]
+      # 迭代回测（逐日 analyze→settle；默认每7天模拟一次因子退役，影响后续 alpha 信任权重）
   python3 -m src.chuan_guan_dog settle [YYYY-MM-DD]
   python3 -m src.chuan_guan_dog pending
   python3 -m src.chuan_guan_dog status
@@ -63,6 +64,11 @@ class ChuanGuanDog(Agent):
     ALPHA_FACTOR_W = 0.02           # 每笔因子 history 命中/未中对置信度的贡献
     ALPHA_MAX_ADJ = 0.15            # alpha 置信度调整上限
     ALPHA_TRUST_DEFAULT = 1.0
+
+    # ── 回测内因子退役模拟（对齐生产周度审查，仅内存生效，不写线上 factor_memory）──
+    REVIEW_INTERVAL = 7             # 每 N 天跑一次模拟退役
+    REVIEW_MIN_SAMPLES = 3          # 窗口内最少样本数才可退役
+    REVIEW_RETIRE_RETURN = 0.0      # 窗口累计回报 ≤ 该值 → 退役候选
 
     def __init__(self, user: str = "串关狗", capital: float = START_CAPITAL):
         super().__init__(user=user)
@@ -189,7 +195,7 @@ class ChuanGuanDog(Agent):
             return pick if pick in ("H", "A") else None
         return None
 
-    def _load_alpha_data(self, day_date: str) -> dict:
+    def _load_alpha_data(self, day_date: str, sim_retired: set = None) -> dict:
         """聚合 7 狗数据（截至 day_date，避免未来函数）：
 
         - trust: 每狗信任权重 = 1 + 该狗非退役因子累计 total_return（钳制 0.2~3）
@@ -203,6 +209,8 @@ class ChuanGuanDog(Agent):
         fr = FactorRegistry(exclude_roles=exclude)
         fr.refresh()
         factors = fr.get_all_factors(before_date=day_date, include_retired=False)
+        sim_retired = sim_retired or set()
+        factors = [f for f in factors if (f["role"], f["factor_name"]) not in sim_retired]
 
         trust: dict[str, float] = {}
         for f in factors:
@@ -240,6 +248,44 @@ class ChuanGuanDog(Agent):
                     orders_by_lota.setdefault(lid, {})[dog] = o
 
         return {"trust": trust, "factor_by_lota": factor_by_lota, "orders_by_lota": orders_by_lota}
+
+    def _sim_factor_review(self, day_date: str, sim_retired: set) -> list[str]:
+        """模拟周度因子退役（对齐生产近7天窗口，保守口径，不写线上文件）。
+
+        对 7 狗各自因子库：窗口 (day_date-7, day_date] 内样本 ≥ REVIEW_MIN_SAMPLES
+        且累计回报 ≤ REVIEW_RETIRE_RETURN 的因子 → 加入 sim_retired。
+        返回本次新退役的 (role, factor) 列表。
+        """
+        from pathlib import Path
+        role = self._ensure_role()
+        exclude = set(role.cross_factor_exclude or []) | {self.user}
+        roles_root = Path(__file__).parent.parent / "lota_data" / "roles"
+        cutoff = (date.fromisoformat(day_date) - timedelta(days=7)).isoformat()
+        retired_now = []
+
+        for dog in self.ALPHA_DOGS:
+            if dog in exclude:
+                continue
+            mem_path = roles_root / dog / "memory" / "factor_memory.json"
+            try:
+                data = json.loads(mem_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for fid, s in (data.get("factor_perf") or {}).items():
+                if s.get("status") == "retired":
+                    continue
+                key = (dog, fid)
+                if key in sim_retired:
+                    continue
+                hist = [h for h in s.get("history", [])
+                        if cutoff < h.get("date", "") <= day_date]
+                if len(hist) < self.REVIEW_MIN_SAMPLES:
+                    continue
+                total_return = sum(h.get("return_ratio", 0) for h in hist)
+                if total_return <= self.REVIEW_RETIRE_RETURN:
+                    sim_retired.add(key)
+                    retired_now.append(f"{dog}/{fid}")
+        return retired_now
 
     def _apply_alpha(self, legs: list[dict], alpha_data: dict) -> list[dict]:
         """结合因子与订单共识调整腿置信度，记录 alpha 信息后按新置信度排序。"""
@@ -348,7 +394,8 @@ class ChuanGuanDog(Agent):
 
     def analyze(self, day_date: str = None, live: bool = False, jingcai_only: bool = True,
                 prefetched: bool = False, dry_run: bool = False,
-                tickets: Optional[list[str]] = None, stake_pct: Optional[float] = None) -> dict:
+                tickets: Optional[list[str]] = None, stake_pct: Optional[float] = None,
+                sim_retired: set = None) -> dict:
         day_date = day_date or self._default_day()
         stake_pct = stake_pct if stake_pct is not None else self.STAKE_PCT
 
@@ -358,7 +405,7 @@ class ChuanGuanDog(Agent):
             matches = self._jc_matches(day_date, live=live)
             legs = self._select_legs(matches)
             if role.alpha_mode:
-                legs = self._apply_alpha(legs, self._load_alpha_data(day_date))
+                legs = self._apply_alpha(legs, self._load_alpha_data(day_date, sim_retired))
             legs = legs[: self.PICK_N]
             tickets = list(tickets) if tickets else self._decide_tickets(legs)
             slips = self._build_slips(legs, tickets)
@@ -537,14 +584,25 @@ class ChuanGuanDog(Agent):
             "pnl": sum(o.get("profit", 0) for o in settled),
         }
 
-    def backtest(self, start_date: str, end_date: str) -> dict:
-        """逐足球日 分析→结算 迭代回测（真实落单，按当天资金滚动仓位）。"""
+    def backtest(self, start_date: str, end_date: str,
+                 review_interval: int = None) -> dict:
+        """逐足球日 分析→结算 迭代回测（真实落单，按当天资金滚动仓位）。
+
+        review_interval>0 时，每隔 N 天模拟一次因子退役（仅内存，影响 alpha 信任权重），
+        默认 REVIEW_INTERVAL=7，与生产周度审查节奏一致。
+        """
+        review_interval = self.REVIEW_INTERVAL if review_interval is None else int(review_interval)
         d = date.fromisoformat(start_date)
         end = date.fromisoformat(end_date)
         rows = []
+        sim_retired: set = set()
+        day_idx = 0
         while d <= end:
             ds = d.isoformat()
-            a = self.analyze(ds)
+            retired_now = []
+            if review_interval > 0 and day_idx > 0 and day_idx % review_interval == 0:
+                retired_now = self._sim_factor_review(ds, sim_retired)
+            a = self.analyze(ds, sim_retired=sim_retired)
             s = self.settle(ds)
             rows.append({
                 "date": ds,
@@ -557,8 +615,10 @@ class ChuanGuanDog(Agent):
                 "miss": s.get("miss", 0),
                 "pnl": s.get("pnl", 0.0),
                 "capital": self._ensure_role().capital,
+                "retired": retired_now,
             })
             d += timedelta(days=1)
+            day_idx += 1
         totals = {
             "placed": sum(r["placed"] for r in rows),
             "settled": sum(r["settled"] for r in rows),
@@ -605,6 +665,8 @@ def main(argv: list[str] = None) -> int:
     p.add_argument("--stake-pct", type=float, default=None, help="每张票资金占比%%")
     p.add_argument("--alpha", action="store_true", help="开启 alpha 模式（跨7狗因子+订单共识）并持久化")
     p.add_argument("--exclude", default=None, help="alpha 排除的角色，逗号分隔")
+    p.add_argument("--review-interval", type=int, default=None,
+                   help="backtest 因子退役模拟间隔天数（默认7，0=关闭）")
     p.add_argument("--user", default="串关狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
 
@@ -646,14 +708,17 @@ def main(argv: list[str] = None) -> int:
         print(f"💰 资金 {s['capital']:.0f} | 订单 {s['total_orders']} (已结{s['settled']}/待{s['pending']}) | PnL {s['pnl']:+.0f}")
     elif args.action == "backtest":
         if not args.day or not args.end:
-            print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha]")
+            print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha] [--review-interval 7]")
             return 1
-        r = dog.backtest(args.day, args.end)
+        r = dog.backtest(args.day, args.end, review_interval=args.review_interval)
         print("日期 | 竞彩 | 腿 | 票型 | 下单 | 结算(中/挂) | 当日PnL | 资金")
         for row in r["days"]:
             tks = "+".join(row["tickets"]) or "空仓"
+            rev = f" 🔬退役{len(row['retired'])}" if row.get("retired") else ""
             print(f"{row['date']} | {row['matches']:>2} | {row['legs']} | {tks:<8} | {row['placed']:>2} | "
-                  f"{row['settled']}({row['hit']}/{row['miss']}) | {row['pnl']:+.0f} | {row['capital']:.0f}")
+                  f"{row['settled']}({row['hit']}/{row['miss']}) | {row['pnl']:+.0f} | {row['capital']:.0f}{rev}")
+            for rf in row.get("retired", []):
+                print(f"      ⚰️ 退役 {rf}")
         t = r["totals"]
         print(f"汇总: 下单{t['placed']} 结算{t['settled']} 中{t['hit']} 挂{t['miss']} 空仓日{t['empty_days']} | "
               f"PnL {t['pnl']:+.0f} | 资金 {t['capital']:.0f}")
