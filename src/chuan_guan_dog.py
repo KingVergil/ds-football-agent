@@ -309,11 +309,10 @@ pick: H
         tickets = []
         tk_m = re.search(r'票型[：:]\s*([^\n]+)', response)
         if tk_m:
-            for tk in re.split(r"[，,、+\s]+", tk_m.group(1).strip()):
-                if tk in ("无", "空", "none", "None", ""):
-                    continue
+            # 只提取合法票型 token，忽略 LLM 行尾注释；去重防重复下注
+            for tk in re.findall(r"[234]串1|[34]过[23]", tk_m.group(1)):
                 spec = self._parse_ticket_spec(tk)
-                if spec and spec[1] <= len(legs) and spec[0] >= spec[1]:
+                if spec and spec[1] <= len(legs) and spec[0] >= spec[1] and tk not in tickets:
                     tickets.append(tk)
         return legs[: self.PICK_N], (tickets or None)
 
