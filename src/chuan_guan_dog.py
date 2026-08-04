@@ -15,6 +15,9 @@
 用法:
   python3 -m src.chuan_guan_dog analyze [YYYY-MM-DD] [--dry-run] [--stake-pct 5]
       # 票型由 agent 自主决定；也可 --tickets 3串1,3过2 手动覆盖
+  python3 -m src.chuan_guan_dog alpha [--exclude 均注狗]          # 开启 alpha（跨7狗因子+订单共识）
+  python3 -m src.chuan_guan_dog analyze 2026-06-13 --alpha         # 开启后带 alpha 分析
+  python3 -m src.chuan_guan_dog backtest 2026-06-11 2026-08-03     # 迭代回测（逐日 analyze→settle）
   python3 -m src.chuan_guan_dog settle [YYYY-MM-DD]
   python3 -m src.chuan_guan_dog pending
   python3 -m src.chuan_guan_dog status
@@ -53,6 +56,13 @@ class ChuanGuanDog(Agent):
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
     MIN_CONF = 0.48                 # 隐含概率置信度下限
     START_CAPITAL = 1000.0          # 与其余狗一致，1000 起步
+
+    # ── alpha 模式（跨7狗因子 + 订单共识）──
+    ALPHA_DOGS = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
+    ALPHA_VOTE_W = 0.03             # 每张同向/反向加权票对置信度的贡献
+    ALPHA_FACTOR_W = 0.02           # 每笔因子 history 命中/未中对置信度的贡献
+    ALPHA_MAX_ADJ = 0.15            # alpha 置信度调整上限
+    ALPHA_TRUST_DEFAULT = 1.0
 
     def __init__(self, user: str = "串关狗", capital: float = START_CAPITAL):
         super().__init__(user=user)
@@ -147,14 +157,123 @@ class ChuanGuanDog(Agent):
         }
 
     def _select_legs(self, matches: list[dict]) -> list[dict]:
-        """选出当天候选腿（按隐含置信度降序，取前 PICK_N）。"""
+        """选出当天全部合格候选腿（按隐含置信度降序；alpha 调整后由 analyze 截取 PICK_N）。"""
         legs = []
         for m in matches:
             leg = self._score_leg(m)
             if leg:
                 legs.append(leg)
         legs.sort(key=lambda x: x["confidence"], reverse=True)
-        return legs[: self.PICK_N]
+        return legs
+
+    # ═══════════════════════════════════════════
+    # alpha 模式 — 跨7狗因子 + 订单共识
+    # ═══════════════════════════════════════════
+
+    def enable_alpha(self, exclude_roles: list[str] = None) -> dict:
+        """开启 alpha 模式（持久化到角色配置）。"""
+        role = self._ensure_role()
+        role.alpha_mode = True
+        role.cross_factor_exclude = list(exclude_roles or [])
+        role.save()
+        return {"alpha_mode": True, "exclude": role.cross_factor_exclude}
+
+    @staticmethod
+    def _order_side(order: dict) -> Optional[str]:
+        """把其他狗的订单方向映射到 H/D/A 框架（大小球无方向返回 None）。"""
+        bt = order.get("bet_type", "")
+        pick = order.get("pick", "")
+        if bt in ("胜平负", "让球胜平负"):
+            return pick if pick in ("H", "D", "A") else None
+        if bt == "亚盘":
+            return pick if pick in ("H", "A") else None
+        return None
+
+    def _load_alpha_data(self, day_date: str) -> dict:
+        """聚合 7 狗数据（截至 day_date，避免未来函数）：
+
+        - trust: 每狗信任权重 = 1 + 该狗非退役因子累计 total_return（钳制 0.2~3）
+        - factor_by_lota: 因子 history 按 lota_id 索引（该场比赛被谁哪个因子命中/未中）
+        - orders_by_lota: 7 狗在该场比赛的最新订单方向
+        """
+        from .factor_registry import FactorRegistry
+
+        role = self._ensure_role()
+        exclude = set(role.cross_factor_exclude or []) | {self.user}
+        fr = FactorRegistry(exclude_roles=exclude)
+        fr.refresh()
+        factors = fr.get_all_factors(before_date=day_date, include_retired=False)
+
+        trust: dict[str, float] = {}
+        for f in factors:
+            trust[f["role"]] = trust.get(f["role"], 1.0) + float(f.get("total_return") or 0)
+        for r in trust:
+            trust[r] = max(0.2, min(3.0, trust[r]))
+
+        factor_by_lota: dict[str, list[dict]] = {}
+        for f in factors:
+            for h in f.get("history", []):
+                lid = h.get("lota_id", "")
+                if not lid:
+                    continue
+                factor_by_lota.setdefault(lid, []).append({
+                    "role": f["role"],
+                    "factor": f["factor_name"],
+                    "hit": h.get("hit"),
+                    "trust": trust.get(f["role"], self.ALPHA_TRUST_DEFAULT),
+                })
+
+        orders_by_lota: dict[str, dict[str, dict]] = {}
+        for dog in self.ALPHA_DOGS:
+            if dog in exclude:
+                continue
+            try:
+                dr = Role.load(dog)
+            except Exception:
+                continue
+            for o in dr.get_orders():
+                lid = o.get("lota_id", "")
+                if not lid or self._order_side(o) is None:
+                    continue
+                prev = orders_by_lota.get(lid, {}).get(dog)
+                if prev is None or o.get("created_at", "") > prev.get("created_at", ""):
+                    orders_by_lota.setdefault(lid, {})[dog] = o
+
+        return {"trust": trust, "factor_by_lota": factor_by_lota, "orders_by_lota": orders_by_lota}
+
+    def _apply_alpha(self, legs: list[dict], alpha_data: dict) -> list[dict]:
+        """结合因子与订单共识调整腿置信度，记录 alpha 信息后按新置信度排序。"""
+        orders_by_lota = alpha_data["orders_by_lota"]
+        factor_by_lota = alpha_data["factor_by_lota"]
+        for leg in legs:
+            lid = leg["lota_id"]
+            support, oppose = [], []
+            score = 0.0
+            for dog, o in (orders_by_lota.get(lid) or {}).items():
+                side = self._order_side(o)
+                if side is None:
+                    continue
+                trust = alpha_data["trust"].get(dog, self.ALPHA_TRUST_DEFAULT)
+                if side == leg["pick"]:
+                    support.append(dog)
+                    score += trust
+                elif leg["pick"] == "D" or side in ("H", "A"):
+                    oppose.append(dog)
+                    score -= trust
+            f_score = 0.0
+            for f in factor_by_lota.get(lid, []):
+                f_score += f["trust"] if f["hit"] is True else (-f["trust"] if f["hit"] is False else 0.0)
+            adj = max(-self.ALPHA_MAX_ADJ, min(self.ALPHA_MAX_ADJ,
+                      self.ALPHA_VOTE_W * score + self.ALPHA_FACTOR_W * f_score))
+            leg["confidence"] = round(leg["confidence"] + adj, 4)
+            leg["alpha"] = {
+                "adj": round(adj, 4),
+                "support": support,
+                "oppose": oppose,
+                "factor_hits": len(factor_by_lota.get(lid, [])),
+            }
+        legs.sort(key=lambda x: x["confidence"], reverse=True)
+        return legs
 
     def _decide_tickets(self, legs: list[dict]) -> list[str]:
         """自主决定当天票型（可覆写为 LLM 或其他策略）。
@@ -238,6 +357,9 @@ class ChuanGuanDog(Agent):
             role = self._ensure_role()
             matches = self._jc_matches(day_date, live=live)
             legs = self._select_legs(matches)
+            if role.alpha_mode:
+                legs = self._apply_alpha(legs, self._load_alpha_data(day_date))
+            legs = legs[: self.PICK_N]
             tickets = list(tickets) if tickets else self._decide_tickets(legs)
             slips = self._build_slips(legs, tickets)
 
@@ -279,6 +401,7 @@ class ChuanGuanDog(Agent):
                 "orders": orders,
                 "placed": placed if not dry_run else len(orders),
                 "dry_run": dry_run,
+                "alpha_mode": role.alpha_mode,
                 "skipped": skipped,
                 "session_path": str(session._path),
             }
@@ -414,6 +537,39 @@ class ChuanGuanDog(Agent):
             "pnl": sum(o.get("profit", 0) for o in settled),
         }
 
+    def backtest(self, start_date: str, end_date: str) -> dict:
+        """逐足球日 分析→结算 迭代回测（真实落单，按当天资金滚动仓位）。"""
+        d = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+        rows = []
+        while d <= end:
+            ds = d.isoformat()
+            a = self.analyze(ds)
+            s = self.settle(ds)
+            rows.append({
+                "date": ds,
+                "matches": a.get("matches_count", 0),
+                "legs": a.get("legs_selected", 0),
+                "tickets": a.get("tickets", []),
+                "placed": a.get("placed", 0),
+                "settled": s.get("settled", 0),
+                "hit": s.get("hit", 0),
+                "miss": s.get("miss", 0),
+                "pnl": s.get("pnl", 0.0),
+                "capital": self._ensure_role().capital,
+            })
+            d += timedelta(days=1)
+        totals = {
+            "placed": sum(r["placed"] for r in rows),
+            "settled": sum(r["settled"] for r in rows),
+            "hit": sum(r["hit"] for r in rows),
+            "miss": sum(r["miss"] for r in rows),
+            "pnl": round(sum(r["pnl"] for r in rows), 2),
+            "capital": rows[-1]["capital"] if rows else 0,
+            "empty_days": sum(1 for r in rows if r["placed"] == 0),
+        }
+        return {"days": rows, "totals": totals}
+
     @staticmethod
     def _default_day() -> str:
         """默认足球日：与 batch_agents.sh / dsfootball_cli.py 的 live 语义一致（12:00 前 → 昨天）"""
@@ -441,21 +597,35 @@ def _fmt_order(o: dict) -> str:
 
 def main(argv: list[str] = None) -> int:
     p = argparse.ArgumentParser(prog="chuan_guan_dog", description="竞彩串关狗")
-    p.add_argument("action", choices=["analyze", "settle", "pending", "status"])
+    p.add_argument("action", choices=["analyze", "settle", "pending", "status", "alpha", "backtest"])
     p.add_argument("day", nargs="?", default=None, help="YYYY-MM-DD（足球日起始日，默认当天）")
+    p.add_argument("end", nargs="?", default=None, help="backtest 结束日 YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="只预览不落单")
     p.add_argument("--tickets", default=None, help="逗号分隔，如 3串1,3过2,4过3；不传则由 agent 自主决定")
     p.add_argument("--stake-pct", type=float, default=None, help="每张票资金占比%%")
+    p.add_argument("--alpha", action="store_true", help="开启 alpha 模式（跨7狗因子+订单共识）并持久化")
+    p.add_argument("--exclude", default=None, help="alpha 排除的角色，逗号分隔")
     p.add_argument("--user", default="串关狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
 
     dog = ChuanGuanDog(user=args.user)
+    if args.alpha:
+        excl = [x.strip() for x in args.exclude.split(",")] if args.exclude else None
+        dog.enable_alpha(exclude_roles=excl)
+        print("🐺 alpha 模式已开启（跨7狗因子+订单共识）")
+    elif args.action == "alpha":
+        excl = [x.strip() for x in args.exclude.split(",")] if args.exclude else None
+        dog.enable_alpha(exclude_roles=excl)
+        print("🐺 alpha 模式已开启（跨7狗因子+订单共识）")
+        return 0
+
     if args.action == "analyze":
         tickets = [t.strip() for t in args.tickets.split(",")] if args.tickets else None
         r = dog.analyze(args.day, live=False, dry_run=args.dry_run,
                         tickets=tickets, stake_pct=args.stake_pct)
         tks = "+".join(r.get("tickets") or []) or "空仓"
-        print(f"📅 {r['date']} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']} | 票型 {tks}")
+        alpha_tag = " 🐺alpha" if r.get("alpha_mode") else ""
+        print(f"📅 {r['date']}{alpha_tag} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']} | 票型 {tks}")
         for o in r["orders"]:
             print("  " + _fmt_order(o))
         if r["skipped"]:
@@ -474,6 +644,19 @@ def main(argv: list[str] = None) -> int:
     elif args.action == "status":
         s = dog.status()
         print(f"💰 资金 {s['capital']:.0f} | 订单 {s['total_orders']} (已结{s['settled']}/待{s['pending']}) | PnL {s['pnl']:+.0f}")
+    elif args.action == "backtest":
+        if not args.day or not args.end:
+            print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha]")
+            return 1
+        r = dog.backtest(args.day, args.end)
+        print("日期 | 竞彩 | 腿 | 票型 | 下单 | 结算(中/挂) | 当日PnL | 资金")
+        for row in r["days"]:
+            tks = "+".join(row["tickets"]) or "空仓"
+            print(f"{row['date']} | {row['matches']:>2} | {row['legs']} | {tks:<8} | {row['placed']:>2} | "
+                  f"{row['settled']}({row['hit']}/{row['miss']}) | {row['pnl']:+.0f} | {row['capital']:.0f}")
+        t = r["totals"]
+        print(f"汇总: 下单{t['placed']} 结算{t['settled']} 中{t['hit']} 挂{t['miss']} 空仓日{t['empty_days']} | "
+              f"PnL {t['pnl']:+.0f} | 资金 {t['capital']:.0f}")
     return 0
 
 
