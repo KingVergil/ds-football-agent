@@ -13,7 +13,8 @@
           N过M 命中 ≥M 场即有过关子单回本/盈利
 
 用法:
-  python3 -m src.chuan_guan_dog analyze [YYYY-MM-DD] [--dry-run] [--tickets 3串1,3过2,4过3] [--stake-pct 5]
+  python3 -m src.chuan_guan_dog analyze [YYYY-MM-DD] [--dry-run] [--stake-pct 5]
+      # 票型由 agent 自主决定；也可 --tickets 3串1,3过2 手动覆盖
   python3 -m src.chuan_guan_dog settle [YYYY-MM-DD]
   python3 -m src.chuan_guan_dog pending
   python3 -m src.chuan_guan_dog status
@@ -46,9 +47,8 @@ class ChuanGuanDog(Agent):
     """竞彩让球胜平负 2/3串1 玩法 agent（独立角色/资金/订单）。"""
 
     # ── 可调参数 ──
-    DEFAULT_TICKETS = ["3串1"]      # 每天打的票型，可多张
     STAKE_PCT = 5.0                 # 每张票占用资金比例（%）
-    PICK_N = 3                      # 参与排序选腿的最大场数
+    PICK_N = 4                      # 参与排序选腿的最大场数（支持 4过3 需要 4 腿）
     MIN_ODDS = 1.30                 # 单腿赔率下限（太低=超重仓无价值）
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
     MIN_CONF = 0.48                 # 隐含概率置信度下限
@@ -82,7 +82,11 @@ class ChuanGuanDog(Agent):
     # ═══════════════════════════════════════════
 
     def _jc_matches(self, day_date: str, live: bool = False) -> list[dict]:
-        """读取足球日窗口内、带 jc_hhad 的竞彩场次（缓存优先，live/缺失时刷新）。"""
+        """读取足球日窗口内、带 jc_hhad 的竞彩场次（与 dsfootball_cli.py prefetch 同口径）。
+
+        足球日 = day_date 12:01 → 次日 12:00；遍历窗口覆盖的日历日期文件，
+        再按 start <= match_time <= end 过滤，只留本足球日窗口内的比赛。
+        """
         d = date.fromisoformat(day_date)
         start, end = get_football_day(d)
         out = []
@@ -152,6 +156,23 @@ class ChuanGuanDog(Agent):
         legs.sort(key=lambda x: x["confidence"], reverse=True)
         return legs[: self.PICK_N]
 
+    def _decide_tickets(self, legs: list[dict]) -> list[str]:
+        """自主决定当天票型（可覆写为 LLM 或其他策略）。
+
+        - ≥4 条合格腿 → 3串1 + 4过3（主单 + 3 过 3 分散）
+        - 3 条 → 3串1 + 3过2
+        - 2 条 → 2串1
+        - <2 条 → 空仓（宁缺毋滥）
+        """
+        n = len(legs)
+        if n >= 4:
+            return ["3串1", "4过3"]
+        if n == 3:
+            return ["3串1", "3过2"]
+        if n == 2:
+            return ["2串1"]
+        return []
+
     @staticmethod
     def _parse_ticket_spec(spec: str) -> Optional[tuple[int, int, str]]:
         """解析票型: "3串1" -> (3,3,"串"), "3过2" -> (3,2,"过")。
@@ -210,7 +231,6 @@ class ChuanGuanDog(Agent):
                 prefetched: bool = False, dry_run: bool = False,
                 tickets: Optional[list[str]] = None, stake_pct: Optional[float] = None) -> dict:
         day_date = day_date or self._default_day()
-        tickets = tickets or list(self.DEFAULT_TICKETS)
         stake_pct = stake_pct if stake_pct is not None else self.STAKE_PCT
 
         session = self._begin_session("analyze", day_date)
@@ -218,6 +238,7 @@ class ChuanGuanDog(Agent):
             role = self._ensure_role()
             matches = self._jc_matches(day_date, live=live)
             legs = self._select_legs(matches)
+            tickets = list(tickets) if tickets else self._decide_tickets(legs)
             slips = self._build_slips(legs, tickets)
 
             placed, orders, skipped = 0, [], []
@@ -254,6 +275,7 @@ class ChuanGuanDog(Agent):
                 "date": day_date,
                 "matches_count": len(matches),
                 "legs_selected": len(legs),
+                "tickets": tickets,
                 "orders": orders,
                 "placed": placed if not dry_run else len(orders),
                 "dry_run": dry_run,
@@ -394,9 +416,9 @@ class ChuanGuanDog(Agent):
 
     @staticmethod
     def _default_day() -> str:
+        """默认足球日：与 batch_agents.sh / dsfootball_cli.py 的 live 语义一致（12:00 前 → 昨天）"""
         now = datetime.now(_BEIJING_TZ)
-        d = now.date() if now.hour >= 12 else now.date() - timedelta(days=1)
-        return d.isoformat()
+        return now.date().isoformat() if now.hour >= 12 else (now.date() - timedelta(days=1)).isoformat()
 
 
 # ═══════════════════════════════════════════
@@ -422,7 +444,7 @@ def main(argv: list[str] = None) -> int:
     p.add_argument("action", choices=["analyze", "settle", "pending", "status"])
     p.add_argument("day", nargs="?", default=None, help="YYYY-MM-DD（足球日起始日，默认当天）")
     p.add_argument("--dry-run", action="store_true", help="只预览不落单")
-    p.add_argument("--tickets", default=None, help="逗号分隔，如 3串1,3过2,4过3")
+    p.add_argument("--tickets", default=None, help="逗号分隔，如 3串1,3过2,4过3；不传则由 agent 自主决定")
     p.add_argument("--stake-pct", type=float, default=None, help="每张票资金占比%%")
     p.add_argument("--user", default="串关狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
@@ -432,7 +454,8 @@ def main(argv: list[str] = None) -> int:
         tickets = [t.strip() for t in args.tickets.split(",")] if args.tickets else None
         r = dog.analyze(args.day, live=False, dry_run=args.dry_run,
                         tickets=tickets, stake_pct=args.stake_pct)
-        print(f"📅 {r['date']} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']}")
+        tks = "+".join(r.get("tickets") or []) or "空仓"
+        print(f"📅 {r['date']} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']} | 票型 {tks}")
         for o in r["orders"]:
             print("  " + _fmt_order(o))
         if r["skipped"]:
