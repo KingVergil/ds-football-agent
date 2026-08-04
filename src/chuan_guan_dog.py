@@ -59,6 +59,7 @@ class ChuanGuanDog(Agent):
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
     MIN_CONF = 0.48                 # 隐含概率置信度下限
     START_CAPITAL = 1000.0          # 与其余狗一致，1000 起步
+    ALLOWED_TICKETS = ["2串1"]      # 人设限定：只允许 2串1（LLM 输出与规则兜底均过滤）
 
     # ── alpha 模式（跨7狗因子 + 订单共识）──
     ALPHA_DOGS = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
@@ -227,7 +228,7 @@ class ChuanGuanDog(Agent):
 {chr(10).join(lines)}
 
 ## 任务
-从上面场次中选出 2~4 场作为串关腿（一场最多一腿），每腿给出让球胜平负选择，并自定票型。
+从上面场次中选出 2 场作为串关腿（一场最多一腿），每腿给出让球胜平负选择；票型固定 2串1。
 
 每个候选腿用一个 ```order 代码块输出（类型固定写 胜平负，盘口=该场竞彩让球线）：
 ```order
@@ -240,8 +241,8 @@ pick: H
 理由: ≤40字
 ```
 
-最后另起一行输出票型，例如：票型: 3串1,3过2
-（合法票型：2串1/3串1/4串1/3过2/4过3，所需腿数不能超过实际腿数）
+最后另起一行输出票型，例如：票型: 2串1
+（**只允许 2串1**，不要输出其他票型）
 
 要求：
 - lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
@@ -309,10 +310,12 @@ pick: H
         tickets = []
         tk_m = re.search(r'票型[：:]\s*([^\n]+)', response)
         if tk_m:
-            # 只提取合法票型 token，忽略 LLM 行尾注释；去重防重复下注
+            # 只提取允许的票型 token，忽略 LLM 行尾注释；去重防重复下注
             for tk in re.findall(r"[234]串1|[34]过[23]", tk_m.group(1)):
                 spec = self._parse_ticket_spec(tk)
-                if spec and spec[1] <= len(legs) and spec[0] >= spec[1] and tk not in tickets:
+                if (spec and tk in self.ALLOWED_TICKETS
+                        and spec[1] <= len(legs) and spec[0] >= spec[1]
+                        and tk not in tickets):
                     tickets.append(tk)
         return legs[: self.PICK_N], (tickets or None)
 
@@ -588,20 +591,13 @@ pick: H
         return legs
 
     def _decide_tickets(self, legs: list[dict]) -> list[str]:
-        """自主决定当天票型（可覆写为 LLM 或其他策略）。
-
-        - ≥4 条合格腿 → 3串1 + 4过3（主单 + 3 过 3 分散）
-        - 3 条 → 3串1 + 3过2
-        - 2 条 → 2串1
-        - <2 条 → 空仓（宁缺毋滥）
-        """
-        n = len(legs)
-        if n >= 4:
-            return ["3串1", "4过3"]
-        if n == 3:
-            return ["3串1", "3过2"]
-        if n == 2:
-            return ["2串1"]
+        """规则兜底票型：只允许 ALLOWED_TICKETS 中腿数够的组合（默认仅 2串1）。"""
+        out = []
+        for tk in self.ALLOWED_TICKETS:
+            spec = self._parse_ticket_spec(tk)
+            if spec and spec[1] <= len(legs) and spec[0] >= spec[1]:
+                out.append(tk)
+        return out
         return []
 
     @staticmethod
