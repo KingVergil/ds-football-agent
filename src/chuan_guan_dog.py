@@ -52,7 +52,7 @@ class ChuanGuanDog(Agent):
     MIN_ODDS = 1.30                 # 单腿赔率下限（太低=超重仓无价值）
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
     MIN_CONF = 0.48                 # 隐含概率置信度下限
-    START_CAPITAL = 10000.0
+    START_CAPITAL = 1000.0          # 与其余狗一致，1000 起步
 
     def __init__(self, user: str = "串关狗", capital: float = START_CAPITAL):
         super().__init__(user=user)
