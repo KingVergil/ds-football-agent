@@ -1,21 +1,5 @@
 [
   {
-    "lota_id": "Lota4589291",
-    "home_name": "明斯克迪纳摩女足",
-    "away_name": "塞尔维特女足",
-    "league_name": "欧女冠",
-    "match_time": "2026-08-04 15:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
     "lota_id": "Lota4546509",
     "home_name": "缅甸",
     "away_name": "老挝",
@@ -29,6 +13,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -45,6 +30,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -61,6 +47,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "uwcl-ub-af-2026-08-04"
   },
   {
@@ -77,6 +64,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -93,6 +81,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -109,166 +98,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580870",
-    "home_name": "比尔卡罗德",
-    "away_name": "阿莱罗德",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580903",
-    "home_name": "TST足球",
-    "away_name": "VSK奥胡斯",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580887",
-    "home_name": "克厄诺德FC",
-    "away_name": "梵鲁斯",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580891",
-    "home_name": "马里波",
-    "away_name": "斯基奥德",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580897",
-    "home_name": "灵斯泰德",
-    "away_name": "弗雷姆",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580898",
-    "home_name": "鲁泽斯代尔",
-    "away_name": "海勒鲁普",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580899",
-    "home_name": "SfB欧雷",
-    "away_name": "弗雷德里西亚",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580905",
-    "home_name": "华伦斯贝克",
-    "away_name": "赫尔辛格",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580908",
-    "home_name": "维比",
-    "away_name": "ASA阿晓斯",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580909",
-    "home_name": "穆勒",
-    "away_name": "斯科修夫",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:00:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -285,6 +115,177 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580903",
+    "home_name": "TST足球",
+    "away_name": "VSK奥胡斯",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580870",
+    "home_name": "比尔卡罗德",
+    "away_name": "阿莱罗德",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580887",
+    "home_name": "克厄诺德FC",
+    "away_name": "梵鲁斯",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580891",
+    "home_name": "马里波",
+    "away_name": "斯基奥德",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580897",
+    "home_name": "灵斯泰德",
+    "away_name": "弗雷姆",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580898",
+    "home_name": "鲁泽斯代尔",
+    "away_name": "海勒鲁普",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580899",
+    "home_name": "SfB欧雷",
+    "away_name": "弗雷德里西亚",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580905",
+    "home_name": "华伦斯贝克",
+    "away_name": "赫尔辛格",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580908",
+    "home_name": "维比",
+    "away_name": "ASA阿晓斯",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580909",
+    "home_name": "穆勒",
+    "away_name": "斯科修夫",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -301,6 +302,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -317,6 +319,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -333,6 +336,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -349,6 +353,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -365,6 +370,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -381,6 +387,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -397,6 +404,7 @@
     "state_name": "未开",
     "beidan_number": "1",
     "jingcai_number": "周二002",
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -413,6 +421,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -429,38 +438,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580885",
-    "home_name": "霍尔斯特布罗",
-    "away_name": "奥尔堡",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:30:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
-    "poly_slug": ""
-  },
-  {
-    "lota_id": "Lota4580888",
-    "home_name": "科尔丁BK",
-    "away_name": "尼斯比",
-    "league_name": "丹麦杯",
-    "match_time": "2026-08-05 00:30:00",
-    "week": "",
-    "venues_name": "",
-    "score": null,
-    "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
-    "beidan_number": null,
-    "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -477,6 +455,41 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580885",
+    "home_name": "霍尔斯特布罗",
+    "away_name": "奥尔堡",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:30:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
+  },
+  {
+    "lota_id": "Lota4580888",
+    "home_name": "科尔丁BK",
+    "away_name": "尼斯比",
+    "league_name": "丹麦杯",
+    "match_time": "2026-08-05 00:30:00",
+    "week": "",
+    "venues_name": "",
+    "score": null,
+    "match_type": "N/A",
+    "state": -1,
+    "state_name": "未开",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -493,6 +506,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -509,6 +523,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -525,6 +540,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -541,6 +557,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -557,6 +574,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -573,6 +591,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -589,6 +608,7 @@
     "state_name": "未开",
     "beidan_number": "4",
     "jingcai_number": "周二005",
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -605,6 +625,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -621,6 +642,7 @@
     "state_name": "未开",
     "beidan_number": "2",
     "jingcai_number": "周二003",
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -637,6 +659,7 @@
     "state_name": "未开",
     "beidan_number": "3",
     "jingcai_number": "周二004",
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -653,6 +676,7 @@
     "state_name": "未开",
     "beidan_number": "5",
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -669,6 +693,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -685,6 +710,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -701,6 +727,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -717,6 +744,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "col1-llf-foc-2026-08-04"
   },
   {
@@ -733,6 +761,7 @@
     "state_name": "未开",
     "beidan_number": "6",
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "brco-juv-cam-2026-08-04"
   },
   {
@@ -749,6 +778,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "col1-cdt-inm-2026-08-04"
   },
   {
@@ -765,6 +795,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -781,6 +812,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -797,6 +829,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-clb-atl-2026-08-04"
   },
   {
@@ -813,6 +846,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-fcc-pac-2026-08-04"
   },
   {
@@ -829,6 +863,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-clt-pum-2026-08-04"
   },
   {
@@ -845,6 +880,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -861,6 +897,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-min-jua-2026-08-04"
   },
   {
@@ -877,6 +914,7 @@
     "state_name": "未开",
     "beidan_number": "7",
     "jingcai_number": "周二001",
+    "jc_hhad": null,
     "poly_slug": "brco-cre-san-2026-08-04"
   },
   {
@@ -893,6 +931,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -909,6 +948,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "col1-mif-adp-2026-08-04"
   },
   {
@@ -925,6 +965,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-tig-rsl-2026-08-04"
   },
   {
@@ -941,6 +982,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -957,6 +999,7 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -973,7 +1016,25 @@
     "state_name": "未开",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": "lec-vwh-atla-2026-08-04"
+  },
+  {
+    "lota_id": "Lota4589291",
+    "home_name": "明斯克迪纳摩女足",
+    "away_name": "塞尔维特女足",
+    "league_name": "欧女冠",
+    "match_time": "2026-08-04 15:00:00",
+    "week": "",
+    "venues_name": "",
+    "score": "0:3",
+    "match_type": "N/A",
+    "state": 6,
+    "state_name": "完场",
+    "beidan_number": null,
+    "jingcai_number": null,
+    "jc_hhad": null,
+    "poly_slug": ""
   },
   {
     "lota_id": "Lota4601245",
@@ -989,6 +1050,7 @@
     "state_name": "推迟",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -1005,6 +1067,7 @@
     "state_name": "推迟",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   },
   {
@@ -1021,6 +1084,7 @@
     "state_name": "推迟",
     "beidan_number": null,
     "jingcai_number": null,
+    "jc_hhad": null,
     "poly_slug": ""
   }
 ]
