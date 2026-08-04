@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-03T10:03:59.899119",
+  "updated_at": "2026-08-04T11:02:49.676833",
   "factor_perf": {
     "盘赔背离退盘诱上": {
       "total": 1,
@@ -3583,6 +3583,35 @@
           "lota_id": "Lota4546330"
         }
       ]
+    },
+    "离散凝聚资金同向": {
+      "total": 2,
+      "hit": 2,
+      "miss": 0,
+      "push": 0,
+      "profit": 582.1,
+      "total_return": 1.9100000000000001,
+      "status": "active",
+      "desc": "离散在某一结果方向极度凝聚，且必发资金明显流入该方向或关联盘口，信号共振可下注凝聚方向，即使与低赔背离",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 374.1,
+          "return_ratio": 0.8700000000000001,
+          "lota_id": "Lota4468164"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 208.0,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
+        }
+      ],
+      "aliases": []
     }
   }
 }

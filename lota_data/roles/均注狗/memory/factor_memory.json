@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-03T10:13:05.239816",
+  "updated_at": "2026-08-04T11:09:49.970662",
   "factor_perf": {
     "欧赔跳水不败": {
       "total": 1,
@@ -205,16 +205,16 @@
       ]
     },
     "赔率下沉离散凝聚": {
-      "total": 22,
-      "hit": 16,
+      "total": 23,
+      "hit": 17,
       "miss": 3,
       "push": 3,
-      "profit": 285.78,
-      "total_return": 11.98,
+      "profit": 315.94,
+      "total_return": 13.02,
       "status": "active",
       "desc": "欧赔持续下沉且离散在该方向极度凝聚，方向共振",
       "first_seen": "2026-06-13",
-      "last_seen": "2026-08-02",
+      "last_seen": "2026-08-03",
       "history": [
         {
           "date": "2026-06-13",
@@ -369,20 +369,27 @@
           "profit": -25.0,
           "return_ratio": -1.0,
           "lota_id": "Lota4546331"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 30.16,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
         }
       ]
     },
     "离散凝聚低水保护": {
-      "total": 27,
-      "hit": 24,
+      "total": 28,
+      "hit": 25,
       "miss": 2,
       "push": 1,
-      "profit": 527.73,
-      "total_return": 18.930000000000003,
+      "profit": 552.96,
+      "total_return": 19.800000000000004,
       "status": "active",
       "desc": "离散在某一方极度凝聚，同时该方水位处于中低水受保护",
       "first_seen": "2026-06-14",
-      "last_seen": "2026-07-23",
+      "last_seen": "2026-08-03",
       "history": [
         {
           "date": "2026-06-14",
@@ -572,6 +579,13 @@
           "profit": -34.0,
           "return_ratio": -1.0,
           "lota_id": "Lota4589354"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 25.23,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4468164"
         }
       ]
     },
@@ -2991,16 +3005,16 @@
       ]
     },
     "离散凝聚深盘顺向": {
-      "total": 16,
-      "hit": 11,
+      "total": 18,
+      "hit": 13,
       "miss": 3,
       "push": 2,
-      "profit": 248.49,
-      "total_return": 8.195199999999998,
+      "profit": 307.36,
+      "total_return": 10.225199999999997,
       "status": "active",
       "desc": "离散在深盘方向极度凝聚，顺向打出可信度高",
       "first_seen": "2026-07-19",
-      "last_seen": "2026-08-02",
+      "last_seen": "2026-08-03",
       "history": [
         {
           "date": "2026-07-19",
@@ -3113,6 +3127,20 @@
           "profit": 24.75,
           "return_ratio": 0.99,
           "lota_id": "Lota4467653"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 28.71,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4467114"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 30.16,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
         }
       ]
     },
@@ -3856,6 +3884,28 @@
           "lota_id": "Lota4546330"
         }
       ]
+    },
+    "离散凌驾杂音": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -29.0,
+      "total_return": -1.0,
+      "status": "active",
+      "desc": "当离散指数在某一方向极端凝聚，而必发资金流向或盘口走势与之矛盾时，离散信号优先级最高，应无视资金与盘口干扰",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": false,
+          "profit": -29.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4546327"
+        }
+      ],
+      "aliases": []
     }
   }
 }

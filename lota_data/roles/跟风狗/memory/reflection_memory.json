@@ -1,11 +1,6 @@
 {
-  "updated_at": "2026-08-03T10:10:20.500825",
+  "updated_at": "2026-08-04T11:07:49.927371",
   "reflections": [
-    {
-      "date": "2026-07-16",
-      "reflection": "两场均为强队方向，离散指数都在看好方向凝聚，且终盘离散保持低位。当离散与赔率盘口同步时信号强烈，当反向时离散不散仍可信任。离散指数是核心锚定。后续可结合必发等过滤。\n📡 有效slug: discrete-odds, eu-odds-pinnacle, asian-handicap-pinnacle, fair-odds, betfair-buysell\n🔇 噪声slug: match-head, over-under-crown\n📐 因子归因: 2 笔订单已关联到因子\n💰 资金教训: 离散凝聚信号下，可适度提高注码，后续视表现调整。两场均1/10注偏保守。",
-      "recorded_at": "2026-07-16T10:57:47.511880"
-    },
     {
       "date": "2026-07-16",
       "reflection": "离散凝聚在深盘下易成陷阱，尤其当赔率无明显下沉或盘口出现退盘时；机构大幅调低主胜赔率并升盘，才是强势上盘可靠信号；实力碾压且市场一致时方可博穿盘，否则谨防赢球输盘或冷门。\n📡 有效slug: fair-odds, eu-odds-pinnacle, asian-handicap-pinnacle, discrete-odds\n🔇 噪声slug: match-head, over-under-crown, betfair-buysell\n📐 因子归因: 3 笔订单已关联到因子\n💰 资金教训: 强队深盘若赔率无急剧下沉则降低注码或放弃；离散凝聚需配合赔率走势，不可单独依赖；连续命中后可适度加码，逆风时严守仓位。",
@@ -100,6 +95,11 @@
       "date": "2026-08-02",
       "reflection": "盈利单无过热信号，盘口平稳；连败单均暴露离散凝聚或升盘示强等过热特征。此类信号可作为反向过滤，当强队方向过热时放弃投注，减少无谓损失。\n📡 有效slug: discrete-odds, asian-handicap-pinnacle, eu-odds-pinnacle\n🔇 噪声slug: match-head, over-under-crown, betfair-buysell\n📐 因子归因: 4 笔订单已关联到因子\n💰 资金教训: 连赢后勿盲目追强，出现离散凝聚或升盘示强应缩注或跳过，避免顺势回撤",
       "recorded_at": "2026-08-03T10:10:20.499664"
+    },
+    {
+      "date": "2026-08-03",
+      "reflection": "三场赢盘中，让球方离散值均极为凝聚（0.39-2.18），且公平盘实力差均超1.0，市场共识强烈。即使盘口有浅开或调整，离散凝聚信号依然主导赛果。未来应重点关注离散极低且实力差距明显的场次，排除其他噪声干扰。\n📡 有效slug: discrete-odds, fair-odds, asian-handicap-pinnacle, eu-odds-pinnacle\n🔇 噪声slug: match-head, betfair-buysell\n📐 因子归因: 3 笔订单已关联到因子\n💰 资金教训: 连续命中时复利效应显著，无需冒进加注；离散凝聚信号置信度高，可维持标准仓位，避免过度保守错过机会。",
+      "recorded_at": "2026-08-04T11:07:49.926424"
     }
   ]
 }

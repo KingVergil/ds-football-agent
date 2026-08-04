@@ -337,44 +337,85 @@ class FactorMemory:
         self._loaded = False
 
     def _consolidate_candidate(self, factor_id: str, desc: str) -> tuple:
-        """LLM 判重：候选因子 vs 现有因子（difflib 预筛 + LLM 语义判断）。失败安全=create。"""
-        import difflib
+        """LLM 判重（宽松：shortlist 到 15 个、全 desc、严格 schema）+ 确定性兜底。
+
+        兜底：LLM 判 create 或调用失败时，若候选与某 retired 因子名称相似度≥0.8
+        且 desc 语义一致（bigram Jaccard / 序列相似度 ≥0.25）→ 强制 suppress。
+        返回 ('create'|'merge'|'suppress', target_id)。"""
+        import difflib, json as _json
+        from pathlib import Path as _P
         names = list(self.factor_perf.keys())
         if not names:
             return ("create", None)
         scored = sorted(((difflib.SequenceMatcher(None, factor_id, n).ratio(), n) for n in names), reverse=True)
-        short = [n for s, n in scored if s >= 0.45][:6]
+        short = [n for s, n in scored if s >= 0.45][:15]
         if not short:
             return ("create", None)
+
+        def _det_suppress():
+            """确定性兜底：名称≥0.8 且 desc 相似≥0.25 的 retired 因子。"""
+            best, best_score = None, 0.0
+            for n in names:
+                v = self.factor_perf[n]
+                if v.get("status") != "retired":
+                    continue
+                nr = difflib.SequenceMatcher(None, factor_id, n).ratio()
+                if nr < 0.8:
+                    continue
+                vd = v.get("desc", "") or ""
+                bj = _desc_bigram_jaccard(desc, vd)
+                sr = difflib.SequenceMatcher(None, desc, vd).ratio()
+                dv = max(bj, sr)
+                if dv < 0.25:
+                    continue
+                score = 0.6 * nr + 0.4 * dv
+                if score > best_score:
+                    best, best_score = n, score
+            return best
+
+        verdict = None
         try:
             from src.providers.deepseek import DeepSeekProvider
-            import json as _json
             provider = DeepSeekProvider()
             lib_lines = "\n".join(
-                f"{i}. {n} [状态:{self.factor_perf[n].get('status','active')}] | "
-                f"{self.factor_perf[n].get('desc','')[:80]} "
+                f"{i2}. {n} [状态:{self.factor_perf[n].get('status','active')}] | "
+                f"{self.factor_perf[n].get('desc','')[:200]} "
                 f"(样本{self.factor_perf[n].get('total',0)} 盈亏{self.factor_perf[n].get('profit',0):+.0f})"
-                for i, n in enumerate(short, 1)
+                for i2, n in enumerate(short, 1)
             )
-            system = ("你是足球因子库管理员。判断候选因子是否与现有因子重复。"
-                      "规则: 语义重复(同模式/同义改写)→merge并填最匹配的现有因子名; "
-                      "方向相反(上盘vs下盘/让球方vs受让方/追强vs防冷)→绝不合并create; "
-                      "与retired因子重复→suppress; 双方样本都充足且盈亏方向相反→create; 全新→create。"
-                      "只输出JSON。")
-            user = (f"候选因子: {factor_id} | {desc[:120]}\n\n现有因子:\n{lib_lines}\n\n"
-                    '输出 JSON: {"action":"merge|create|suppress","target":"因子名或null","reason":"一句话"}')
+            system = ("你是足球因子库管理员。判断候选因子是否与现有因子重复。\n"
+                      "规则：\n"
+                      "1. 同模式不同表述（名称或描述高度一致）→ merge，target 填最匹配的现有因子名；\n"
+                      "2. 方向相反（上盘vs下盘/让球方vs受让方/阻上vs诱上/追强vs防冷）→ 绝不合并，create；\n"
+                      "3. 与 retired 因子高度一致（名称与描述均匹配）→ suppress；\n"
+                      "4. 与现有因子样本都充足且盈亏方向相反 → create（经验上不同模式）；\n"
+                      "5. 全新模式 → create。\n"
+                      "使用语义理解判断，不要只看字面。只输出严格 JSON，不要多余文字。")
+            user = (f"候选因子: {factor_id} | {desc[:200]}\n\n现有因子(共{len(short)}个):\n{lib_lines}\n\n"
+                    '输出严格 JSON: {"action":"merge|create|suppress","target":"现有因子名或null","reason":"一句话"}')
             raw = provider.call(system, [{"role": "user", "content": user}], temperature=0.0)
+            raw = __import__("re").sub(r"\[thinking\].*?\[/thinking\]\s*", "", raw, flags=__import__("re").S).strip()
             start, end = raw.find("{"), raw.rfind("}")
-            verdict = _json.loads(raw[start:end + 1]) if start != -1 and end != -1 else {"action": "create"}
-            action = verdict.get("action", "create")
-            target = verdict.get("target")
-            if action == "merge" and target in self.factor_perf:
-                return ("merge", target)
-            if action == "suppress" and target in self.factor_perf:
-                return ("suppress", target)
-            return ("create", None)
+            verdict = _json.loads(raw[start:end + 1]) if start != -1 and end != -1 else None
         except Exception:
-            return ("create", None)
+            verdict = None
+
+        action = verdict.get("action", "create") if verdict else "create"
+        target = verdict.get("target") if verdict else None
+        reason = verdict.get("reason", "") if verdict else "LLM调用失败"
+        # 确定性兜底：判 create 或失败时，若命中 retired 近亲 → suppress
+        if action == "create":
+            det = _det_suppress()
+            if det:
+                action, target, reason = "suppress", det, f"确定性兜底(desc一致+retired): {reason}"
+        if action == "suppress" and target in self.factor_perf:
+            _log_dedup(factor_id, action, target, reason)
+            return ("suppress", target)
+        if action == "merge" and target in self.factor_perf:
+            _log_dedup(factor_id, action, target, reason)
+            return ("merge", target)
+        _log_dedup(factor_id, "create", None, reason)
+        return ("create", None)
 
     def record(self, factor_id: str, hit: bool | None, profit: float,
                desc: str = "", date: str = "", lota_id: str = "",
@@ -788,3 +829,26 @@ class ReflectionMemory:
             "updated_at": _now(),
             "reflections": self.reflections[-20:],
         })
+
+
+def _desc_bigram_jaccard(a: str, b: str) -> float:
+    """中文描述字符二元组 Jaccard（无词表，语言无关）。"""
+    def bigrams(t):
+        t = (t or "").replace(" ", "")
+        return {t[k:k+2] for k in range(len(t)-1)} if len(t) >= 2 else set()
+    A, B = bigrams(a), bigrams(b)
+    return len(A & B) / len(A | B) if (A | B) else 0.0
+
+
+def _log_dedup(cand: str, action: str, target: str, reason: str) -> None:
+    """判重日志（审计用），追加到 lota_data/factor_dedup_log.jsonl。"""
+    import json as _json
+    from datetime import datetime as _dt
+    from pathlib import Path as _P
+    try:
+        line = {"ts": _dt.now().isoformat(timespec="seconds"),
+                "candidate": cand, "action": action, "target": target, "reason": reason}
+        with open(_P(__file__).parent.parent / "lota_data" / "factor_dedup_log.jsonl", "a", encoding="utf-8") as f:
+            f.write(_json.dumps(line, ensure_ascii=False) + "\n")
+    except Exception:
+        pass

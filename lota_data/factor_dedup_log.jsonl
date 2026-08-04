@@ -1,0 +1,3 @@
+{"ts": "2026-08-04T12:10:40", "candidate": "浅盘高水阻上", "action": "suppress", "target": "浅盘高水阻上", "reason": "确定性兜底(desc一致+retired): LLM调用失败"}
+{"ts": "2026-08-04T12:10:43", "candidate": "深盘高水阻上", "action": "suppress", "target": "深盘高水诱上", "reason": "确定性兜底(desc一致+retired): LLM调用失败"}
+{"ts": "2026-08-04T12:12:06", "candidate": "深盘高水阻上", "action": "merge", "target": "深盘高水阻上", "reason": "名称和描述完全一致，为同一模式"}

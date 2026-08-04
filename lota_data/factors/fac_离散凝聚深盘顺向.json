@@ -3,9 +3,9 @@
   "slugs": [
     "discrete-odds",
     "fair-odds",
-    "betfair-buysell",
-    "asian-handicap-pinnacle"
+    "asian-handicap-pinnacle",
+    "eu-odds-pinnacle"
   ],
-  "content": "深盘下主胜离散度极低且远低于平负离散，市场高度凝聚于上盘",
-  "updated_at": "2026-08-01T13:35:08.051172"
+  "content": "离散指数在深盘方显著低于对手，且盘口深度超出公平盘实力差，资金与盘口方向一致。",
+  "updated_at": "2026-08-04T11:05:44.585192"
 }

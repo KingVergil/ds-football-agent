@@ -1,11 +1,11 @@
 {
   "id": "fac_深盘高水阻上",
   "slugs": [
+    "discrete-odds",
     "fair-odds",
-    "eu-odds-pinnacle",
     "asian-handicap-pinnacle",
-    "over-under-crown"
+    "eu-odds-pinnacle"
   ],
-  "content": "亚盘让球方始终维持高位赔付且盘口未能压实，市场通过高水阻拦上盘热度时受让方不败概率高",
-  "updated_at": "2026-07-07T11:57:13.430652"
+  "content": "深盘搭配高水形成阻挡上盘介入的视觉效果，实则保护强势方穿盘。",
+  "updated_at": "2026-08-04T11:05:44.587440"
 }

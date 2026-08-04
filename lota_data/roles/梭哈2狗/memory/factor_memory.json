@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-02T14:45:19.940474",
+  "updated_at": "2026-08-04T11:05:44.583532",
   "factor_perf": {
     "低水保护强盘": {
       "total": 3,
@@ -2669,16 +2669,16 @@
       ]
     },
     "离散凝聚深盘顺向": {
-      "total": 2,
-      "hit": 2,
+      "total": 4,
+      "hit": 4,
       "miss": 0,
       "push": 0,
-      "profit": 16848.21,
-      "total_return": 1.83,
+      "profit": 21038.39,
+      "total_return": 3.8600000000000003,
       "status": "active",
-      "desc": "离散主胜极端低位，平客离散高位发散，配合深盘或临场升盘，欧赔主胜压低，上盘打出概率高",
+      "desc": "离散指数在深盘方显著低于对手，且盘口深度超出公平盘实力差，资金与盘口方向一致。",
       "first_seen": "2026-07-30",
-      "last_seen": "2026-07-30",
+      "last_seen": "2026-08-03",
       "history": [
         {
           "date": "2026-07-30",
@@ -2693,6 +2693,20 @@
           "profit": 13565.91,
           "return_ratio": 0.9299999999999999,
           "lota_id": "Lota4556488"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 1811.7,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4467114"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 2378.48,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
         }
       ]
     },
@@ -2744,6 +2758,35 @@
           "lota_id": "Lota4460420"
         }
       ]
+    },
+    "深盘高水阻上": {
+      "total": 2,
+      "hit": 2,
+      "miss": 0,
+      "push": 0,
+      "profit": 4190.18,
+      "total_return": 2.0300000000000002,
+      "status": "active",
+      "desc": "深盘搭配高水形成阻挡上盘介入的视觉效果，实则保护强势方穿盘。",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 1811.7,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4467114"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 2378.48,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
+        }
+      ],
+      "aliases": []
     }
   }
 }
