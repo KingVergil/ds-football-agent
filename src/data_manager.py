@@ -233,11 +233,18 @@ class DataManager:
     # Match
     # ═══════════════════════════════════════════
 
-    def fetch_matches_by_date(self, date_str: str, lottery_type: str = "jingcai") -> list[dict]:
-        """API 查询某日比赛列表"""
+    def fetch_matches_by_date(self, date_str: str, lottery_type: str = "jingcai",
+                              is_jingcai: bool = False) -> list[dict]:
+        """API 查询某日比赛列表。
+
+        is_jingcai=True 时附带竞彩让球胜平负数据（jc_hhad，含 goal_line/赔率），
+        默认 False 不多打 spdex 库。
+        """
         params = {"date": date_str}
         if lottery_type and lottery_type != "all":
             params["type"] = lottery_type
+        if is_jingcai:
+            params["is_jingcai"] = "true"
         data = _get("/matches", params)
         if not data:
             return []
@@ -248,17 +255,36 @@ class DataManager:
             matches = result if isinstance(result, list) else []
         return matches if isinstance(matches, list) else []
 
-    def fetch_matches_by_date_range(self, start: str, end: str, lottery_type: str = "jingcai") -> list[dict]:
-        """API 查询日期范围内的比赛"""
+    def _fetch_all_matches(self, params: dict) -> list[dict]:
+        """分页拉取 matches 全量结果（服务器 limit 默认 500，超出会被截断）。"""
+        out: list[dict] = []
+        offset = 0
+        limit = 2000
+        while True:
+            p = {**params, "limit": limit, "offset": offset}
+            data = _get("/matches", p)
+            if not data:
+                break
+            result = data.get("data") or {}
+            matches = result.get("matches") if isinstance(result, dict) else (result if isinstance(result, list) else [])
+            if not isinstance(matches, list) or not matches:
+                break
+            out.extend(matches)
+            total = result.get("total") if isinstance(result, dict) else None
+            if total is None or offset + len(matches) >= int(total):
+                break
+            offset += len(matches)
+        return out
+
+    def fetch_matches_by_date_range(self, start: str, end: str, lottery_type: str = "jingcai",
+                                    is_jingcai: bool = False) -> list[dict]:
+        """API 查询日期范围内的全部比赛（分页拉完，is_jingcai=True 附带竞彩让球数据）"""
         params = {"start_date": start, "end_date": end}
         if lottery_type and lottery_type != "all":
             params["type"] = lottery_type
-        data = _get("/matches", params)
-        if not data:
-            return []
-        result = data.get("data") or {}
-        matches = result.get("matches") if isinstance(result, dict) else result
-        return matches if isinstance(matches, list) else []
+        if is_jingcai:
+            params["is_jingcai"] = "true"
+        return self._fetch_all_matches(params)
 
     def fetch_match_by_id(self, lota_id: str) -> Optional[dict]:
         """API 查询单场比赛详情（含比分）"""
@@ -289,12 +315,105 @@ class DataManager:
                 pass
         return []
 
+    def get_cached_jc_matches(self, date_str: str) -> list[dict]:
+        """读取某足球日缓存中的竞彩比赛（jingcai_number 非空），含 jc_hhad 让球数据。
+
+        缓存没有 lottery_type 字段，直接按 jingcai_number 过滤，供串关等竞彩玩法使用。
+        """
+        return [
+            m for m in self.get_cached_matches(date_str, lottery_type="all")
+            if m.get("jingcai_number")
+        ]
+
     def save_matches_cache(self, date_str: str, matches: list[dict]) -> None:
-        """写入比赛列表缓存"""
+        """写入比赛列表缓存（缩进格式，与仓库现有文件一致）"""
         _atomic_write_text(
             MATCHES_DIR / f"{date_str}.json",
-            json.dumps(matches, ensure_ascii=False),
+            json.dumps(matches, ensure_ascii=False, indent=2),
         )
+
+    def refresh_matches_cache(self, date_str: str, with_jc_odds: bool = False) -> list[dict]:
+        """刷新某日比赛缓存（全量），可选叠加竞彩让球(goal_line/赔率)到 jc_hhad。
+
+        服务器 is_jingcai=true 只返回竞彩场次子集，因此这里先拉全量比赛，
+        再单独拉竞彩子集，按 lota_id 把 jc_hhad 合并进全量缓存，
+        避免覆盖掉非竞彩比赛。
+        """
+        ms = self.fetch_matches_by_date(date_str, lottery_type="all")
+        if ms and with_jc_odds:
+            jc_ms = self.fetch_matches_by_date(date_str, lottery_type="all", is_jingcai=True)
+            jc_hhad_map = {
+                m.get("lota_id"): m.get("jc_hhad")
+                for m in jc_ms if m.get("lota_id")
+            }
+            for m in ms:
+                lid = m.get("lota_id")
+                if lid in jc_hhad_map:
+                    m["jc_hhad"] = jc_hhad_map[lid]
+        if ms:
+            self.save_matches_cache(date_str, ms)
+        return ms
+
+    def refresh_matches_range(self, start_date: str, end_date: str,
+                              with_jc_odds: bool = False) -> dict:
+        """按足球日起始日批量刷新 [start_date, end_date] 的比赛缓存。
+
+        一次范围拉取（分页），按足球日窗口 [D 12:01, D+1 12:00] 切分写盘到 D.json。
+        with_jc_odds=True 时额外拉一次竞彩子集（is_jingcai=true），
+        按 lota_id 把 jc_hhad(goal_line/赔率) 合并进全量缓存。
+
+        Returns: {date_str: 场数}
+        """
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(hours=12, minutes=1)
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1, hours=12)
+
+        all_ms = self.fetch_matches_by_date_range(
+            start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            lottery_type="all",
+        )
+        if not all_ms:
+            return {}
+
+        if with_jc_odds:
+            jc_ms = self.fetch_matches_by_date_range(
+                start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                lottery_type="all",
+                is_jingcai=True,
+            )
+            jc_hhad_map = {
+                m.get("lota_id"): m.get("jc_hhad")
+                for m in jc_ms if m.get("lota_id")
+            }
+            for m in all_ms:
+                lid = m.get("lota_id")
+                if lid in jc_hhad_map:
+                    m["jc_hhad"] = jc_hhad_map[lid]
+
+        # 按足球日切分: [D 12:01, D+1 12:00] 的比赛 → D.json
+        buckets: dict[str, list[dict]] = {}
+        for m in all_ms:
+            mt = m.get("match_time", "")
+            if len(mt) < 16:
+                continue
+            try:
+                mdt = datetime.strptime(mt[:16], "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+            if mdt < start_dt or mdt > end_dt:
+                continue
+            d = (mdt - timedelta(hours=12, minutes=1)).date().isoformat()
+            buckets.setdefault(d, []).append(m)
+
+        written = {}
+        for d in sorted(buckets):
+            if not (start_date <= d <= end_date):
+                continue
+            buckets[d].sort(key=lambda x: x.get("match_time", ""))
+            self.save_matches_cache(d, buckets[d])
+            written[d] = len(buckets[d])
+        return written
 
     def get_cached_match(self, lota_id: str) -> Optional[dict]:
         """从本地缓存查找单场比赛（扫描 matches + features）"""
