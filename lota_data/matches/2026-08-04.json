@@ -9,8 +9,8 @@
     "venues_name": "",
     "score": null,
     "match_type": "N/A",
-    "state": -1,
-    "state_name": "未开",
+    "state": 1,
+    "state_name": "上半场",
     "beidan_number": null,
     "jingcai_number": null,
     "jc_hhad": null,
@@ -404,7 +404,14 @@
     "state_name": "未开",
     "beidan_number": "1",
     "jingcai_number": "周二002",
-    "jc_hhad": null,
+    "jc_hhad": {
+      "match_id": "2040727",
+      "goal_line": "-1",
+      "home_odds": 4.2,
+      "draw_odds": 3.7,
+      "away_odds": 1.61,
+      "update_time": "2026-08-04 16:40:01"
+    },
     "poly_slug": ""
   },
   {
@@ -608,7 +615,14 @@
     "state_name": "未开",
     "beidan_number": "4",
     "jingcai_number": "周二005",
-    "jc_hhad": null,
+    "jc_hhad": {
+      "match_id": "2040721",
+      "goal_line": "+1",
+      "home_odds": 1.78,
+      "draw_odds": 3.6,
+      "away_odds": 3.45,
+      "update_time": "2026-08-04 18:19:51"
+    },
     "poly_slug": ""
   },
   {
@@ -642,7 +656,14 @@
     "state_name": "未开",
     "beidan_number": "2",
     "jingcai_number": "周二003",
-    "jc_hhad": null,
+    "jc_hhad": {
+      "match_id": "2040728",
+      "goal_line": "-1",
+      "home_odds": 2.32,
+      "draw_odds": 3.4,
+      "away_odds": 2.48,
+      "update_time": "2026-08-04 18:12:29"
+    },
     "poly_slug": ""
   },
   {
@@ -659,7 +680,14 @@
     "state_name": "未开",
     "beidan_number": "3",
     "jingcai_number": "周二004",
-    "jc_hhad": null,
+    "jc_hhad": {
+      "match_id": "2040720",
+      "goal_line": "-1",
+      "home_odds": 4.75,
+      "draw_odds": 4.3,
+      "away_odds": 1.46,
+      "update_time": "2026-08-04 17:32:07"
+    },
     "poly_slug": ""
   },
   {
@@ -914,7 +942,14 @@
     "state_name": "未开",
     "beidan_number": "7",
     "jingcai_number": "周二001",
-    "jc_hhad": null,
+    "jc_hhad": {
+      "match_id": "2040716",
+      "goal_line": "+1",
+      "home_odds": 1.59,
+      "draw_odds": 3.42,
+      "away_odds": 4.8,
+      "update_time": "2026-08-04 18:50:46"
+    },
     "poly_slug": "brco-cre-san-2026-08-04"
   },
   {
