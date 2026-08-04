@@ -2,8 +2,10 @@
   "id": "fac_离散凝聚上盘",
   "slugs": [
     "discrete-odds",
+    "fair-odds",
+    "asian-handicap-pinnacle",
     "eu-odds-pinnacle"
   ],
-  "content": "离散指数主胜极端低位，平负散乱，深盘强队可信",
-  "updated_at": "2026-07-25T11:02:08.474175"
+  "content": "让球方离散值极度凝聚至低位，市场意见高度一致，无论盘口深浅均大概率赢指",
+  "updated_at": "2026-08-04T11:07:49.925644"
 }

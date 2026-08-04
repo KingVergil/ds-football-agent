@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-03T10:05:40.955801",
+  "updated_at": "2026-08-04T11:04:52.862177",
   "factor_perf": {
     "碾压下沉低水防范": {
       "total": 1,
@@ -2744,6 +2744,28 @@
           "lota_id": "Lota4467648"
         }
       ]
+    },
+    "凝聚资金同向下盘": {
+      "total": 1,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
+      "profit": 87.0,
+      "total_return": 0.87,
+      "status": "active",
+      "desc": "离散在受让方方向凝聚且必发对应净买入，欧赔同向下降，则下盘（受让方不败）可信",
+      "first_seen": "2026-08-03",
+      "last_seen": "2026-08-03",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 87.0,
+          "return_ratio": 0.87,
+          "lota_id": "Lota4468164"
+        }
+      ],
+      "aliases": []
     }
   }
 }

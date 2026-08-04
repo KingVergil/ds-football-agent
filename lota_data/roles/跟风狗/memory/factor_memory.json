@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-03T10:10:20.497222",
+  "updated_at": "2026-08-04T11:07:49.924991",
   "factor_perf": {
     "碾压公平低估": {
       "total": 3,
@@ -1668,16 +1668,16 @@
       ]
     },
     "离散凝聚上盘": {
-      "total": 3,
-      "hit": 2,
+      "total": 6,
+      "hit": 5,
       "miss": 0,
       "push": 1,
-      "profit": 372.82,
-      "total_return": 2.315,
+      "profit": 816.8199999999999,
+      "total_return": 5.2749999999999995,
       "status": "active",
-      "desc": "离散指数主胜极端低位，平负散乱，深盘强队可信",
+      "desc": "让球方离散值极度凝聚至低位，市场意见高度一致，无论盘口深浅均大概率赢指",
       "first_seen": "2026-07-22",
-      "last_seen": "2026-07-24",
+      "last_seen": "2026-08-03",
       "history": [
         {
           "date": "2026-07-22",
@@ -1699,6 +1699,27 @@
           "profit": 174.42,
           "return_ratio": 1.02,
           "lota_id": "Lota4467111"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 148.5,
+          "return_ratio": 0.99,
+          "lota_id": "Lota4467114"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 156.0,
+          "return_ratio": 1.04,
+          "lota_id": "Lota4467119"
+        },
+        {
+          "date": "2026-08-03",
+          "hit": true,
+          "profit": 139.5,
+          "return_ratio": 0.93,
+          "lota_id": "Lota4546327"
         }
       ]
     },
