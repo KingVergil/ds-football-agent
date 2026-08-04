@@ -14,11 +14,13 @@
 
 用法:
   python3 -m src.chuan_guan_dog analyze [YYYY-MM-DD] [--dry-run] [--stake-pct 5]
-      # 票型由 agent 自主决定；也可 --tickets 3串1,3过2 手动覆盖
+      # 默认走 LLM 分析（人设+竞彩数据+7狗倾向 → 腿/票型）；--rules 强制规则版
+      # 也可 --tickets 3串1,3过2 手动覆盖票型
   python3 -m src.chuan_guan_dog alpha [--exclude 均注狗]          # 开启 alpha（跨7狗因子+订单共识）
   python3 -m src.chuan_guan_dog analyze 2026-06-13 --alpha         # 开启后带 alpha 分析
-  python3 -m src.chuan_guan_dog backtest 2026-06-11 2026-08-03 [--review-interval 7]
-      # 迭代回测（逐日 analyze→settle；默认每7天模拟一次因子退役，影响后续 alpha 信任权重）
+  python3 -m src.chuan_guan_dog backtest 2026-06-11 2026-08-03 [--review-interval 7] [--review-mode llm|sim]
+      # 迭代回测（逐日 analyze→settle；默认每7天 LLM 因子退役审查，影响后续 alpha 信任权重）
+  python3 -m src.chuan_guan_dog reset        # 重置角色到 1000 起步（清订单）
   python3 -m src.chuan_guan_dog settle [YYYY-MM-DD]
   python3 -m src.chuan_guan_dog pending
   python3 -m src.chuan_guan_dog status
@@ -172,6 +174,149 @@ class ChuanGuanDog(Agent):
         legs.sort(key=lambda x: x["confidence"], reverse=True)
         return legs
 
+    def _select_legs_llm(self, matches: list[dict], day_date: str,
+                         alpha_data: dict = None) -> tuple[Optional[list[dict]], Optional[list[str]]]:
+        """LLM 分析选腿（与 Agent 同套输出契约）。
+
+        人设 + 当天竞彩让球数据 + 7狗倾向 → 每腿一个 ```order 块 + 票型行，
+        复用 parse_order 解析 + lota_id/队名校验；LLM 的 pick 直接采用，不做规则阈值过滤。
+
+        返回 (legs, tickets)：legs=[] 表示 LLM 判定空仓（合法），
+        (None, None) 表示分析失败（由 analyze 回退规则）。
+        """
+        import re
+        from .prompt_builder import parse_order
+        from .providers.deepseek import DeepSeekProvider
+        role = self._ensure_role()
+        provider = self._runtime().provider
+        if provider is None:
+            try:
+                self.set_provider(DeepSeekProvider())
+                provider = self._runtime().provider
+            except Exception:
+                return None, None
+        if not matches:
+            return [], None
+
+        cand_map = {m["lota_id"]: m for m in matches if m.get("lota_id")}
+        lines = []
+        for m in matches:
+            h = m.get("jc_hhad") or {}
+            alpha_txt = ""
+            if alpha_data:
+                leans = {"H": 0, "D": 0, "A": 0}
+                for dog, o in (alpha_data["orders_by_lota"].get(m["lota_id"], {}) or {}).items():
+                    side = self._order_side(o)
+                    if side in leans:
+                        leans[side] += 1
+                if any(leans.values()):
+                    alpha_txt = f" | 7狗倾向 主{leans['H']}/平{leans['D']}/客{leans['A']}"
+            lines.append(
+                f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
+                f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]} "
+                f"让球{h.get('goal_line','?')} 主/平/客="
+                f"{h.get('home_odds','?')}/{h.get('draw_odds','?')}/{h.get('away_odds','?')}{alpha_txt}"
+            )
+        persona = role.persona_text()
+        prompt = f"""你是竞彩串关分析 agent（串关狗）。
+
+## 人设
+{persona}
+
+## {day_date} 足球日可投注竞彩让球胜平负场次
+{chr(10).join(lines)}
+
+## 任务
+从上面场次中选出 2~4 场作为串关腿（一场最多一腿），每腿给出让球胜平负选择，并自定票型。
+
+每个候选腿用一个 ```order 代码块输出（类型固定写 胜平负，盘口=该场竞彩让球线）：
+```order
+lota_id: ...
+类型: 胜平负
+pick: H
+盘口: -1
+赔率: 1.47
+金额: 100
+理由: ≤40字
+```
+
+最后另起一行输出票型，例如：票型: 3串1,3过2
+（合法票型：2串1/3串1/4串1/3过2/4过3，所需腿数不能超过实际腿数）
+
+要求：
+- lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
+- 保守原则：不够 2 场好腿就空仓（只输出 票型: 无，不输出任何 order 块）；不追高赔冷门
+- 结合人设风格与 7 狗倾向（如有）决策，宁缺毋滥"""
+        try:
+            response = provider.call(
+                prompt,
+                [{"role": "user", "content": "分析以上竞彩场次并输出下注决策。"}],
+                temperature=0.1,
+            )
+        except Exception as e:
+            print(f"  ⚠️ LLM 分析失败: {e}")
+            return None, None
+        if not response:
+            return None, None
+
+        blocks = re.findall(r'```order\n(.*?)(?=```|\Z)', response, re.DOTALL)
+        legs, seen = [], set()
+        for block in blocks:
+            parsed = parse_order("```order\n" + block + "\n```")
+            if not parsed or parsed.get("skip"):
+                continue
+            lid = parsed.get("lota_id", "")
+            pick = parsed.get("pick", "")
+            reason = (parsed.get("reason", "") or "") + block
+            if lid not in cand_map:
+                matched = next(
+                    (m["lota_id"] for m in matches
+                     if (m.get("home_name") or "")[:2] in reason
+                     or (m.get("away_name") or "")[:2] in reason),
+                    None)
+                if not matched:
+                    print(f"  ⚠️ LLM 输出未知比赛 {lid}，跳过")
+                    continue
+                lid = matched
+            if lid in seen or pick not in ("H", "D", "A"):
+                continue
+            seen.add(lid)
+            m = cand_map[lid]
+            h = m.get("jc_hhad") or {}
+            try:
+                gl = float(h.get("goal_line"))
+                odds = float({"H": h["home_odds"], "D": h["draw_odds"], "A": h["away_odds"]}[pick])
+            except Exception:
+                continue
+            legs.append({
+                "lota_id": lid,
+                "home_name": m.get("home_name", "?"),
+                "away_name": m.get("away_name", "?"),
+                "league_name": m.get("league_name", ""),
+                "match_time": m.get("match_time", ""),
+                "jingcai_number": m.get("jingcai_number", ""),
+                "pick": pick,
+                "goal_line": gl,
+                "odds": odds,
+                "confidence": round(self._implied_prob(odds), 4),
+                "llm_reason": str(parsed.get("reason", ""))[:80],
+                "llm": True,
+                "jc_hhad": h,
+            })
+        if not legs:
+            return [], None  # LLM 空仓是合法结论
+
+        tickets = []
+        tk_m = re.search(r'票型[：:]\s*([^\n]+)', response)
+        if tk_m:
+            for tk in re.split(r"[，,、+\s]+", tk_m.group(1).strip()):
+                if tk in ("无", "空", "none", "None", ""):
+                    continue
+                spec = self._parse_ticket_spec(tk)
+                if spec and spec[1] <= len(legs) and spec[0] >= spec[1]:
+                    tickets.append(tk)
+        return legs[: self.PICK_N], (tickets or None)
+
     # ═══════════════════════════════════════════
     # alpha 模式 — 跨7狗因子 + 订单共识
     # ═══════════════════════════════════════════
@@ -287,6 +432,128 @@ class ChuanGuanDog(Agent):
                     retired_now.append(f"{dog}/{fid}")
         return retired_now
 
+    def _llm_factor_review(self, day_date: str, sim_retired: set) -> list[str]:
+        """LLM 周度因子退役审查（对齐生产 review_all_factors.py 的 prompt/口径）。
+
+        对 7 狗各自因子库构建候选列表（全量统计 + 近7天窗口统计 + 人设），
+        调 DeepSeek LLM 出 retire/dormant 结论；仅退役结果进内存 sim_retired，
+        不写线上 factor_memory.json。
+        """
+        import re as _re
+        from pathlib import Path
+        from .providers.deepseek import DeepSeekProvider
+
+        role = self._ensure_role()
+        exclude = set(role.cross_factor_exclude or []) | {self.user}
+        roles_root = Path(__file__).parent.parent / "lota_data" / "roles"
+        cutoff = (date.fromisoformat(day_date) - timedelta(days=7)).isoformat()
+        provider = self._runtime().provider
+        if provider is None:
+            try:
+                self.set_provider(DeepSeekProvider())
+                provider = self._runtime().provider
+            except Exception as e:
+                print(f"  ⚠️ LLM 审查不可用({e})，回退确定性模拟")
+                return self._sim_factor_review(day_date, sim_retired)
+
+        retired_now = []
+        for dog in self.ALPHA_DOGS:
+            if dog in exclude:
+                continue
+            mem_path = roles_root / dog / "memory" / "factor_memory.json"
+            try:
+                data = json.loads(mem_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            fp = data.get("factor_perf") or {}
+            if not fp:
+                continue
+
+            candidates: dict[str, dict] = {}
+            for fid, s in fp.items():
+                if s.get("status") == "retired":
+                    continue
+                total = int(s.get("total", 0))
+                hit = int(s.get("hit", 0))
+                denom = total - int(s.get("push", 0))
+                hit_rate = f"{hit / denom * 100:.0f}%" if denom > 0 else "无数据"
+                hist_w = [h for h in s.get("history", [])
+                          if cutoff < h.get("date", "") <= day_date]
+                w_ret = sum(h.get("return_ratio", 0) for h in hist_w)
+                candidates[fid] = {
+                    "status": s.get("status", "active"),
+                    "total": total,
+                    "hit_rate": hit_rate,
+                    "profit": s.get("profit", 0),
+                    "desc": s.get("desc", ""),
+                    "first_seen": s.get("first_seen", ""),
+                    "last_seen": s.get("last_seen", ""),
+                    "window_n": len(hist_w),
+                    "window_return": round(w_ret, 2),
+                }
+            if not candidates:
+                continue
+
+            persona = ""
+            persona_path = roles_root / dog / "persona.md"
+            if persona_path.exists():
+                persona = persona_path.read_text(encoding="utf-8").strip()
+            candidates_text = "\n".join(
+                f"  {fid} [{c['status']}]: {c['total']}次 命中{c['hit_rate']} "
+                f"盈亏{c['profit']:+.0f} | 首见={c['first_seen']} 最近={c['last_seen']}\n"
+                f"    定义: {(c['desc'][:100] if c['desc'] else '(无描述)')}\n"
+                f"    近7天({cutoff}~{day_date}): {c['window_n']}次 回报{c['window_return']:+.2f}"
+                for fid, c in sorted(candidates.items(), key=lambda x: -x[1]["total"])
+            )
+            prompt = f"""你是量化足球博彩分析师，负责审查因子库健康度。
+
+## 投注人设
+{persona if persona else '(未设)'}
+
+## 待评估因子列表（审查截止 {day_date}）
+{candidates_text}
+
+## 评估原则
+你的任务不是评估因子"赢了几次"，而是判断**因子的市场假设是否还成立**：
+1. 这个因子的核心假设是什么？（从定义推断）
+2. 近7天窗口内是否被反复证伪？
+3. 这个定价低效是否已被市场修正？
+4. 是否已被更精细因子完全替代？
+
+结论三档：retire（假设被证伪/市场修正/被替代）、dormant（近期无触发暂休眠）、active（保留）。
+⚠️ 保守原则：宁可多保留，不要误删。
+
+必须输出合法 JSON：
+{{"retire": ["因子A"], "dormant": ["因子B"], "rationale": {{"因子A": "理由≤40字"}}}}
+因子名必须与上方列表逐字一致。"""
+            try:
+                response = provider.call(
+                    prompt,
+                    [{"role": "user", "content": "按 JSON 格式输出。"}],
+                    temperature=0.3,
+                    response_format={"type": "json_object"},
+                )
+            except Exception as e:
+                print(f"  ⚠️ {dog} LLM 审查失败: {e}")
+                continue
+            if not response:
+                continue
+            try:
+                verdict = json.loads(self._extract_json(str(response)))
+            except Exception:
+                print(f"  ⚠️ {dog} LLM 返回非 JSON，跳过")
+                continue
+            for fid in verdict.get("retire", []):
+                if fid in candidates and (dog, fid) not in sim_retired:
+                    sim_retired.add((dog, fid))
+                    retired_now.append(f"{dog}/{fid}")
+        return retired_now
+
+    def _factor_review(self, day_date: str, sim_retired: set, review_mode: str) -> list[str]:
+        if review_mode == "llm":
+            return self._llm_factor_review(day_date, sim_retired)
+        return self._sim_factor_review(day_date, sim_retired)
+
     def _apply_alpha(self, legs: list[dict], alpha_data: dict) -> list[dict]:
         """结合因子与订单共识调整腿置信度，记录 alpha 信息后按新置信度排序。"""
         orders_by_lota = alpha_data["orders_by_lota"]
@@ -356,6 +623,17 @@ class ChuanGuanDog(Agent):
                     return None
         return None
 
+    @staticmethod
+    def _extract_json(text: str) -> str:
+        """从模型响应提取 JSON：剥离 [thinking] 块、代码围栏与前后文字。"""
+        import re as _re
+        text = _re.sub(r"\[thinking\].*?\[/thinking\]", "", text, flags=_re.S)
+        text = _re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=_re.M)
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            return text[start:end + 1]
+        return text.strip()
+
     def _build_slips(self, legs: list[dict], tickets: list[str]) -> list[dict]:
         """把候选腿组票，返回若干“票单”（slip），每票含展开后的子单组合。
 
@@ -395,7 +673,7 @@ class ChuanGuanDog(Agent):
     def analyze(self, day_date: str = None, live: bool = False, jingcai_only: bool = True,
                 prefetched: bool = False, dry_run: bool = False,
                 tickets: Optional[list[str]] = None, stake_pct: Optional[float] = None,
-                sim_retired: set = None) -> dict:
+                sim_retired: set = None, use_llm: Optional[bool] = None) -> dict:
         day_date = day_date or self._default_day()
         stake_pct = stake_pct if stake_pct is not None else self.STAKE_PCT
 
@@ -403,11 +681,24 @@ class ChuanGuanDog(Agent):
         try:
             role = self._ensure_role()
             matches = self._jc_matches(day_date, live=live)
-            legs = self._select_legs(matches)
-            if role.alpha_mode:
+            source = "rules"
+            llm_tickets = None
+            if use_llm is None:
+                use_llm = True  # 默认走 LLM，无 provider/失败时自动回退规则
+            if use_llm:
+                alpha_data = self._load_alpha_data(day_date, sim_retired) if role.alpha_mode else None
+                legs, llm_tickets = self._select_legs_llm(matches, day_date, alpha_data)
+                if legs is not None:
+                    source = "llm"
+                else:
+                    print("  → 回退规则选腿")
+                    legs = self._select_legs(matches)
+            else:
+                legs = self._select_legs(matches)
+            if role.alpha_mode and source == "rules":
                 legs = self._apply_alpha(legs, self._load_alpha_data(day_date, sim_retired))
             legs = legs[: self.PICK_N]
-            tickets = list(tickets) if tickets else self._decide_tickets(legs)
+            tickets = list(tickets) if tickets else (llm_tickets or self._decide_tickets(legs))
             slips = self._build_slips(legs, tickets)
 
             placed, orders, skipped = 0, [], []
@@ -449,6 +740,7 @@ class ChuanGuanDog(Agent):
                 "placed": placed if not dry_run else len(orders),
                 "dry_run": dry_run,
                 "alpha_mode": role.alpha_mode,
+                "source": source,
                 "skipped": skipped,
                 "session_path": str(session._path),
             }
@@ -584,14 +876,27 @@ class ChuanGuanDog(Agent):
             "pnl": sum(o.get("profit", 0) for o in settled),
         }
 
+    def reset(self, capital: float = None) -> dict:
+        """重置角色到初始状态：资金回 START_CAPITAL、清空订单、关闭 alpha。"""
+        role = self._ensure_role()
+        role.capital = float(capital) if capital else float(self.START_CAPITAL)
+        role.initial_capital = role.capital
+        role.orders = []
+        role.alpha_mode = False
+        role.cross_factor_exclude = []
+        role.save()
+        return {"capital": role.capital, "orders": len(role.orders), "alpha_mode": role.alpha_mode}
+
     def backtest(self, start_date: str, end_date: str,
-                 review_interval: int = None) -> dict:
+                 review_interval: int = None, review_mode: str = "llm",
+                 mode: str = "llm") -> dict:
         """逐足球日 分析→结算 迭代回测（真实落单，按当天资金滚动仓位）。
 
         review_interval>0 时，每隔 N 天模拟一次因子退役（仅内存，影响 alpha 信任权重），
         默认 REVIEW_INTERVAL=7，与生产周度审查节奏一致。
         """
         review_interval = self.REVIEW_INTERVAL if review_interval is None else int(review_interval)
+        review_mode = review_mode or "llm"
         d = date.fromisoformat(start_date)
         end = date.fromisoformat(end_date)
         rows = []
@@ -601,8 +906,8 @@ class ChuanGuanDog(Agent):
             ds = d.isoformat()
             retired_now = []
             if review_interval > 0 and day_idx > 0 and day_idx % review_interval == 0:
-                retired_now = self._sim_factor_review(ds, sim_retired)
-            a = self.analyze(ds, sim_retired=sim_retired)
+                retired_now = self._factor_review(ds, sim_retired, review_mode)
+            a = self.analyze(ds, sim_retired=sim_retired, use_llm=(mode == "llm"))
             s = self.settle(ds)
             rows.append({
                 "date": ds,
@@ -657,7 +962,7 @@ def _fmt_order(o: dict) -> str:
 
 def main(argv: list[str] = None) -> int:
     p = argparse.ArgumentParser(prog="chuan_guan_dog", description="竞彩串关狗")
-    p.add_argument("action", choices=["analyze", "settle", "pending", "status", "alpha", "backtest"])
+    p.add_argument("action", choices=["analyze", "settle", "pending", "status", "alpha", "backtest", "reset"])
     p.add_argument("day", nargs="?", default=None, help="YYYY-MM-DD（足球日起始日，默认当天）")
     p.add_argument("end", nargs="?", default=None, help="backtest 结束日 YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="只预览不落单")
@@ -665,8 +970,13 @@ def main(argv: list[str] = None) -> int:
     p.add_argument("--stake-pct", type=float, default=None, help="每张票资金占比%%")
     p.add_argument("--alpha", action="store_true", help="开启 alpha 模式（跨7狗因子+订单共识）并持久化")
     p.add_argument("--exclude", default=None, help="alpha 排除的角色，逗号分隔")
+    p.add_argument("--rules", action="store_true", help="强制规则版选腿（不调 LLM）")
     p.add_argument("--review-interval", type=int, default=None,
                    help="backtest 因子退役模拟间隔天数（默认7，0=关闭）")
+    p.add_argument("--review-mode", choices=["llm", "sim"], default="llm",
+                   help="backtest 因子退役审查方式（默认 llm 走 DeepSeek；sim=确定性模拟）")
+    p.add_argument("--mode", choices=["llm", "rules"], default="llm",
+                   help="backtest 选腿方式（默认 llm 走 DeepSeek 分析；rules=规则版）")
     p.add_argument("--user", default="串关狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
 
@@ -684,10 +994,11 @@ def main(argv: list[str] = None) -> int:
     if args.action == "analyze":
         tickets = [t.strip() for t in args.tickets.split(",")] if args.tickets else None
         r = dog.analyze(args.day, live=False, dry_run=args.dry_run,
-                        tickets=tickets, stake_pct=args.stake_pct)
+                        tickets=tickets, stake_pct=args.stake_pct, use_llm=not args.rules)
         tks = "+".join(r.get("tickets") or []) or "空仓"
         alpha_tag = " 🐺alpha" if r.get("alpha_mode") else ""
-        print(f"📅 {r['date']}{alpha_tag} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']} | 票型 {tks}")
+        src_tag = "🧠LLM" if r.get("source") == "llm" else "📐规则"
+        print(f"📅 {r['date']} {src_tag}{alpha_tag} | 竞彩场次 {r['matches_count']} | 候选腿 {r['legs_selected']} | 票型 {tks}")
         for o in r["orders"]:
             print("  " + _fmt_order(o))
         if r["skipped"]:
@@ -706,11 +1017,15 @@ def main(argv: list[str] = None) -> int:
     elif args.action == "status":
         s = dog.status()
         print(f"💰 资金 {s['capital']:.0f} | 订单 {s['total_orders']} (已结{s['settled']}/待{s['pending']}) | PnL {s['pnl']:+.0f}")
+    elif args.action == "reset":
+        r = dog.reset()
+        print(f"♻️ 已重置: 资金 {r['capital']:.0f} | 订单 {r['orders']} | alpha {r['alpha_mode']}")
     elif args.action == "backtest":
         if not args.day or not args.end:
-            print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha] [--review-interval 7]")
+            print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha] [--review-interval 7] [--review-mode llm|sim]")
             return 1
-        r = dog.backtest(args.day, args.end, review_interval=args.review_interval)
+        r = dog.backtest(args.day, args.end, review_interval=args.review_interval,
+                         review_mode=args.review_mode, mode=args.mode)
         print("日期 | 竞彩 | 腿 | 票型 | 下单 | 结算(中/挂) | 当日PnL | 资金")
         for row in r["days"]:
             tks = "+".join(row["tickets"]) or "空仓"
