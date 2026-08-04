@@ -1,0 +1,13 @@
+{
+  "id": "fac_赔率上行避平",
+  "slugs": [
+    "fair-odds",
+    "asian-handicap-pinnacle",
+    "over-under-crown",
+    "betfair-buysell",
+    "discrete-odds",
+    "eu-odds-pinnacle"
+  ],
+  "content": "临场平赔未降反升时，即使资金有买盘也不宜追平局。",
+  "updated_at": "2026-08-03T10:09:10.361501"
+}

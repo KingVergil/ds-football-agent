@@ -1,0 +1,92 @@
+{
+  "schema": "2.0",
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "template": "orange",
+    "title": {
+      "tag": "plain_text",
+      "content": "📧 今日订单 · 2026-08-02"
+    }
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**梭哈3狗** · 足球日 2026-08-02 · 剩余 4单 待结算"
+      },
+      {
+        "tag": "table",
+        "element_id": "orders_1",
+        "page_size": 10,
+        "row_height": "auto",
+        "header_style": {
+          "text_align": "center",
+          "text_size": "normal",
+          "background_style": "grey",
+          "text_color": "default",
+          "bold": true
+        },
+        "columns": [
+          {
+            "name": "time",
+            "display_name": "时间",
+            "width": "88px",
+            "data_type": "text",
+            "horizontal_align": "center"
+          },
+          {
+            "name": "matchup",
+            "display_name": "对阵",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "pick",
+            "display_name": "选择",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "status",
+            "display_name": "状态",
+            "width": "88px",
+            "data_type": "options",
+            "horizontal_align": "center"
+          }
+        ],
+        "rows": [
+          {
+            "time": "08-02 18:30",
+            "matchup": "韩K联\n**大田市民** vs 光州FC",
+            "pick": "**光州FC** -1 @1.0 · **10.2%**"
+          },
+          {
+            "time": "08-02 20:00",
+            "matchup": "瑞典超\n**哥德堡** vs 代格福什",
+            "pick": "**代格福什** -0.75 @0.83 · **10.2%**"
+          },
+          {
+            "time": "08-02 20:00",
+            "matchup": "芬超\n**VPS瓦萨** vs 图尔库国际",
+            "pick": "**图尔库国际** +0 @0.88 · **6.8%**"
+          },
+          {
+            "time": "08-02 23:00",
+            "matchup": "挪超\n**莫尔德** vs 萨普斯堡",
+            "pick": "**萨普斯堡** -0.75 @1.06 · **17.0%**"
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "⏰ 除 12 点附近的邮件外，请参考未来 3 小时内的比赛。"
+      },
+      {
+        "tag": "markdown",
+        "content": "更新于 2026-08-02 16:01:09 · 群里说「今日单」刷新"
+      }
+    ]
+  }
+}

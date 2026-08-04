@@ -1,0 +1,12 @@
+{
+  "id": "fac_离散凝聚避平",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "over-under-crown",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "平局离散指数极度低位时，市场过度一致看平反而平局难出，应予避开",
+  "updated_at": "2026-08-02T13:47:23.646091"
+}

@@ -1,0 +1,102 @@
+{
+  "schema": "2.0",
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "template": "orange",
+    "title": {
+      "tag": "plain_text",
+      "content": "📧 今日订单 · 2026-08-02"
+    }
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**alpha狗** · 足球日 2026-08-02 · 剩余 6单 待结算"
+      },
+      {
+        "tag": "table",
+        "element_id": "orders_1",
+        "page_size": 10,
+        "row_height": "auto",
+        "header_style": {
+          "text_align": "center",
+          "text_size": "normal",
+          "background_style": "grey",
+          "text_color": "default",
+          "bold": true
+        },
+        "columns": [
+          {
+            "name": "time",
+            "display_name": "时间",
+            "width": "88px",
+            "data_type": "text",
+            "horizontal_align": "center"
+          },
+          {
+            "name": "matchup",
+            "display_name": "对阵",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "pick",
+            "display_name": "选择",
+            "width": "auto",
+            "data_type": "markdown"
+          },
+          {
+            "name": "status",
+            "display_name": "状态",
+            "width": "88px",
+            "data_type": "options",
+            "horizontal_align": "center"
+          }
+        ],
+        "rows": [
+          {
+            "time": "08-02 18:30",
+            "matchup": "韩K联\n**蔚山HD** vs 安养FC",
+            "pick": "**安养FC** -0.50 @0.87 · **8.6%**"
+          },
+          {
+            "time": "08-02 20:00",
+            "matchup": "瑞典超\n**哥德堡** vs 代格福什",
+            "pick": "**代格福什** -0.75 @0.83 · **15.1%**"
+          },
+          {
+            "time": "08-02 20:00",
+            "matchup": "瑞典超\n**布洛马波卡纳** vs 马尔默",
+            "pick": "**布洛马波卡纳** +0.25 @1.01 · **10.8%**"
+          },
+          {
+            "time": "08-02 22:30",
+            "matchup": "瑞典超\n**AIK索尔纳** vs 奥尔格里特",
+            "pick": "**AIK索尔纳** -1.25 @0.97 · **17.2%**"
+          },
+          {
+            "time": "08-03 05:00",
+            "matchup": "巴西杯\n**米拉索** vs 格雷米奥",
+            "pick": "**米拉索** -0.50 @0.99 · **10.8%**"
+          },
+          {
+            "time": "08-03 06:30",
+            "matchup": "巴西杯\n**巴西国际** vs 科林蒂安",
+            "pick": "**巴西国际** -0.25 @0.91 · **5.2%**"
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "⏰ 除 12 点附近的邮件外，请参考未来 3 小时内的比赛。"
+      },
+      {
+        "tag": "markdown",
+        "content": "更新于 2026-08-02 16:01:09 · 群里说「今日单」刷新"
+      }
+    ]
+  }
+}

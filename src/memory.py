@@ -336,6 +336,46 @@ class FactorMemory:
         self.factor_perf: dict[str, dict] = {}  # {factor_id: {total,hit,miss,profit}}
         self._loaded = False
 
+    def _consolidate_candidate(self, factor_id: str, desc: str) -> tuple:
+        """LLM 判重：候选因子 vs 现有因子（difflib 预筛 + LLM 语义判断）。失败安全=create。"""
+        import difflib
+        names = list(self.factor_perf.keys())
+        if not names:
+            return ("create", None)
+        scored = sorted(((difflib.SequenceMatcher(None, factor_id, n).ratio(), n) for n in names), reverse=True)
+        short = [n for s, n in scored if s >= 0.45][:6]
+        if not short:
+            return ("create", None)
+        try:
+            from src.providers.deepseek import DeepSeekProvider
+            import json as _json
+            provider = DeepSeekProvider()
+            lib_lines = "\n".join(
+                f"{i}. {n} [状态:{self.factor_perf[n].get('status','active')}] | "
+                f"{self.factor_perf[n].get('desc','')[:80]} "
+                f"(样本{self.factor_perf[n].get('total',0)} 盈亏{self.factor_perf[n].get('profit',0):+.0f})"
+                for i, n in enumerate(short, 1)
+            )
+            system = ("你是足球因子库管理员。判断候选因子是否与现有因子重复。"
+                      "规则: 语义重复(同模式/同义改写)→merge并填最匹配的现有因子名; "
+                      "方向相反(上盘vs下盘/让球方vs受让方/追强vs防冷)→绝不合并create; "
+                      "与retired因子重复→suppress; 双方样本都充足且盈亏方向相反→create; 全新→create。"
+                      "只输出JSON。")
+            user = (f"候选因子: {factor_id} | {desc[:120]}\n\n现有因子:\n{lib_lines}\n\n"
+                    '输出 JSON: {"action":"merge|create|suppress","target":"因子名或null","reason":"一句话"}')
+            raw = provider.call(system, [{"role": "user", "content": user}], temperature=0.0)
+            start, end = raw.find("{"), raw.rfind("}")
+            verdict = _json.loads(raw[start:end + 1]) if start != -1 and end != -1 else {"action": "create"}
+            action = verdict.get("action", "create")
+            target = verdict.get("target")
+            if action == "merge" and target in self.factor_perf:
+                return ("merge", target)
+            if action == "suppress" and target in self.factor_perf:
+                return ("suppress", target)
+            return ("create", None)
+        except Exception:
+            return ("create", None)
+
     def record(self, factor_id: str, hit: bool | None, profit: float,
                desc: str = "", date: str = "", lota_id: str = "",
                bet_size: float = 0) -> None:
@@ -343,13 +383,25 @@ class FactorMemory:
             self.load()
         return_ratio = profit / bet_size if bet_size > 0 else 0.0
         if factor_id not in self.factor_perf:
-            self.factor_perf[factor_id] = {
-                "total": 0, "hit": 0, "miss": 0, "push": 0,
-                "profit": 0.0, "total_return": 0.0,
-                "status": "active", "desc": desc,
-                "first_seen": date, "last_seen": date,
-                "history": [],
-            }
+            action, target = self._consolidate_candidate(factor_id, desc)
+            if action == "suppress":
+                return  # 命中已退役因子，不新建、不复活
+            if action == "merge" and target and target in self.factor_perf:
+                t = self.factor_perf[target]
+                t.setdefault("aliases", [])
+                if factor_id not in t["aliases"]:
+                    t["aliases"].append(factor_id)
+                if t.get("status") == "dormant":
+                    t["status"] = "active"
+                factor_id = target  # 归因到现有因子
+            else:
+                self.factor_perf[factor_id] = {
+                    "total": 0, "hit": 0, "miss": 0, "push": 0,
+                    "profit": 0.0, "total_return": 0.0,
+                    "status": "active", "desc": desc,
+                    "first_seen": date, "last_seen": date,
+                    "history": [], "aliases": [],
+                }
         p = self.factor_perf[factor_id]
         p["total"] += 1
         if hit is True:       p["hit"] += 1
@@ -415,72 +467,51 @@ class FactorMemory:
         return main[:FACTOR_MAX_MAIN], aux[:6], dormant_count
 
     def perf_text(self) -> str:
+        """分层注入：L1 负例护栏 + L2 正例(自适应main) + L3 观察摘要 + L4 休眠计数。"""
         if not self._loaded or not self.factor_perf:
             return ""
         main, aux, dormant_count = self.selected_active()
-        retired = []
-        for fid, s in self.factor_perf.items():
-            if s.get("status", "active") == "retired":
-                retired.append((fid, s))
+        retired = sorted(
+            ((fid, s0) for fid, s0 in self.factor_perf.items() if s0.get("status") == "retired"),
+            key=lambda x: -float(x[1].get("profit") or 0),
+        )[:8]
         lines = []
+        if retired:
+            lines.append("🪦 已证伪模式（负例护栏，勿用）:")
+            for fid, s0 in retired:
+                lines.append(f"  ❌ {fid} (累计{float(s0.get('profit') or 0):+.0f})")
         if main:
-            lines.append(
-                f"📐 活跃因子（最近{FACTOR_SAMPLE_WINDOW}单·衰减加权·按加权单注回报排序）:"
-            )
-            lines.append("    ⚠️ 样本<5 的因子仅作方向参考，仓位减半/试探")
-            for fid, s, p in main:
-                small = f" ⚠️样本少({p['n']}单)" if p["n"] < FACTOR_SMALL_SAMPLE else ""
-                lifetime = s.get("total_return", s.get("profit", 0.0))
-                lines.append(
-                    f"  {fid} [近{p['n']}单({p['first_seen_recent'][5:]}~"
-                    f"{p['last_seen_recent'][5:]}) 命中{p['hits']}/{p['n']} "
-                    f"加权回报{p['w_return']:+.2f} 收缩命中{p['shrunk_rate']:.0%}"
-                    f"{small} | 累计{s['total']}单 回报{lifetime:+.2f}]"
-                )
-                desc = s.get("desc", "")
+            lines.append("📐 活跃因子（按自适应得分）:")
+            for fid, s0, p0 in main:
+                small = f" ⚠️样本少({p0['n']}单)" if p0["n"] < 5 else ""
+                lines.append(f"  {fid} [近{p0['n']}单 命中{p0['hits']}/{p0['n']} 加权回报{p0['w_return']:+.2f}{small}]")
+                desc = s0.get("desc", "")
                 if desc:
                     lines.append(f"     {desc[:80]}")
         if aux:
-            lines.append("📉 近期走弱/样本不足因子（除非强信号否则勿用）:")
-            for fid, s, p in aux:
-                if p:
-                    lines.append(
-                        f"  ⚠️ {fid}: 近{p['n']}单 加权回报{p['w_return']:+.2f}"
-                    )
-                else:
-                    lines.append(f"  ⚠️ {fid}: 近{FACTOR_SAMPLE_WINDOW}单无记录")
-        if not main and not aux:
-            lines.append("📐 活跃因子: (近窗口内无触发，暂无推荐因子)")
+            lines.append("📉 观察（样本不足/走弱，勿重仓）:")
+            for fid, s0, p0 in aux[:15]:
+                wr = p0["w_return"] if p0 else 0.0
+                n = p0["n"] if p0 else 0
+                lines.append(f"  ⚠️ {fid}: 近{n}单 加权回报{wr:+.2f}")
         if dormant_count:
-            lines.append(f"  (另有 {dormant_count} 个因子超过 3×平均触发间隔未激活/已休眠)")
-        if retired:
-            lines.append("🪦 已退役因子 (避免使用):")
-            for fid, s in retired[:10]:
-                lines.append(f"  ❌ {fid}")
+            lines.append(f"  (另有 {dormant_count} 个休眠因子)")
         return "\n".join(lines)
 
     def factor_desc_text(self) -> str:
-        """
-        从 lota_data/factors/fac_*.json 读取活跃因子的详细定义（slugs + content）。
-        与 perf_text() 互补：perf 展示统计，本方法展示因子含义。
-        只输出 perf_text() 中入选的因子定义，避免全量定义挤占 prompt。
-        """
-        main, aux, _ = self.selected_active()
-        active_names = {fid.lower() for fid, _, _ in main} | {fid.lower() for fid, _, _ in aux}
+        """L2 正例完整定义：只输出自适应 main 的定义（预算内，库再大不膨胀）。"""
+        main, _, _ = self.selected_active()
+        active_names = {fid.lower() for fid, _, _ in main}
         if not active_names:
             return ""
-
         factors_dir = DATA_ROOT / "factors"
         if not factors_dir.exists():
             return ""
-
         lines = ["📐 因子定义:"]
         for fpath in sorted(factors_dir.glob("fac_*.json")):
             try:
                 data = json.loads(fpath.read_text(encoding="utf-8"))
                 fid = data.get("id", "")
-                # 用 id 提取因子名: fac_fairoddshomedominance → FairOdds_HomeDominance
-                # 同时检查 factor_perf 中的键名匹配
                 content = data.get("content", "")
                 slugs = data.get("slugs", [])
                 matched = False

@@ -1,0 +1,12 @@
+{
+  "id": "fac_大小球偏大避平",
+  "slugs": [
+    "discrete-odds",
+    "eu-odds-pinnacle",
+    "betfair-buysell",
+    "over-under-crown",
+    "asian-handicap-pinnacle"
+  ],
+  "content": "大小球盘口超过2.5球时说明机构防范进球较多，浅盘下平局难度增大",
+  "updated_at": "2026-08-02T13:47:23.647692"
+}
