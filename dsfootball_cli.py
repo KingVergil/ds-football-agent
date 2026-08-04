@@ -596,12 +596,11 @@ if __name__ == "__main__":
         dm = DataManager()
         dm.set_live_mode(True)  # 未开赛场次强制刷新，拒绝旧缓存
         jingcai_only = "--jingcai" in sys.argv
+        with_jc_odds = "--jingcai-odds" in sys.argv  # 附带竞彩让球(goal_line/赔率)
 
         all_matches = []
         for cd in cal_dates:
-            ms = dm.fetch_matches_by_date(cd, lottery_type="all")
-            if ms:
-                dm.save_matches_cache(cd, ms)
+            ms = dm.refresh_matches_cache(cd, with_jc_odds=with_jc_odds)
             all_matches += ms or []
 
         candidates = [
