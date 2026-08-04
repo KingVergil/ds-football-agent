@@ -186,20 +186,23 @@ class Order:
     """
     投注订单 — 基于预测创建的虚拟投注。
 
-    只有三种可投注类型（有赔率）:
+    可投注类型（有赔率）:
       - 胜平负: bet_type="胜平负", pick="H"|"D"|"A", odds=对应赔率
       - 亚盘:   bet_type="亚盘", pick="H"|"A", odds=对应赔率, handicap=让球
       - 大小球: bet_type="大小球", pick="over"|"under", odds=对应赔率, threshold=盘口
+      - 让球胜平负: bet_type="让球胜平负", pick="H"|"D"|"A", odds=对应赔率,
+                   goal_line=竞彩让球线（负=主让，正=主受），用于竞彩串关
 
     比分和进球数不关联订单。
     """
     id: str = field(default_factory=lambda: _uid("ord_"))
     predict_id: str = ""                           # 关联 Prediction.id
     lota_id: str = ""                              # 比赛 ID（冗余查询）
-    bet_type: str = ""                             # 胜平负 | 亚盘 | 大小球
+    bet_type: str = ""                             # 胜平负 | 亚盘 | 大小球 | 让球胜平负
     pick: str = ""                                 # H/D/A | H/A | over/under
     odds: float = 0.0                              # 投注赔率（终盘 Pinnacle）
     handicap: Optional[float] = None               # 亚盘让球 / 大小球盘口
+    goal_line: Optional[float] = None              # 竞彩让球线（让球胜平负）
     bet_size: float = 100.0                        # 投注金额
     # 结算
     hit: Optional[bool] = None                     # 命中/未中/走水(None)

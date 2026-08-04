@@ -451,6 +451,8 @@ def create_order_from_prediction(pred: dict) -> Optional[dict]:
       - 胜平负: pick = value.result (H/D/A), odds = odds.h/d/a 中对应项
       - 亚盘:   pick = value.direction, odds = odds.h/a 中对应项, handicap = value.handicap
       - 大小球: pick = value.direction, odds = odds.over/under 中对应项, threshold = value.threshold
+      - 让球胜平负: pick = value.result (H/D/A), odds = odds.h/d/a 中对应项,
+                   goal_line = value.goal_line（负=主让，正=主受），用于竞彩串关
       - 比分/进球数: 不创建 (返回 None)
 
     返回: order dict 或 None
@@ -461,7 +463,7 @@ def create_order_from_prediction(pred: dict) -> Optional[dict]:
     value = pred.get("value", {})
     odds_data = pred.get("odds", {})
 
-    if ptype not in ("胜平负", "亚盘", "大小球"):
+    if ptype not in ("胜平负", "亚盘", "大小球", "让球胜平负"):
         return None
 
     if not odds_data:
@@ -473,9 +475,13 @@ def create_order_from_prediction(pred: dict) -> Optional[dict]:
         bet_type=ptype,
     )
 
-    if ptype == "胜平负":
+    if ptype in ("胜平负", "让球胜平负"):
         pick = value.get("result", "")
         order.pick = pick
+        if ptype == "让球胜平负":
+            gl = float(value.get("goal_line", value.get("handicap", 0)))
+            order.goal_line = gl
+            order.handicap = gl  # 兼容邮件/卡片等按 handicap 展示让球的路径
         if pick == "H":
             order.odds = float(odds_data.get("h", 0))
         elif pick == "D":
@@ -544,9 +550,22 @@ def settle_order(order_data: dict, score: str) -> dict:
     odds = float(order_data.get("odds") or 0)
     bet_size = float(order_data.get("bet_size") or 100)
 
-    # ── 胜平负（无 quarter-ball）──
-    if bet_type == "胜平负":
-        actual = score2_1x2(score)
+    # ── 胜平负 / 让球胜平负（固定赔率，无 quarter-ball / 无走水）──
+    if bet_type in ("胜平负", "让球胜平负"):
+        if bet_type == "让球胜平负":
+            # 竞彩让球胜平负：goal_line 负=主让、正=主受（主队视角），
+            # 调整后净胜球 diff+goal_line 判 H/D/A，无走水
+            gl_raw = order_data.get("goal_line")
+            gl = float(gl_raw if gl_raw is not None else (order_data.get("handicap") or 0))
+            adj = diff + gl
+            if adj > 0:
+                actual = "H"
+            elif adj < 0:
+                actual = "A"
+            else:
+                actual = "D"
+        else:
+            actual = score2_1x2(score)
         hit = (pick == actual) if pick in ("H", "D", "A") else None
 
         if hit is None:

@@ -102,9 +102,13 @@ def _load_match_info(lota_id: str) -> dict:
 
 def _fmt_pick(bet_type: str, pick: str, handicap: float | None) -> str:
     """投注选择 → 人类可读"""
-    if bet_type == "胜平负":
+    if bet_type in ("胜平负", "让球胜平负"):
         m = {"H": "主胜", "D": "平局", "A": "客胜"}
-        return m.get(pick, pick)
+        label = m.get(pick, pick)
+        if bet_type == "让球胜平负" and handicap is not None and handicap != 0:
+            hc_str = f"{handicap:+.0f}" if float(handicap).is_integer() else f"{handicap:+.2f}".rstrip('0').rstrip('.')
+            return f"{label}({hc_str})"
+        return label
     elif bet_type == "亚盘":
         side = "主队" if pick == "H" else "客队"
         if handicap is not None and handicap != 0:
@@ -210,7 +214,8 @@ def _row_compact(order: dict, match: dict) -> str:
     t = match.get("match_time", "")[5:16] or "?"  # "06-12 03:00"
     teams = f"{match.get('home','?')[:8]}vs{match.get('away','?')[:8]}"
     bt = order.get("bet_type", "")
-    pick_text = _fmt_pick(bt, order.get("pick", ""), order.get("handicap"))
+    hc = order.get("goal_line") if order.get("goal_line") is not None else order.get("handicap")
+    pick_text = _fmt_pick(bt, order.get("pick", ""), hc)
     odds = f"{order.get('odds', 0):.2f}"
     bet = f"{order.get('bet_size', 0):.0f}"
     score = match.get("score", "?")
@@ -227,7 +232,8 @@ def _header_detailed() -> str:
 
 def _row_detailed(order: dict, match: dict) -> str:
     bt = order.get("bet_type", "")
-    pick_text = _fmt_pick(bt, order.get("pick", ""), order.get("handicap"))
+    hc = order.get("goal_line") if order.get("goal_line") is not None else order.get("handicap")
+    pick_text = _fmt_pick(bt, order.get("pick", ""), hc)
     emoji = _fmt_emoji(order.get("hit"))
     profit = order.get("profit", 0)
 

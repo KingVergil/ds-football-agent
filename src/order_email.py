@@ -219,7 +219,7 @@ def _pick_display(order: dict) -> str:
     """将 pick 转为显示文本。让球→队名，胜平负→主胜/平/客胜，大小球保留原值。"""
     pick = order["pick"]
     bet_type = order.get("bet_type", "")
-    if bet_type == "胜平负":
+    if bet_type in ("胜平负", "让球胜平负"):
         return _SPF_MAP.get(pick, pick)
     home = order.get("home_name", "")
     away = order.get("away_name", "")
@@ -233,7 +233,7 @@ def _pick_display(order: dict) -> str:
 def _old_pick_display(old_pick: str, order: dict) -> str:
     """将旧 pick 转为显示文本。"""
     bet_type = order.get("bet_type", "")
-    if bet_type == "胜平负":
+    if bet_type in ("胜平负", "让球胜平负"):
         return _SPF_MAP.get(old_pick, old_pick)
     if old_pick == "H":
         return order.get("home_name", "H")
