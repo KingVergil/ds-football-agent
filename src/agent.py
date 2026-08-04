@@ -928,9 +928,9 @@ def node_settle_orders(state: AgentState) -> AgentState:
         match_label = f"{home} vs {away}" if home and away else lid
         if league:
             match_label += f" ({league})"
-        # 亚盘/大小球显示盘口
+        # 亚盘/大小球/让球胜平负显示盘口
         hc = o.get("handicap", 0) or 0
-        show_hc = o.get("bet_type") in ("亚盘", "大小球")
+        show_hc = o.get("bet_type") in ("亚盘", "大小球", "让球胜平负")
         hc_str = f" {hc:+.2f}" if hc and show_hc else ""
         print(f"  {icon} {match_label} {sc} | {o.get('bet_type','')} {o.get('pick','')}{hc_str} "
               f"@{o.get('odds',0):.2f} bet{o.get('bet_size',0):.0f} → {profit:+.0f}")
