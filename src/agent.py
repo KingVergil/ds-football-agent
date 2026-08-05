@@ -934,9 +934,10 @@ def node_settle_orders(state: AgentState) -> AgentState:
         hc_str = f" {hc:+.2f}" if hc and show_hc else ""
         print(f"  {icon} {match_label} {sc} | {o.get('bet_type','')} {o.get('pick','')}{hc_str} "
               f"@{o.get('odds',0):.2f} bet{o.get('bet_size',0):.0f} → {profit:+.0f}")
-        if h is True:       hit += 1
-        elif h is False:    miss += 1
-        else:               push += 1
+        # 赢半/输半（hit=None 但 profit≠0）按方向计入命中/未中，走水只留真走水(profit=0)
+        if h is True or (h is None and profit > 0):       hit += 1
+        elif h is False or (h is None and profit < 0):    miss += 1
+        else:                                             push += 1
         pnl += profit
 
     if skipped_no_score:
@@ -1156,7 +1157,11 @@ def node_reflect(state: AgentState) -> AgentState:
         # ── 辅助：清洗因子名 ──
         def _clean_name(name: str) -> str:
             n = name.strip()
+            # 去包裹引号（LLM 常把因子名带上引号输出）
+            n = n.strip('"\'“”`')
             n = re.sub(r'[（(][^）)]*[）)]', '', n).strip()
+            # 去 emoji / 符号（✅❌➖ 等易混入因子名）
+            n = re.sub(r'[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F]', '', n).strip()
             return n
 
         def _valid(name: str) -> bool:

@@ -1,11 +1,11 @@
 {
-  "updated_at": "2026-08-05T11:45:40.712531",
+  "updated_at": "2026-08-05T11:29:21.727349",
   "factor_perf": {
     "低水保护强盘": {
       "total": 3,
-      "hit": 3.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 3,
+      "miss": 0,
+      "push": 0,
       "profit": 768.0,
       "total_return": 2.54,
       "status": "dormant",
@@ -38,9 +38,9 @@
     },
     "退盘回位深盘打出": {
       "total": 2,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 1,
       "profit": 246.0,
       "total_return": 0.82,
       "status": "dormant",
@@ -66,11 +66,11 @@
     },
     "退盘上水大球受阻": {
       "total": 3,
-      "hit": 1.5,
-      "miss": 0.5,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 2,
       "profit": 69.95,
-      "total_return": 0.785,
+      "total_return": 0.7849999999999999,
       "status": "retired",
       "desc": "大小球盘口主动退盘且大球水位同步拉高，退盘非示弱而是真实看小，小球打出",
       "first_seen": "2026-06-12",
@@ -78,14 +78,14 @@
       "history": [
         {
           "date": "2026-06-12",
-          "hit": -0.5,
+          "hit": null,
           "profit": -75.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459820"
         },
         {
           "date": "2026-06-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 116.25,
           "return_ratio": 0.465,
           "lota_id": "Lota4460910"
@@ -101,10 +101,10 @@
     },
     "欧亚背离上盘": {
       "total": 3,
-      "hit": 3.0,
-      "miss": 0.0,
-      "push": 0.0,
-      "profit": 2613.06,
+      "hit": 3,
+      "miss": 0,
+      "push": 0,
+      "profit": 2613.0600000000004,
       "total_return": 2.54,
       "status": "dormant",
       "desc": "欧赔上盘赔率抬升但亚盘水位反向走低或维持低位，背离信号指向亚盘真实看好上盘",
@@ -136,11 +136,11 @@
     },
     "低水诱杀": {
       "total": 3,
-      "hit": 0.5,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 1,
       "profit": -609.8,
-      "total_return": -1.465,
+      "total_return": -1.4649999999999999,
       "status": "retired",
       "desc": "让球方实力占优但亚盘给出异常低位水位，诱导投注低水方，真实方向为对面高水方",
       "first_seen": "2026-06-13",
@@ -162,7 +162,7 @@
         },
         {
           "date": "2026-06-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 64.2,
           "return_ratio": 0.535,
           "lota_id": "Lota4468110"
@@ -171,11 +171,11 @@
     },
     "退盘诱小真大": {
       "total": 2,
-      "hit": 1.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 1,
+      "push": 0,
       "profit": -136.0,
-      "total_return": -0.18,
+      "total_return": -0.18000000000000005,
       "status": "dormant",
       "desc": "深盘或深大小盘下,若退盘且大球水位同步走高,但欧赔主胜赔率被极度压缩,则退盘是示弱诱小,实为保护大球,真大方向。",
       "first_seen": "2026-06-13",
@@ -199,9 +199,9 @@
     },
     "离散极致凝聚": {
       "total": 6,
-      "hit": 5.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 5,
+      "miss": 0,
+      "push": 1,
       "profit": 2971.98,
       "total_return": 4.955,
       "status": "retired",
@@ -211,7 +211,7 @@
       "history": [
         {
           "date": "2026-06-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 64.2,
           "return_ratio": 0.535,
           "lota_id": "Lota4468110"
@@ -255,9 +255,9 @@
     },
     "离散亚盘背离上盘": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -400.0,
       "total_return": -1.0,
       "status": "retired",
@@ -276,9 +276,9 @@
     },
     "离散凝聚同向下盘": {
       "total": 12,
-      "hit": 7.5,
-      "miss": 4.0,
-      "push": 0.0,
+      "hit": 7,
+      "miss": 4,
+      "push": 1,
       "profit": 152.0,
       "total_return": 2.495,
       "status": "retired",
@@ -337,7 +337,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 308.0,
           "return_ratio": 0.385,
           "lota_id": "Lota4460958"
@@ -374,9 +374,9 @@
     },
     "进球预期不支持深盘": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -186.0,
       "total_return": -2.0,
       "status": "retired",
@@ -402,9 +402,9 @@
     },
     "退盘上水小球": {
       "total": 4,
-      "hit": 4.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 4,
+      "miss": 0,
+      "push": 0,
       "profit": 360.02,
       "total_return": 3.42,
       "status": "dormant",
@@ -444,9 +444,9 @@
     },
     "退盘示弱": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -36.0,
       "total_return": -1.0,
       "status": "retired",
@@ -465,9 +465,9 @@
     },
     "退盘离散凝聚上盘": {
       "total": 21,
-      "hit": 15.0,
-      "miss": 0.5,
-      "push": 2.0,
+      "hit": 12,
+      "miss": 0,
+      "push": 9,
       "profit": 32018.86,
       "total_return": 12.81,
       "status": "dormant",
@@ -491,7 +491,7 @@
         },
         {
           "date": "2026-06-24",
-          "hit": 0.5,
+          "hit": null,
           "profit": 328.0,
           "return_ratio": 0.41,
           "lota_id": "Lota4468122"
@@ -505,7 +505,7 @@
         },
         {
           "date": "2026-06-27",
-          "hit": 0.5,
+          "hit": null,
           "profit": 900.0,
           "return_ratio": 0.45,
           "lota_id": "Lota4460925"
@@ -561,7 +561,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 328.0,
           "return_ratio": 0.41,
           "lota_id": "Lota4468122"
@@ -575,14 +575,14 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -1000.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4460952"
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 900.0,
           "return_ratio": 0.45,
           "lota_id": "Lota4460925"
@@ -603,7 +603,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 2676.5,
           "return_ratio": 0.505,
           "lota_id": "Lota4459720"
@@ -617,7 +617,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 505.0,
           "return_ratio": 0.505,
           "lota_id": "Lota4459807"
@@ -626,11 +626,11 @@
     },
     "离散凝聚低水": {
       "total": 30,
-      "hit": 19.5,
-      "miss": 5.5,
-      "push": 2.0,
+      "hit": 18,
+      "miss": 4,
+      "push": 8,
       "profit": 4376.66,
-      "total_return": 11.435,
+      "total_return": 11.434999999999999,
       "status": "dormant",
       "desc": "离散值极度凝聚于某队，同时亚盘给出低水保护，机构真实防范该方向打出。",
       "first_seen": "2026-06-18",
@@ -638,7 +638,7 @@
       "history": [
         {
           "date": "2026-06-18",
-          "hit": 0.5,
+          "hit": null,
           "profit": 61.5,
           "return_ratio": 0.41,
           "lota_id": "Lota4468119"
@@ -708,7 +708,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 61.5,
           "return_ratio": 0.41,
           "lota_id": "Lota4468119"
@@ -729,7 +729,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -150.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4468116"
@@ -792,7 +792,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -750.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459726"
@@ -813,7 +813,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -1500.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459806"
@@ -841,7 +841,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 4455.0,
           "return_ratio": 0.405,
           "lota_id": "Lota4467088"
@@ -850,9 +850,9 @@
     },
     "离散低水升盘共振": {
       "total": 4,
-      "hit": 3.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 3,
+      "miss": 0,
+      "push": 1,
       "profit": 6052.5,
       "total_return": 2.66,
       "status": "dormant",
@@ -892,9 +892,9 @@
     },
     "离散凝聚欧赔走低": {
       "total": 15,
-      "hit": 14.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 14,
+      "miss": 0,
+      "push": 1,
       "profit": 39149.64,
       "total_return": 13.3,
       "status": "dormant",
@@ -960,7 +960,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 220.0,
           "return_ratio": 0.44,
           "lota_id": "Lota4460927"
@@ -1011,9 +1011,9 @@
     },
     "平局离散凝聚诱下": {
       "total": 2,
-      "hit": 0.5,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
       "profit": 228.0,
       "total_return": -0.615,
       "status": "retired",
@@ -1030,7 +1030,7 @@
         },
         {
           "date": "2026-06-27",
-          "hit": 0.5,
+          "hit": null,
           "profit": 308.0,
           "return_ratio": 0.385,
           "lota_id": "Lota4460958"
@@ -1039,9 +1039,9 @@
     },
     "无明确有效因子触发，信号噪声干扰": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -100.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1060,9 +1060,9 @@
     },
     "离散凝聚高水诱下": {
       "total": 28,
-      "hit": 17.5,
-      "miss": 8.0,
-      "push": 1.0,
+      "hit": 17,
+      "miss": 7,
+      "push": 4,
       "profit": -2895.75,
       "total_return": 8.365,
       "status": "retired",
@@ -1156,7 +1156,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -1000.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4460919"
@@ -1184,7 +1184,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": -0.5,
+          "hit": null,
           "profit": -3900.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459732"
@@ -1226,7 +1226,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 5350.0,
           "return_ratio": 0.535,
           "lota_id": "Lota4468143"
@@ -1270,9 +1270,9 @@
     },
     "离散极低诱杀": {
       "total": 9,
-      "hit": 7.5,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 7,
+      "miss": 1,
+      "push": 1,
       "profit": 17602.2,
       "total_return": 5.985,
       "status": "dormant",
@@ -1310,7 +1310,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 64.2,
           "return_ratio": 0.535,
           "lota_id": "Lota4468110"
@@ -1347,11 +1347,11 @@
     },
     "升盘高水阻上": {
       "total": 7,
-      "hit": 3.5,
-      "miss": 2.0,
-      "push": 1.0,
+      "hit": 3,
+      "miss": 2,
+      "push": 2,
       "profit": -8211.75,
-      "total_return": 1.39,
+      "total_return": 1.3900000000000001,
       "status": "retired",
       "desc": "亚盘连续升盘并维持高水，机构通过高水制造心理阻挡，实为保护上盘打出。",
       "first_seen": "2026-06-23",
@@ -1380,7 +1380,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 3760.0,
           "return_ratio": 0.47,
           "lota_id": "Lota4459727"
@@ -1410,9 +1410,9 @@
     },
     "深盘震荡离散凝聚": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 188.0,
       "total_return": 0.94,
       "status": "dormant",
@@ -1431,9 +1431,9 @@
     },
     "深盘高水诱上": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 2,
       "profit": -2000.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1443,14 +1443,14 @@
       "history": [
         {
           "date": "2026-06-26",
-          "hit": -0.5,
+          "hit": null,
           "profit": -1000.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4460952"
         },
         {
           "date": "2026-06-26",
-          "hit": -0.5,
+          "hit": null,
           "profit": -1000.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4460919"
@@ -1459,9 +1459,9 @@
     },
     "欧赔碾压离散共振": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 384.0,
       "total_return": 0.96,
       "status": "dormant",
@@ -1480,9 +1480,9 @@
     },
     "离散汇聚平高防平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "dormant",
@@ -1501,9 +1501,9 @@
     },
     "深盘高水离散诱饵": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.5,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": -150.0,
       "total_return": -0.5,
       "status": "dormant",
@@ -1513,7 +1513,7 @@
       "history": [
         {
           "date": "2026-06-28",
-          "hit": -0.5,
+          "hit": null,
           "profit": -150.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4460937"
@@ -1522,9 +1522,9 @@
     },
     "退盘回升高水阻上": {
       "total": 1,
-      "hit": 0.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 2676.5,
       "total_return": 0.505,
       "status": "dormant",
@@ -1534,7 +1534,7 @@
       "history": [
         {
           "date": "2026-06-30",
-          "hit": 0.5,
+          "hit": null,
           "profit": 2676.5,
           "return_ratio": 0.505,
           "lota_id": "Lota4459720"
@@ -1543,9 +1543,9 @@
     },
     "升盘深盘高水诱上": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -2600.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1564,9 +1564,9 @@
     },
     "浅盘平局离散诱下": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -1338.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1585,9 +1585,9 @@
     },
     "无有效因子，平局离散凝聚在浅盘下已退休失效": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.5,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": -750.0,
       "total_return": -0.5,
       "status": "retired",
@@ -1597,7 +1597,7 @@
       "history": [
         {
           "date": "2026-07-02",
-          "hit": -0.5,
+          "hit": null,
           "profit": -750.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459726"
@@ -1606,9 +1606,9 @@
     },
     "升盘离散凝聚": {
       "total": 1,
-      "hit": 0.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 3760.0,
       "total_return": 0.47,
       "status": "dormant",
@@ -1618,7 +1618,7 @@
       "history": [
         {
           "date": "2026-07-03",
-          "hit": 0.5,
+          "hit": null,
           "profit": 3760.0,
           "return_ratio": 0.47,
           "lota_id": "Lota4459727"
@@ -1627,9 +1627,9 @@
     },
     "离散凝聚高水反诱": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 1.5,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
       "profit": -19400.0,
       "total_return": -1.5,
       "status": "retired",
@@ -1646,7 +1646,7 @@
         },
         {
           "date": "2026-07-04",
-          "hit": -0.5,
+          "hit": null,
           "profit": -3900.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459732"
@@ -1655,9 +1655,9 @@
     },
     "欧亚背离高水诱上": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 1.5,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
       "profit": -19400.0,
       "total_return": -1.5,
       "status": "retired",
@@ -1674,7 +1674,7 @@
         },
         {
           "date": "2026-07-04",
-          "hit": -0.5,
+          "hit": null,
           "profit": -3900.0,
           "return_ratio": -0.5,
           "lota_id": "Lota4459732"
@@ -1683,9 +1683,9 @@
     },
     "离散凝聚升盘诱杀": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -11000.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1704,11 +1704,11 @@
     },
     "欧亚背离": {
       "total": 3,
-      "hit": 2.0,
-      "miss": 1.0,
-      "push": 0.0,
-      "profit": 1907.06,
-      "total_return": 0.71,
+      "hit": 2,
+      "miss": 1,
+      "push": 0,
+      "profit": 1907.0600000000002,
+      "total_return": 0.7100000000000001,
       "status": "dormant",
       "desc": "欧赔与亚盘走势方向相反，亚盘水位变化更能真实反映机构意图，跟随亚盘方向。",
       "first_seen": "2026-07-14",
@@ -1739,9 +1739,9 @@
     },
     "升盘连续诱大": {
       "total": 4,
-      "hit": 3.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 3,
+      "miss": 0,
+      "push": 1,
       "profit": 19980.0,
       "total_return": 3.07,
       "status": "dormant",
@@ -1758,7 +1758,7 @@
         },
         {
           "date": "2026-07-14",
-          "hit": 0.5,
+          "hit": null,
           "profit": 1840.0,
           "return_ratio": 0.46,
           "lota_id": "Lota4556506"
@@ -1781,9 +1781,9 @@
     },
     "深盘低水顺向": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 2765.0,
       "total_return": 0.79,
       "status": "dormant",
@@ -1802,9 +1802,9 @@
     },
     "赔率下沉追强": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 2765.0,
       "total_return": 0.79,
       "status": "dormant",
@@ -1823,9 +1823,9 @@
     },
     "升退盘诱下": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 2765.0,
       "total_return": 0.79,
       "status": "dormant",
@@ -1844,9 +1844,9 @@
     },
     "离散凝聚顺向深盘": {
       "total": 2,
-      "hit": 0.5,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
       "profit": -3233.0,
       "total_return": -0.495,
       "status": "retired",
@@ -1863,7 +1863,7 @@
         },
         {
           "date": "2026-07-16",
-          "hit": 0.5,
+          "hit": null,
           "profit": 6767.0,
           "return_ratio": 0.505,
           "lota_id": "Lota4556472"
@@ -1872,9 +1872,9 @@
     },
     "浅盘高水阻上": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -1700.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1893,9 +1893,9 @@
     },
     "资金背离离散出冷": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -3000.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1914,9 +1914,9 @@
     },
     "离散过凝必发卖压防冷": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 1,
       "profit": -2395.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1942,9 +1942,9 @@
     },
     "深盘离散大小升盘难穿": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -2000.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1963,9 +1963,9 @@
     },
     "离散平局凝聚让球方胜": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -1500.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1984,9 +1984,9 @@
     },
     "离散极值赔率背离": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -1800.0,
       "total_return": -1.0,
       "status": "retired",
@@ -2005,9 +2005,9 @@
     },
     "离散凝聚公平顺向": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 1176.0,
       "total_return": 0.98,
       "status": "dormant",
@@ -2026,9 +2026,9 @@
     },
     "升盘反向离散凝聚": {
       "total": 2,
-      "hit": 1.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 1,
       "profit": 1778.0,
       "total_return": 1.52,
       "status": "dormant",
@@ -2038,7 +2038,7 @@
       "history": [
         {
           "date": "2026-07-18",
-          "hit": 0.5,
+          "hit": null,
           "profit": 350.0,
           "return_ratio": 0.5,
           "lota_id": "Lota4467559"
@@ -2054,9 +2054,9 @@
     },
     "必发背离深盘防冷": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -1400.0,
       "total_return": -1.0,
       "status": "retired",
@@ -2075,9 +2075,9 @@
     },
     "离散极端凝聚顺向": {
       "total": 3,
-      "hit": 2.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 2,
+      "miss": 0,
+      "push": 1,
       "profit": 8550.0,
       "total_return": 2.49,
       "status": "active",
@@ -2101,7 +2101,7 @@
         },
         {
           "date": "2026-07-19",
-          "hit": 0.5,
+          "hit": null,
           "profit": 960.0,
           "return_ratio": 0.48,
           "lota_id": "Lota4459815"
@@ -2110,11 +2110,11 @@
     },
     "必发买盘共振": {
       "total": 2,
-      "hit": 1.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 1,
       "profit": 7470.0,
-      "total_return": 1.41,
+      "total_return": 1.4100000000000001,
       "status": "active",
       "desc": "离散凝聚方向同时必发买盘显著大于卖盘，增强信号可信度",
       "first_seen": "2026-07-19",
@@ -2129,7 +2129,7 @@
         },
         {
           "date": "2026-07-19",
-          "hit": 0.5,
+          "hit": null,
           "profit": 960.0,
           "return_ratio": 0.48,
           "lota_id": "Lota4459815"
@@ -2138,9 +2138,9 @@
     },
     "退盘示弱下盘": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 520.0,
       "total_return": 1.04,
       "status": "active",
@@ -2159,9 +2159,9 @@
     },
     "升盘诱大小球": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 255.0,
       "total_return": 0.85,
       "status": "active",
@@ -2180,9 +2180,9 @@
     },
     "离散凝聚反向": {
       "total": 2,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 1,
       "profit": 6960.0,
       "total_return": 0.87,
       "status": "active",
@@ -2208,9 +2208,9 @@
     },
     "资金逆流": {
       "total": 2,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 1,
       "profit": 6960.0,
       "total_return": 0.87,
       "status": "active",
@@ -2236,11 +2236,11 @@
     },
     "离散凝聚下盘": {
       "total": 5,
-      "hit": 3.0,
-      "miss": 1.0,
-      "push": 1.0,
+      "hit": 3,
+      "miss": 1,
+      "push": 1,
       "profit": 6520.0,
-      "total_return": 1.74,
+      "total_return": 1.7400000000000002,
       "status": "active",
       "desc": "当离散指数中平局或客胜离散值出现极端低位凝聚，表明市场强烈共识该方不败，此时顺势追下盘，无论结果平局或客胜，下盘赢盘概率极高。",
       "first_seen": "2026-07-21",
@@ -2288,9 +2288,9 @@
     },
     "离散凝聚上盘深盘": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 8000.0,
       "total_return": 1.0,
       "status": "active",
@@ -2309,9 +2309,9 @@
     },
     "离散凝聚平局下盘": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -2330,9 +2330,9 @@
     },
     "离散凝聚强队上盘": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -2351,9 +2351,9 @@
     },
     "公平盘进球低诱大": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -2372,9 +2372,9 @@
     },
     "离散分胜负追主": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -2393,9 +2393,9 @@
     },
     "必发买盘积极": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -2414,9 +2414,9 @@
     },
     "离散平局凝聚去下盘": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 6440.0,
       "total_return": 0.92,
       "status": "active",
@@ -2435,9 +2435,9 @@
     },
     "离散碾压深盘顺向": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 17800.0,
       "total_return": 0.89,
       "status": "active",
@@ -2456,9 +2456,9 @@
     },
     "离散凝聚浅盘不败": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 8700.0,
       "total_return": 0.87,
       "status": "active",
@@ -2477,9 +2477,9 @@
     },
     "退盘示弱诱敌": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 8700.0,
       "total_return": 0.87,
       "status": "active",
@@ -2498,9 +2498,9 @@
     },
     "必发卖压反向": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 8700.0,
       "total_return": 0.87,
       "status": "active",
@@ -2519,9 +2519,9 @@
     },
     "离散凝聚深盘重注": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 26520.0,
       "total_return": 1.02,
       "status": "active",
@@ -2540,9 +2540,9 @@
     },
     "浅盘离散平局陷阱": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -20000.0,
       "total_return": -1.0,
       "status": "retired",
@@ -2561,11 +2561,11 @@
     },
     "离散极端凝聚深盘顺势": {
       "total": 1,
-      "hit": 0.5,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 11224.4,
-      "total_return": 0.4,
+      "total_return": 0.39999999999999997,
       "status": "active",
       "desc": "离散值极端低位且稳定于实力优势方，配合深盘与资金共振，上盘打出",
       "first_seen": "2026-07-25",
@@ -2573,7 +2573,7 @@
       "history": [
         {
           "date": "2026-07-25",
-          "hit": 0.5,
+          "hit": null,
           "profit": 11224.4,
           "return_ratio": 0.39999999999999997,
           "lota_id": "Lota4467105"
@@ -2582,9 +2582,9 @@
     },
     "离散转向平局凝聚": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -15708.0,
       "total_return": -1.0,
       "status": "retired",
@@ -2603,9 +2603,9 @@
     },
     "离散平局凝聚下盘": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 7470.0,
       "total_return": 0.83,
       "status": "active",
@@ -2624,9 +2624,9 @@
     },
     "离散客胜凝聚深盘": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 7012.96,
       "total_return": 1.06,
       "status": "active",
@@ -2645,9 +2645,9 @@
     },
     "离散凝聚上盘": {
       "total": 3,
-      "hit": 0.5,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 1,
       "profit": -6422.0,
       "total_return": -1.54,
       "status": "retired",
@@ -2664,7 +2664,7 @@
         },
         {
           "date": "2026-07-29",
-          "hit": 0.5,
+          "hit": null,
           "profit": 1978.0,
           "return_ratio": 0.46,
           "lota_id": "Lota4465823"
@@ -2680,11 +2680,11 @@
     },
     "离散凝聚深盘顺向": {
       "total": 4,
-      "hit": 4.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 4,
+      "miss": 0,
+      "push": 0,
       "profit": 21038.39,
-      "total_return": 3.86,
+      "total_return": 3.8600000000000003,
       "status": "active",
       "desc": "离散指数在深盘方显著低于对手，且盘口深度超出公平盘实力差，资金与盘口方向一致。",
       "first_seen": "2026-07-30",
@@ -2722,9 +2722,9 @@
     },
     "离散极端实力差深": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 12943.84,
       "total_return": 0.91,
       "status": "active",
@@ -2743,9 +2743,9 @@
     },
     "深盘过热诱上": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -10903.0,
       "total_return": -2.0,
       "status": "active",
@@ -2771,11 +2771,11 @@
     },
     "深盘高水阻上": {
       "total": 2,
-      "hit": 2.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 2,
+      "miss": 0,
+      "push": 0,
       "profit": 4190.18,
-      "total_return": 2.03,
+      "total_return": 2.0300000000000002,
       "status": "active",
       "desc": "深盘搭配高水形成阻挡上盘介入的视觉效果，实则保护强势方穿盘。",
       "first_seen": "2026-08-03",

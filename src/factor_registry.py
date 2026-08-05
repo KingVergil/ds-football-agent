@@ -120,8 +120,16 @@ class FactorRegistry:
                                        if h.get("date", "") > cutoff_str]
 
                     total = len(history)
-                    hit = sum(1 for h in history if h.get("hit") is True)
-                    miss = sum(1 for h in history if h.get("hit") is False)
+                    hit = sum(
+                        1.0 if h.get("hit") is True else
+                        (0.5 if h.get("hit") == 0.5 else 0.0)
+                        for h in history
+                    )
+                    miss = sum(
+                        1.0 if h.get("hit") is False else
+                        (0.5 if h.get("hit") == -0.5 else 0.0)
+                        for h in history
+                    )
                     push = sum(1 for h in history if h.get("hit") is None)
                     profit = sum(h.get("profit", 0) for h in history)
                     total_return = sum(h.get("return_ratio", 0) for h in history)
