@@ -316,7 +316,28 @@ def node_build_prompt(state: AgentState) -> AgentState:
     if api_failed_count:
         print(f"  🔒 过滤 {api_failed_count} 场无特征数据比赛，剩余 {len(clean_safe)} 场进入 LLM")
 
-    match_tasks = [{"lota_id": m["lota_id"]} for m in clean_safe if m.get("lota_id")]
+    # ── 阶段2: 按 active 因子的 slugs 扩展每场数据段 ──
+    # PromptBuilder 会把 factors[].slugs 追加进该场 sections（默认 7 段 + 因子 slugs）。
+    # 用独立 FactorMemory 实例读取，不改动主 memory 的加载状态（角色因子段是否注入另议）。
+    factor_objs: list = []
+    try:
+        if rt.role and rt.role.memory:
+            from types import SimpleNamespace
+            from .memory import FactorMemory as _FM
+            _fm = _FM(rt.role.memory.factors.path.parent)
+            _fm.load()
+            main, _, _ = _fm.selected_active()
+            factor_objs = [
+                SimpleNamespace(slugs=fdata.get("slugs") or [])
+                for _, fdata, _ in main
+            ]
+    except Exception as e:
+        print(f"  ⚠️ 因子 slugs 扩展失败（不影响分析）: {e}")
+
+    match_tasks = [
+        {"lota_id": m["lota_id"], "factors": factor_objs}
+        for m in clean_safe if m.get("lota_id")
+    ]
 
     # 获取刚结算的订单（优先 runtime，fallback 磁盘）
     settled_orders = rt.last_settled_orders
