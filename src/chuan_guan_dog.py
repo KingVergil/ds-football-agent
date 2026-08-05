@@ -415,7 +415,11 @@ pick: H
                     gl = 0.0
             else:
                 gl = 0.0
-            odds_map = self._jc_odds(m)
+            # 让球腿 → 真实让球盘赔率（jc_hhad）；不让球腿 → Pinnacle 欧赔×0.9 近似
+            if parsed.get("handicap") not in (None, 0):
+                odds_map = self._jc_hhad_odds(m)
+            else:
+                odds_map = self._jc_odds(m)
             if not odds_map:
                 try:  # 无欧赔兜底用让球赔率
                     odds_map = {"h": float(h["home_odds"]), "d": float(h["draw_odds"]), "a": float(h["away_odds"])}
