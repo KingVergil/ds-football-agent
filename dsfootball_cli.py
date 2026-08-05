@@ -128,6 +128,12 @@ def cmd_factor_review(agent: Agent, rest: list):
     print(f"✅ factor_review 完成: {r['end_date']} | 窗口起始={r['start_date']}")
 
 
+def cmd_factor_induction(rest: list):
+    """因子归纳 — 统一清洗/合并/补定义每日因子（alpha 跨狗 1 次，非 alpha 各自）"""
+    from src.factor_induction import main as induction_main
+    induction_main(rest)
+
+
 def cmd_run(agent: Agent, day: str, live: bool = False, jingcai_only: bool = False):
     if live:
         from src.providers.deepseek import DeepSeekProvider
@@ -661,6 +667,8 @@ if __name__ == "__main__":
         cmd_settle(agent, rest[0] if rest else None, live=live)
     elif action == "factor-review":
         cmd_factor_review(agent, rest)
+    elif action == "factor-induction":
+        cmd_factor_induction(rest)
     elif action == "run":
         cmd_run(agent, rest[0] if rest else None, live=live, jingcai_only=jingcai)
     elif action == "runall":

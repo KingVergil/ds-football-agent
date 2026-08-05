@@ -456,27 +456,16 @@ class FactorMemory:
             eff_hit = -0.5      # 输半：按 0.5 未中统计
         else:
             eff_hit = hit       # True / False / None(真走水)
+        # 阶段3 职责归位：record 只记不判（内嵌 LLM 判重已交给独立归纳步骤 factor_induction）
         if factor_id not in self.factor_perf:
-            action, target = self._consolidate_candidate(factor_id, desc)
-            if action == "suppress":
-                return  # 命中已退役因子，不新建、不复活
-            if action == "merge" and target and target in self.factor_perf:
-                t = self.factor_perf[target]
-                t.setdefault("aliases", [])
-                if factor_id not in t["aliases"]:
-                    t["aliases"].append(factor_id)
-                if t.get("status") == "dormant":
-                    t["status"] = "active"
-                factor_id = target  # 归因到现有因子
-            else:
-                self.factor_perf[factor_id] = {
-                    "total": 0, "hit": 0, "miss": 0, "push": 0,
-                    "profit": 0.0, "total_return": 0.0,
-                    "status": "active", "desc": desc,
-                    "first_seen": date, "last_seen": date,
-                    "history": [], "aliases": [],
-                    "fac_id": self.fac_id_for(factor_id),
-                }
+            self.factor_perf[factor_id] = {
+                "total": 0, "hit": 0, "miss": 0, "push": 0,
+                "profit": 0.0, "total_return": 0.0,
+                "status": "active", "desc": desc,
+                "first_seen": date, "last_seen": date,
+                "history": [], "aliases": [],
+                "fac_id": self.fac_id_for(factor_id),
+            }
         p = self.factor_perf[factor_id]
         self._backfill_fac_link(factor_id)
         p["total"] += 1
