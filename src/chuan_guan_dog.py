@@ -68,6 +68,16 @@ class ChuanGuanDog(Agent):
     DECIDE_PRIORITY = ["6过4", "5过3", "4过3", "3过2", "2串1"]
     JC_ODDS_FACTOR = 0.9             # 竞彩赔率 ≈ Pinnacle 欧赔 × 0.9（返还率换算）
 
+    # ── 因子消费（纯消费，不生产；alpha 模式外也注入数据段供判断）──
+    FACTOR_SECTIONS = [
+        "match-head", "fair-odds", "eu-odds-pinnacle", "asian-handicap-pinnacle",
+        "over-under-crown", "betfair-buysell", "discrete-odds",
+    ]
+    SECTIONS_TOKEN_BUDGET = 2000     # 每场数据段 token 预算上限（超出截断）
+    SECTIONS_TOTAL_BUDGET = 20000    # 全部比赛数据段总预算（超场次时均摊）
+    LEG_FACTOR_MIN_HIT_RATE = 0.65   # 腿门槛：因子整体命中率 ≥65%
+    LEG_FACTOR_MIN_SAMPLES = 5       # 腿门槛：因子最少样本 ≥5
+
     # ── alpha 模式（跨7狗因子 + 订单共识）──
     ALPHA_DOGS = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
     ALPHA_VOTE_W = 0.03             # 每张同向/反向加权票对置信度的贡献
@@ -143,6 +153,28 @@ class ChuanGuanDog(Agent):
             }
         except (KeyError, TypeError, ValueError):
             return {}
+
+    def _match_sections_text(self, match: dict, budget: int = None) -> str:
+        """拉取该场的因子相关数据段（离散/亚盘/必发/欧赔等），供 LLM 判断因子触发。
+
+        参考单关狗阶段2：因子 slugs 决定取哪些段；串关固定取 7 个默认段
+        （7 狗因子都建立在这些段上）。数据缺失时提示 prefetch。
+        """
+        lid = match.get("lota_id", "")
+        if not lid:
+            return ""
+        try:
+            text = self._dm.get_sections(lid, self.FACTOR_SECTIONS)
+        except Exception:
+            return ""
+        if not text:
+            return "(因子数据段缺失: 需 prefetch compact-fet)"
+        from .prompt_builder import count_tokens, truncate_section
+        if budget is None:
+            budget = self.SECTIONS_TOKEN_BUDGET
+        if count_tokens(text) > budget:
+            text = truncate_section(text, budget)
+        return text
 
     def _score_leg(self, match: dict) -> Optional[dict]:
         """单场竞彩胜平负（让球/不让球）：取隐含概率最高的一边作为腿；返回 None 表示放弃。"""
@@ -222,6 +254,12 @@ class ChuanGuanDog(Agent):
             return [], None
 
         cand_map = {m["lota_id"]: m for m in matches if m.get("lota_id")}
+        # 数据段预算：总预算按场次均摊，单场不超过上限（防 prompt 膨胀）
+        sec_budget = max(
+            400,
+            min(self.SECTIONS_TOKEN_BUDGET,
+                self.SECTIONS_TOTAL_BUDGET // max(len(matches), 1)),
+        )
         lines = []
         for m in matches:
             h = m.get("jc_hhad") or {}
@@ -235,17 +273,32 @@ class ChuanGuanDog(Agent):
                         leans[side] += 1
                 if any(leans.values()):
                     alpha_txt = f" | 7狗倾向 主{leans['H']}/平{leans['D']}/客{leans['A']}"
+            sec = self._match_sections_text(m, budget=sec_budget)
             lines.append(
                 f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
                 f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]} "
                 f"{('让球'+str(h.get('goal_line')) if h.get('goal_line') is not None else '不让球')} "
-                f"胜平负赔率 H/D/A = {jc.get('h','?')}/{jc.get('d','?')}/{jc.get('a','?')}{alpha_txt}"
+                f"胜平负赔率 H/D/A = {jc.get('h','?')}/{jc.get('d','?')}/{jc.get('a','?')}{alpha_txt}\n"
+                f"    因子数据段:\n{sec}"
             )
         persona = role.persona_text()
+        # alpha 模式（关闭时为空）：合格因子名单，仅这些因子触发的方向可当腿
+        factor_hint = ""
+        if alpha_data and alpha_data.get("qualified_factors"):
+            qf = alpha_data["qualified_factors"]
+            factor_hint = (
+                "\n## 合格因子（整体命中率≥65% 且样本≥5，仅这些因子触发的方向可当腿）\n"
+                + "\n".join(
+                    f"- {n} [{d['role']}] 命中{d['hit_rate']:.0%} 样本{d['total']}"
+                    for n, d in list(qf.items())[:15]
+                )
+                + "\n"
+            )
         prompt = f"""你是竞彩串关分析 agent（串关狗）。
 
 ## 人设
 {persona}
+{factor_hint}
 
 ## {day_date} 足球日可投注竞彩胜平负场次（让球/不让球可混串）
 {chr(10).join(lines)}
@@ -408,7 +461,20 @@ pick: H
             trust[r] = max(0.2, min(3.0, trust[r]))
 
         factor_by_lota: dict[str, list[dict]] = {}
+        qualified_factors: dict[str, dict] = {}
         for f in factors:
+            denom = f.get("total", 0) - f.get("push", 0)
+            hit_rate = f.get("hit", 0) / denom if denom > 0 else 0.0
+            qualified = (
+                f.get("total", 0) >= self.LEG_FACTOR_MIN_SAMPLES
+                and hit_rate >= self.LEG_FACTOR_MIN_HIT_RATE
+            )
+            if qualified:
+                qualified_factors[f["factor_name"]] = {
+                    "role": f["role"],
+                    "hit_rate": round(hit_rate, 3),
+                    "total": f.get("total", 0),
+                }
             for h in f.get("history", []):
                 lid = h.get("lota_id", "")
                 if not lid:
@@ -418,6 +484,8 @@ pick: H
                     "factor": f["factor_name"],
                     "hit": h.get("hit"),
                     "trust": trust.get(f["role"], self.ALPHA_TRUST_DEFAULT),
+                    "qualified": qualified,
+                    "hit_rate": round(hit_rate, 3),
                 })
 
         orders_by_lota: dict[str, dict[str, dict]] = {}
@@ -436,7 +504,12 @@ pick: H
                 if prev is None or o.get("created_at", "") > prev.get("created_at", ""):
                     orders_by_lota.setdefault(lid, {})[dog] = o
 
-        return {"trust": trust, "factor_by_lota": factor_by_lota, "orders_by_lota": orders_by_lota}
+        return {
+            "trust": trust,
+            "factor_by_lota": factor_by_lota,
+            "orders_by_lota": orders_by_lota,
+            "qualified_factors": qualified_factors,
+        }
 
     def _sim_factor_review(self, day_date: str, sim_retired: set) -> list[str]:
         """模拟周度因子退役（对齐生产近7天窗口，保守口径，不写线上文件）。
@@ -619,6 +692,8 @@ pick: H
                     score -= trust
             f_score = 0.0
             for f in factor_by_lota.get(lid, []):
+                if not f.get("qualified"):
+                    continue  # 腿门槛：只计入整体命中率≥65% 且样本≥5 的因子
                 f_score += f["trust"] if f["hit"] is True else (-f["trust"] if f["hit"] is False else 0.0)
             adj = max(-self.ALPHA_MAX_ADJ, min(self.ALPHA_MAX_ADJ,
                       self.ALPHA_VOTE_W * score + self.ALPHA_FACTOR_W * f_score))
