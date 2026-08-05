@@ -1260,6 +1260,26 @@ def node_factor_review(state: AgentState) -> AgentState:
             rt.role.memory.factors.set_status(fid, "dormant")
             auto_dormant.append(fid)
 
+    # ── 阶段4: 低信息因子确定性退役（既不赚钱也不亏大钱 + 来来回回≈掷硬币）──
+    # 波动大/强方向的因子有信息保留；只有 |每单平均回报|≈0 且命中率在硬币区间才退役。
+    LOW_INFO_MIN_SAMPLES = 5
+    LOW_INFO_AVG_RETURN = 0.15
+    LOW_INFO_HIT_LO, LOW_INFO_HIT_HI = 0.35, 0.65
+    low_info_retired: list[str] = []
+    for fid, s in fp.items():
+        if s.get("status") == "retired":
+            continue
+        hist = s.get("history", []) or []
+        if len(hist) < LOW_INFO_MIN_SAMPLES:
+            continue
+        rets = [h.get("return_ratio", 0) for h in hist]
+        avg = sum(rets) / len(rets)
+        denom = len(hist) - s.get("push", 0)
+        hit_rate = s.get("hit", 0) / denom if denom > 0 else 0
+        if abs(avg) < LOW_INFO_AVG_RETURN and LOW_INFO_HIT_LO <= hit_rate <= LOW_INFO_HIT_HI:
+            rt.role.memory.factors.set_status(fid, "retired")
+            low_info_retired.append(fid)
+
     # ── 构建评估候选（active + dormant，排除已退役）──
     candidates: dict[str, dict] = {}
     fp_fresh = rt.role.memory.factors.factor_perf  # 重新读（auto_dormant 可能已更新）
@@ -1425,6 +1445,8 @@ def node_factor_review(state: AgentState) -> AgentState:
 
     if auto_dormant:
         print(f"  💤 自动休眠(14天零触发): {', '.join(auto_dormant)}")
+    if low_info_retired:
+        print(f"  🗑️ 低信息退役({len(low_info_retired)}): {', '.join(low_info_retired)}")
     if llm_dormant:
         print(f"  💤 LLM建议休眠: {', '.join(llm_dormant)}")
     if actually_retired:
