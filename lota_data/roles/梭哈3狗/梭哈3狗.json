@@ -1,11 +1,11 @@
 {
   "name": "梭哈3狗",
-  "capital": 1705.9000000000003,
+  "capital": 1683.7000000000003,
   "initial_capital": 1000,
   "system_prompt_name": "baseline-v1",
   "alpha_mode": false,
   "cross_factor_exclude": [],
-  "updated_at": "2026-08-04T11:05:45.419522",
+  "updated_at": "2026-08-05T11:29:22.504849",
   "orders": [
     {
       "lota_id": "Lota4459820",
@@ -2533,6 +2533,54 @@
       "profit": -215.0,
       "score": "2:0",
       "settled_at": "2026-08-04T11:05:45.418150"
+    },
+    {
+      "lota_id": "Lota4602272",
+      "bet_type": "亚盘",
+      "pick": "A",
+      "odds": 0.83,
+      "handicap": -0.5,
+      "bet_size": 260,
+      "reason": "离散客胜极度凝聚(1.93)，平局离散膨胀(26.22)，必发主胜买盘明显多于卖盘，资金高看主队，与离散方向背离。盘口半球高水诱上，资金背离下盘信号强，历史因子有效。",
+      "id": "ord_1785856186110_69032a",
+      "created_at": "2026-08-04T23:09:46.110435",
+      "hit": true,
+      "return_amount": 475.8,
+      "profit": 215.8,
+      "score": "1:2",
+      "settled_at": "2026-08-05T11:09:10.973949"
+    },
+    {
+      "lota_id": "Lota4602273",
+      "bet_type": "亚盘",
+      "pick": "H",
+      "odds": 0.8,
+      "handicap": -1.0,
+      "bet_size": 170,
+      "reason": "离散主胜极度凝聚，必发主胜买盘占优，资金与离散共振。盘口从半一升一球低水示强主队。深盘存在走水风险，但信号一致，次权重注跟进。",
+      "id": "ord_1785856186111_9f7c4a",
+      "created_at": "2026-08-04T23:09:46.111958",
+      "hit": false,
+      "return_amount": 0.0,
+      "profit": -170.0,
+      "score": "0:0",
+      "settled_at": "2026-08-05T11:09:10.980662"
+    },
+    {
+      "lota_id": "Lota4546341",
+      "bet_type": "亚盘",
+      "pick": "H",
+      "odds": 0.9,
+      "handicap": 0.25,
+      "bet_size": 68,
+      "reason": "平局离散极低(2.09)凝聚异常，必发平局卖盘较多形成微弱背离；公平盘主队实力略优，盘口却客让平半高水，存诱客嫌疑。平局信号结合盘口错配，小注试下盘。",
+      "id": "ord_1785856186113_2e09c5",
+      "created_at": "2026-08-04T23:09:46.113073",
+      "hit": false,
+      "return_amount": 0.0,
+      "profit": -68.0,
+      "score": "0:1",
+      "settled_at": "2026-08-05T11:29:22.503322"
     }
   ]
 }

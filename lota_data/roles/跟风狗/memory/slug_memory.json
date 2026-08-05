@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-03T22:19:18.284118",
+  "updated_at": "2026-08-04T23:08:12.016679",
   "slug_stats": {
     "match-head": {
       "appearances": 25,
@@ -523,6 +523,15 @@
       "discrete-odds"
     ],
     "2026-08-03": [
+      "match-head",
+      "fair-odds",
+      "eu-odds-pinnacle",
+      "asian-handicap-pinnacle",
+      "over-under-crown",
+      "betfair-buysell",
+      "discrete-odds"
+    ],
+    "2026-08-04": [
       "match-head",
       "fair-odds",
       "eu-odds-pinnacle",
