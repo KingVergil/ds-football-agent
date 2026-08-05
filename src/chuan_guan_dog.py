@@ -697,7 +697,6 @@ pick: H
                 tickets: Optional[list[str]] = None, stake_pct: Optional[float] = None,
                 sim_retired: set = None, use_llm: Optional[bool] = None) -> dict:
         day_date = day_date or self._default_day()
-        stake_pct = stake_pct if stake_pct is not None else self.STAKE_PCT
 
         session = self._begin_session("analyze", day_date)
         try:
@@ -728,7 +727,8 @@ pick: H
                 if self.USE_MARTINGALE and stake_pct is None:
                     slip_bet = self._martingale_stake(role)
                 else:
-                    slip_bet = round(role.capital * stake_pct / 100.0, 2)
+                    pct = stake_pct if stake_pct is not None else self.STAKE_PCT
+                    slip_bet = round(role.capital * pct / 100.0, 2)
                 if slip_bet <= 0 or slip_bet > role.capital:
                     skipped.append(f"{slip['ticket_type']} 资金不足")
                     continue
