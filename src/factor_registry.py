@@ -93,9 +93,9 @@ class FactorRegistry:
                 if before_date and first != "?" and first > before_date:
                     continue  # 因子在回测日期之后才发现，跳过
 
-                # 补全因子定义
+                # 补全因子定义（优先用条目冗余的 fac_id，退回名字归一化）
                 slugs, content = [], ""
-                fac_id = f"fac_{factor_name.lower().replace(' ','_')[:40]}"
+                fac_id = fdata.get("fac_id") or f"fac_{factor_name.lower().replace(' ','_')[:40]}"
                 fac_def = self._factor_defs.get(fac_id, {})
                 slugs = fac_def.get("slugs", [])
                 content = fdata.get("desc", "") or fac_def.get("content", "")
@@ -274,6 +274,9 @@ class FactorRegistry:
             if desc:
                 lines.append(f"     {desc[:100]}")
             slugs = fdata.get("slugs") or []
+            if not slugs:
+                fac_id = fdata.get("fac_id") or f"fac_{factor_name.lower().replace(' ','_')[:40]}"
+                slugs = self._factor_defs.get(fac_id, {}).get("slugs", [])
             if slugs:
                 lines.append(f"     slugs: {', '.join(slugs[:5])}")
         return "\n".join(lines)

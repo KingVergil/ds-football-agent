@@ -336,6 +336,31 @@ class FactorMemory:
         self.factor_perf: dict[str, dict] = {}  # {factor_id: {total,hit,miss,profit}}
         self._loaded = False
 
+    @staticmethod
+    def fac_id_for(name: str) -> str:
+        """因子名 → fac 定义 id（与 agent.py / store.py 的命名规则一致）。"""
+        return f"fac_{name.lower().replace(' ','_')[:40]}"
+
+    def _load_slugs(self, fac_id: str) -> list[str]:
+        """从 lota_data/factors/fac_*.json 读取 slugs，文件缺失返回空。"""
+        p = DATA_ROOT / "factors" / f"{fac_id}.json"
+        if not p.exists():
+            return []
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            return d.get("slugs", [])
+        except Exception:
+            return []
+
+    def _backfill_fac_link(self, factor_id: str) -> None:
+        """为条目补齐 fac_id 与 slugs（名称 join fac 定义文件）。"""
+        p = self.factor_perf.get(factor_id)
+        if not p:
+            return
+        p.setdefault("fac_id", self.fac_id_for(factor_id))
+        if not p.get("slugs"):
+            p["slugs"] = self._load_slugs(p["fac_id"])
+
     def _consolidate_candidate(self, factor_id: str, desc: str) -> tuple:
         """LLM 判重（宽松：shortlist 到 15 个、全 desc、严格 schema）+ 确定性兜底。
 
@@ -450,8 +475,10 @@ class FactorMemory:
                     "status": "active", "desc": desc,
                     "first_seen": date, "last_seen": date,
                     "history": [], "aliases": [],
+                    "fac_id": self.fac_id_for(factor_id),
                 }
         p = self.factor_perf[factor_id]
+        self._backfill_fac_link(factor_id)
         p["total"] += 1
         if eff_hit is True:       p["hit"] += 1
         elif eff_hit is False:    p["miss"] += 1
@@ -552,7 +579,7 @@ class FactorMemory:
     def factor_desc_text(self) -> str:
         """L2 正例完整定义：只输出自适应 main 的定义（预算内，库再大不膨胀）。"""
         main, _, _ = self.selected_active()
-        active_names = {fid.lower() for fid, _, _ in main}
+        active_names = {fid for fid, _, _ in main}
         if not active_names:
             return ""
         factors_dir = DATA_ROOT / "factors"
@@ -567,7 +594,9 @@ class FactorMemory:
                 slugs = data.get("slugs", [])
                 matched = False
                 for an in active_names:
-                    if an.lower().replace("_", "") == fid.replace("fac_", "").replace("_", ""):
+                    s = self.factor_perf.get(an, {})
+                    expected = s.get("fac_id") or self.fac_id_for(an)
+                    if fid == expected:
                         matched = True
                         break
                 if not matched:
