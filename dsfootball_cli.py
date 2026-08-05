@@ -633,6 +633,15 @@ if __name__ == "__main__":
         print(f"✅ prefetch 完成: {ok}/{len(candidates)} 场 compact-fet + tags 已缓存 (窗口 {start[:10]})")
         sys.exit(0)
 
+    if cmd == "factor-induction":
+        """因子归纳 — 统一清洗/合并/补定义每日因子（alpha 跨狗 1 次，非 alpha 各自）
+
+        用法: python dsfootball_cli.py factor-induction [--dry-run] [--limit N] [--roles a,b]
+        """
+        from src.factor_induction import main as induction_main
+        induction_main(sys.argv[2:])
+        sys.exit(0)
+
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(1)
