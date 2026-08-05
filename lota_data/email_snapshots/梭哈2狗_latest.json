@@ -1,20 +1,27 @@
 {
-  "sent_at": "2026-08-03 22:23:52",
-  "football_day": "2026-08-03",
+  "sent_at": "2026-08-04 23:11:23",
+  "football_day": "2026-08-04",
   "orders": [
     {
-      "lota_id": "Lota4467114",
-      "pick": "H",
-      "handicap": -1.25,
-      "odds": 0.99,
-      "bet_size": 1830
+      "lota_id": "Lota4602272",
+      "pick": "A",
+      "handicap": -0.5,
+      "odds": 0.83,
+      "bet_size": 2700
     },
     {
-      "lota_id": "Lota4467119",
-      "pick": "A",
-      "handicap": 1.5,
-      "odds": 1.04,
-      "bet_size": 2287
+      "lota_id": "Lota4602273",
+      "pick": "H",
+      "handicap": -1.0,
+      "odds": 0.8,
+      "bet_size": 10800
+    },
+    {
+      "lota_id": "Lota4546341",
+      "pick": "H",
+      "handicap": 0.25,
+      "odds": 0.9,
+      "bet_size": 5400
     }
   ]
 }

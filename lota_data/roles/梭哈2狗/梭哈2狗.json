@@ -1,11 +1,11 @@
 {
   "name": "梭哈2狗",
-  "capital": 27065.34999999998,
+  "capital": 13106.34999999998,
   "initial_capital": 1000,
   "system_prompt_name": "baseline-v1",
   "alpha_mode": false,
   "cross_factor_exclude": [],
-  "updated_at": "2026-08-04T11:04:53.702063",
+  "updated_at": "2026-08-05T11:28:48.454324",
   "orders": [
     {
       "lota_id": "Lota4459820",
@@ -2740,6 +2740,54 @@
       "profit": 2378.48,
       "score": "0:2",
       "settled_at": "2026-08-04T11:04:53.700228"
+    },
+    {
+      "lota_id": "Lota4602272",
+      "bet_type": "亚盘",
+      "pick": "A",
+      "odds": 0.83,
+      "handicap": -0.5,
+      "bet_size": 2700,
+      "reason": "离散主胜极度凝聚（0.02）但公平盘实力差仅0.18，深盘高水形成诱上陷阱；历史教训离散近0不重注，过热深盘多陷阱，小注试探下盘。",
+      "id": "ord_1785856130095_6b98e6",
+      "created_at": "2026-08-04T23:08:50.095573",
+      "hit": true,
+      "return_amount": 4941.0,
+      "profit": 2241.0,
+      "score": "1:2",
+      "settled_at": "2026-08-05T11:09:10.362903"
+    },
+    {
+      "lota_id": "Lota4602273",
+      "bet_type": "亚盘",
+      "pick": "H",
+      "odds": 0.8,
+      "handicap": -1.0,
+      "bet_size": 10800,
+      "reason": "离散主胜极低凝聚（0.02），实力差1.34支持深盘，低水搭配未过热，离散凝聚+实力差深度共振，强穿盘信号，中高仓出击。",
+      "id": "ord_1785856130097_6c228e",
+      "created_at": "2026-08-04T23:08:50.097169",
+      "hit": false,
+      "return_amount": 0.0,
+      "profit": -10800.0,
+      "score": "0:0",
+      "settled_at": "2026-08-05T11:09:10.370281"
+    },
+    {
+      "lota_id": "Lota4546341",
+      "bet_type": "亚盘",
+      "pick": "H",
+      "odds": 0.9,
+      "handicap": 0.25,
+      "bet_size": 5400,
+      "reason": "离散平局极致凝聚（1.60），主客离散高企，平局信号显著；盘口客让平半但离散不支持客胜，下盘坐和望赢，中注出击。",
+      "id": "ord_1785856130097_87995a",
+      "created_at": "2026-08-04T23:08:50.097998",
+      "hit": false,
+      "return_amount": 0.0,
+      "profit": -5400.0,
+      "score": "0:1",
+      "settled_at": "2026-08-05T11:28:48.452337"
     }
   ]
 }

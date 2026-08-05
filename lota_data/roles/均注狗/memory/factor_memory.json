@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-04T11:09:49.970662",
+  "updated_at": "2026-08-05T11:31:01.311501",
   "factor_perf": {
     "欧赔跳水不败": {
       "total": 1,
@@ -3903,6 +3903,28 @@
           "profit": -29.0,
           "return_ratio": -1.0,
           "lota_id": "Lota4546327"
+        }
+      ],
+      "aliases": []
+    },
+    "平离散过热反诱": {
+      "total": 1,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
+      "profit": -30.0,
+      "total_return": -1.0,
+      "status": "active",
+      "desc": "",
+      "first_seen": "2026-08-04",
+      "last_seen": "2026-08-04",
+      "history": [
+        {
+          "date": "2026-08-04",
+          "hit": false,
+          "profit": -30.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4546341"
         }
       ],
       "aliases": []

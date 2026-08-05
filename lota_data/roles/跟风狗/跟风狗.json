@@ -1,11 +1,11 @@
 {
   "name": "跟风狗",
-  "capital": 2441.82,
+  "capital": 2201.82,
   "initial_capital": 1000,
   "system_prompt_name": "baseline-v1",
   "alpha_mode": false,
   "cross_factor_exclude": [],
-  "updated_at": "2026-08-04T11:07:10.027960",
+  "updated_at": "2026-08-05T11:30:12.493899",
   "orders": [
     {
       "lota_id": "Lota4459820",
@@ -1541,6 +1541,22 @@
       "profit": 139.5,
       "score": "2:0",
       "settled_at": "2026-08-04T11:07:10.026825"
+    },
+    {
+      "lota_id": "Lota4602273",
+      "bet_type": "亚盘",
+      "pick": "H",
+      "odds": 0.8,
+      "handicap": -1.0,
+      "bet_size": 240,
+      "reason": "实力差1.34，公平盘主胜概率高；离散指数主胜方向极度凝聚(低至0.39)，客胜离散持续高企；盘口从半一升至一球并维持超低水，盘赔走势与离散共识共振，符合近期盈利因子，强队方向明确。",
+      "id": "ord_1785856121608_aa2c4c",
+      "created_at": "2026-08-04T23:08:41.608409",
+      "hit": false,
+      "return_amount": 0.0,
+      "profit": -240.0,
+      "score": "0:0",
+      "settled_at": "2026-08-05T11:09:12.085780"
     }
   ]
 }
