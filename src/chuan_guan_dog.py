@@ -70,8 +70,9 @@ class ChuanGuanDog(Agent):
 
     # ── 因子消费（纯消费，不生产；alpha 模式外也注入数据段供判断）──
     FACTOR_SECTIONS = [
-        "match-head", "fair-odds", "eu-odds-pinnacle", "asian-handicap-pinnacle",
-        "over-under-crown", "betfair-buysell", "discrete-odds",
+        # 离散放最前：truncate 从尾部切，确保最关键的离散/必发信号不被截断
+        "discrete-odds", "betfair-buysell", "asian-handicap-pinnacle",
+        "eu-odds-pinnacle", "fair-odds", "over-under-crown", "match-head",
     ]
     SECTIONS_TOKEN_BUDGET = 2000     # 每场数据段 token 预算上限（超出截断）
     SECTIONS_TOTAL_BUDGET = 20000    # 全部比赛数据段总预算（超场次时均摊）
@@ -143,13 +144,30 @@ class ChuanGuanDog(Agent):
         return 1.0 / odds if odds and odds > 0 else 0.0
 
     def _jc_odds(self, match: dict) -> dict:
-        """竞彩胜平负赔率近似 = 项目现有 Pinnacle 欧赔 × 0.9（让球/不让球通用）。"""
+        """不让球胜平负赔率近似 = Pinnacle 欧赔 × 0.9（竞彩返还率换算）。"""
         o = (self._dm.get_odds(match.get("lota_id", "")) or {}).get("eu") or {}
         try:
             return {
                 "h": round(float(o["h"]) * self.JC_ODDS_FACTOR, 2),
                 "d": round(float(o["d"]) * self.JC_ODDS_FACTOR, 2),
                 "a": round(float(o["a"]) * self.JC_ODDS_FACTOR, 2),
+            }
+        except (KeyError, TypeError, ValueError):
+            return {}
+
+    def _jc_hhad_odds(self, match: dict) -> dict:
+        """竞彩让球胜平负真实赔率（jc_hhad，含让球线）。"""
+        h = match.get("jc_hhad") or {}
+        try:
+            gl = float(h["goal_line"])
+        except (KeyError, TypeError, ValueError):
+            gl = 0.0
+        try:
+            return {
+                "goal_line": gl,
+                "h": float(h["home_odds"]),
+                "d": float(h["draw_odds"]),
+                "a": float(h["away_odds"]),
             }
         except (KeyError, TypeError, ValueError):
             return {}
@@ -264,6 +282,7 @@ class ChuanGuanDog(Agent):
         for m in matches:
             h = m.get("jc_hhad") or {}
             jc = self._jc_odds(m)
+            hhad = self._jc_hhad_odds(m)
             alpha_txt = ""
             if alpha_data:
                 leans = {"H": 0, "D": 0, "A": 0}
@@ -273,12 +292,19 @@ class ChuanGuanDog(Agent):
                         leans[side] += 1
                 if any(leans.values()):
                     alpha_txt = f" | 7狗倾向 主{leans['H']}/平{leans['D']}/客{leans['A']}"
+            odds_txt = f"不让球赔率 H/D/A = {jc.get('h','?')}/{jc.get('d','?')}/{jc.get('a','?')}"
+            if hhad and hhad["goal_line"] != 0:
+                gl = int(hhad["goal_line"])
+                odds_txt += (
+                    f" | 让球{gl:+d}赔率 H/D/A = "
+                    f"{hhad['h']:.2f}/{hhad['d']:.2f}/{hhad['a']:.2f}"
+                )
             sec = self._match_sections_text(m, budget=sec_budget)
             lines.append(
                 f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
                 f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]} "
                 f"{('让球'+str(h.get('goal_line')) if h.get('goal_line') is not None else '不让球')} "
-                f"胜平负赔率 H/D/A = {jc.get('h','?')}/{jc.get('d','?')}/{jc.get('a','?')}{alpha_txt}\n"
+                f"{odds_txt}{alpha_txt}\n"
                 f"    因子数据段:\n{sec}"
             )
         persona = role.persona_text()
@@ -342,6 +368,20 @@ pick: H
             return None, None
         if not response:
             return None, None
+
+        # 记录 LLM 调用（对齐单狗 session_logger.llm_call，便于复盘/调试）
+        try:
+            rt = self._runtime()
+            if rt.session:
+                from .prompt_builder import count_tokens
+                rt.session.llm_call(
+                    system_prompt=prompt,
+                    response=response,
+                    tokens_in=count_tokens(prompt),
+                    tokens_out=count_tokens(response),
+                )
+        except Exception:
+            pass
 
         blocks = re.findall(r'```order\n(.*?)(?=```|\Z)', response, re.DOTALL)
         legs, seen = [], set()
