@@ -68,6 +68,17 @@ class ChuanGuanDog(Agent):
     DECIDE_PRIORITY = ["6过4", "5过3", "4过3", "3过2", "2串1"]
     JC_ODDS_FACTOR = 0.9             # 竞彩赔率 ≈ Pinnacle 欧赔 × 0.9（返还率换算）
 
+    # 票型玩法说明（prompt 动态生成，随 ALLOWED_TICKETS/--tickets 变化）
+    TICKET_DESC = {
+        "2串1": "2腿 1 注：两场全中才中奖，稳字当头",
+        "3串1": "3腿 1 注：三场全中才中奖，赔率相乘",
+        "4串1": "4腿 1 注：四场全中才中奖",
+        "3过2": "3腿拆 3 注 2串1：命中 2/3 回本，3/3 赚 3 倍",
+        "4过3": "4腿拆 4 注 3串1：命中 3/4 回本，4/4 赚 4 倍",
+        "5过3": "5腿拆 10 注 3串1：命中 3/5 回本，5/5 赚 10 倍",
+        "6过4": "6腿拆 15 注 4串1：命中 4/6 回本，6/6 赚 15 倍",
+    }
+
     # ── 因子消费（纯消费，不生产；alpha 模式外也注入数据段供判断）──
     FACTOR_SECTIONS = [
         # 离散放最前：truncate 从尾部切，确保最关键的离散/必发信号不被截断
@@ -248,7 +259,8 @@ class ChuanGuanDog(Agent):
         return legs
 
     def _select_legs_llm(self, matches: list[dict], day_date: str,
-                         alpha_data: dict = None) -> tuple[Optional[list[dict]], Optional[list[str]]]:
+                         alpha_data: dict = None,
+                         forced_tickets: list = None) -> tuple[Optional[list[dict]], Optional[list[str]]]:
         """LLM 分析选腿（与 Agent 同套输出契约）。
 
         人设 + 当天竞彩让球数据 + 7狗倾向 → 每腿一个 ```order 块 + 票型行，
@@ -320,22 +332,34 @@ class ChuanGuanDog(Agent):
                 )
                 + "\n"
             )
-        prompt = f"""你是竞彩串关分析 agent（串关狗）。
+        # ── 票型区（支持专注模式：--tickets 强制票型，prompt 同步收窄）──
+        allowed = list(forced_tickets) if forced_tickets else list(self.ALLOWED_TICKETS)
+        if forced_tickets:
+            need = max(
+                (spec[0] for t in allowed
+                 if (spec := self._parse_ticket_spec(t)) is not None),
+                default=2,
+            )
+            task_line = (
+                f"从上面场次中选出**恰好 {need} 场**作为串关腿（一场最多一腿），"
+                f"每腿给出胜平负选择（让球或不让球）；票型只能选：{', '.join(allowed)}。"
+            )
+            empty_line = f"不足 {need} 场好腿就空仓（只输出 票型: 无，不输出 order 块）。"
+        else:
+            need = 0
+            task_line = (
+                "从上面场次中选出 2~6 场作为串关腿（一场最多一腿），"
+                "每腿给出胜平负选择（让球或不让球）；票型由你按玩法自主决定。"
+            )
+            empty_line = "不足 2-3 场好腿就空仓（只输出 票型: 无，不输出 order 块）。"
+        desc_lines = "\n".join(
+            f"- {t} = {self.TICKET_DESC[t]}" for t in allowed if t in self.TICKET_DESC
+        )
+        ticket_block = f"""## 任务
+{task_line}
 
-## 人设
-{persona}
-{factor_hint}
-
-## {day_date} 足球日可投注竞彩胜平负场次（让球/不让球可混串）
-{chr(10).join(lines)}
-
-## 任务
-从上面场次中选出 2~6 场作为串关腿（一场最多一腿），每腿给出胜平负选择（让球或不让球）；票型由你按玩法自主决定。
-
-玩法理解（N过M 组合票 = 保本 + 爆赚）：
-- 5过3 = 5腿拆 10 注 3串1：命中 3/5 就回本，4/5 赚 4 倍，5/5 赚 10 倍
-- 6过4 = 6腿拆 15 注 4串1：命中 4/6 回本，5/6 赚 5 倍，6/6 赚 15 倍
-- 4过3 = 4腿拆 4 注 3串1；3过2 = 3腿拆 3 注 2串1；腿少时用这些，腿多且均衡时用 5过3/6过4
+玩法理解（当前允许票型）：
+{desc_lines}
 - 用组合数量换容错与暴击：挂 1-2 场不伤，全中暴击
 
 每个候选腿用一个 ```order 代码块输出（类型固定写 胜平负；让球腿 盘口=该场让球线，不让球腿 盘口=0）：
@@ -349,9 +373,18 @@ pick: H
 理由: ≤40字
 ```
 
-最后另起一行输出票型，例如：票型: 5过3
-（合法票型：2串1/3串1/4串1/3过2/4过3/5过3/6过4；所需腿数不能超过实际腿数）
-要求：不追高赔冷门、不吃超低蚊子肉；不足 2-3 场好腿就空仓（只输出 票型: 无，不输出 order 块）。
+最后另起一行输出票型（合法票型：{', '.join(allowed)}；所需腿数不能超过实际腿数）
+要求：不追高赔冷门、不吃超低蚊子肉；{empty_line}"""
+        prompt = f"""你是竞彩串关分析 agent（串关狗）。
+
+## 人设
+{persona}
+{factor_hint}
+
+## {day_date} 足球日可投注竞彩胜平负场次（让球/不让球可混串）
+{chr(10).join(lines)}
+
+{ticket_block}
 
 要求：
 - lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
@@ -863,7 +896,10 @@ pick: H
                 use_llm = True  # 默认走 LLM，无 provider/失败时自动回退规则
             if use_llm:
                 alpha_data = self._load_alpha_data(day_date, sim_retired) if role.alpha_mode else None
-                legs, llm_tickets = self._select_legs_llm(matches, day_date, alpha_data)
+                legs, llm_tickets = self._select_legs_llm(
+                    matches, day_date, alpha_data,
+                    forced_tickets=list(tickets) if tickets else None,
+                )
                 if legs is not None:
                     source = "llm"
                 else:
@@ -1079,7 +1115,7 @@ pick: H
 
     def backtest(self, start_date: str, end_date: str,
                  review_interval: int = None, review_mode: str = "llm",
-                 mode: str = "llm") -> dict:
+                 mode: str = "llm", tickets: list = None) -> dict:
         """逐足球日 分析→结算 迭代回测（真实落单，按当天资金滚动仓位）。
 
         review_interval>0 时，每隔 N 天模拟一次因子退役（仅内存，影响 alpha 信任权重），
@@ -1097,7 +1133,8 @@ pick: H
             retired_now = []
             if review_interval > 0 and day_idx > 0 and day_idx % review_interval == 0:
                 retired_now = self._factor_review(ds, sim_retired, review_mode)
-            a = self.analyze(ds, sim_retired=sim_retired, use_llm=(mode == "llm"))
+            a = self.analyze(ds, sim_retired=sim_retired, use_llm=(mode == "llm"),
+                             tickets=tickets)
             s = self.settle(ds)
             rows.append({
                 "date": ds,
@@ -1214,8 +1251,9 @@ def main(argv: list[str] = None) -> int:
         if not args.day or not args.end:
             print("用法: python -m src.chuan_guan_dog backtest <start> <end> [--alpha] [--review-interval 7] [--review-mode llm|sim]")
             return 1
+        bt_tickets = [t.strip() for t in args.tickets.split(",")] if args.tickets else None
         r = dog.backtest(args.day, args.end, review_interval=args.review_interval,
-                         review_mode=args.review_mode, mode=args.mode)
+                         review_mode=args.review_mode, mode=args.mode, tickets=bt_tickets)
         print("日期 | 竞彩 | 腿 | 票型 | 下单 | 结算(中/挂) | 当日PnL | 资金")
         for row in r["days"]:
             tks = "+".join(row["tickets"]) or "空仓"
