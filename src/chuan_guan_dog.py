@@ -722,6 +722,15 @@ pick: H
             tickets = list(tickets) if tickets else (llm_tickets or self._decide_tickets(legs))
             slips = self._build_slips(legs, tickets)
 
+            # 翻倍打法硬约束：1 日最多 1 单（只保留第一张票的第一注）
+            martingale_one_per_day = self.USE_MARTINGALE and stake_pct is None
+            if martingale_one_per_day:
+                slips = slips[:1]
+                if slips:
+                    slips[0]["combos"] = slips[0]["combos"][:1]
+                    slips[0]["sub_odds"] = slips[0]["sub_odds"][:1]
+                    slips[0]["combos_count"] = 1
+
             placed, orders, skipped = 0, [], []
             for slip_i, slip in enumerate(slips):
                 if self.USE_MARTINGALE and stake_pct is None:
@@ -766,6 +775,7 @@ pick: H
                 "dry_run": dry_run,
                 "alpha_mode": role.alpha_mode,
                 "source": source,
+                "max_one_per_day": martingale_one_per_day,
                 "skipped": skipped,
                 "session_path": str(session._path),
             }
