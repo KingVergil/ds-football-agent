@@ -15,7 +15,8 @@ from langgraph.graph import StateGraph, END
 
 from .role import Role
 from .data_manager import DataManager
-from .prompt_builder import PromptBuilder, load_system_prompt, parse_order
+from .prompt_builder import PromptBuilder, load_system_prompt
+from .order_utils import parse_orders
 from .environment import strip_scores, get_football_day, football_day_calendar_dates
 from .session_logger import SessionLogger
 from .base_llm import BaseLLMProvider
@@ -425,135 +426,7 @@ def node_parse_orders(state: AgentState) -> AgentState:
     if not response:
         return {**state, "orders": []}
 
-    # 🔧 容错: 匹配到下一个 ``` 或字符串末尾，防止 LLM 截断导致最后一个 block 无闭合 ``` 被静默丢弃
-    blocks = re.findall(r'```order\n(.*?)(?=```|\Z)', response, re.DOTALL)
-    # 检测截断：最后一个 block 没有闭合的 ```
-    if blocks and not response.rstrip().endswith('```'):
-        print(f"  ⚠️ LLM 响应可能被截断（末尾无闭合 ```），最后一个 order block 已尽力解析")
-
-    # 队名→lota_id fallback
-    name_to_lid = {}
-    for m in safe:
-        name_to_lid[m.get("home_name", "") + m.get("away_name", "")] = m["lota_id"]
-
-    orders = []
-    for block in blocks:
-        parsed = parse_order("```order\n" + block + "\n```")
-        if not parsed:
-            continue
-
-        # lota_id fallback: 按队名模糊匹配
-        if not parsed.get("lota_id"):
-            reason = parsed.get("reason", "") + block
-            for m in safe:
-                home = m.get("home_name", "")
-                away = m.get("away_name", "")
-                # 检查理由/区块中是否提到主队或客队名
-                if (home and len(home) >= 2 and home[:2] in reason) or \
-                   (away and len(away) >= 2 and away[:2] in reason):
-                    parsed["lota_id"] = m["lota_id"]
-                    break
-            if not parsed.get("lota_id") and len(safe) == 1:
-                parsed["lota_id"] = safe[0]["lota_id"]
-        if not parsed.get("lota_id"):
-            continue
-
-        # 🔒 校验 lota_id 合法性
-        lid = parsed["lota_id"]
-        safe_ids = {m["lota_id"] for m in safe}
-
-        # 1) 黑名单检查
-        blacklist = rt.dm.get_blacklist()
-        if lid in blacklist:
-            print(f"  🚫 黑名单拦截 {lid}，跳过")
-            continue
-
-        # 2) 当天比赛列表检查：LLM 可能幻觉出不在 safe 中的 lota_id
-        if lid not in safe_ids:
-            print(f"  ⚠️ LLM 输出未知 lota_id {lid}（不在当天 {len(safe)} 场比赛中），尝试队名重匹配...")
-            reason = parsed.get("reason", "") + block
-            parsed_reason = parsed.get("reason", "")
-            matched = None
-            # 先按队名匹配
-            for m in safe:
-                home = m.get("home_name", "")
-                away = m.get("away_name", "")
-                if home and away and (home[:2] in reason or away[:2] in reason):
-                    matched = m
-                    break
-            # 队名匹配失败时，尝试按 reason 中出现的 lota_id 匹配
-            if not matched:
-                for m in safe:
-                    m_lid = m.get("lota_id", "")
-                    if m_lid:
-                        m_nid = m_lid.replace("Lota", "").replace("lota", "")
-                        if m_lid in parsed_reason or m_nid in parsed_reason:
-                            matched = m
-                            break
-            if matched:
-                print(f"  🔄 重匹配 {lid} → {matched['lota_id']} ({matched.get('home_name','')} vs {matched.get('away_name','')})")
-                lid = matched["lota_id"]
-                parsed["lota_id"] = lid
-            else:
-                print(f"  🚫 无法匹配合法比赛，跳过订单 (原始 lota_id={lid})")
-                continue
-        else:
-            # 🔒 队名交叉校验：lid 在 safe_ids 中，但需验证 reason 中的队名是否与
-            # lid 的实际比赛一致。防止 LLM 把 A 场的分析贴到 B 场的合法 ID 上（"张冠李戴"）。
-            reason = parsed.get("reason", "") + block
-            match_info = next((m for m in safe if m["lota_id"] == lid), None)
-            if match_info:
-                home = match_info.get("home_name", "")
-                away = match_info.get("away_name", "")
-                if home and away and len(home) >= 2 and len(away) >= 2:
-                    home_ok = home[:2] in reason
-                    away_ok = away[:2] in reason
-                    # LLM 可能只用 ID 引用比赛而不写队名（如 "Lota4467584 主队..."）
-                    # 检查 parsed reason 中是否包含 lota_id 或纯数字ID
-                    parsed_reason = parsed.get("reason", "")
-                    numeric_id = lid.replace("Lota", "").replace("lota", "")
-                    id_in_reason = lid in parsed_reason or numeric_id in parsed_reason
-                    if not home_ok and not away_ok:
-                        if id_in_reason:
-                            print(f"  ✅ 队名交叉校验: {lid} reason中未出现队名但引用了ID，视为通过")
-                        else:
-                            # reason 中既无队名也无 ID — 纯分析性语言（如只讨论离散/盘口/水位）。
-                            # 此时无证据表明"张冠李戴"，lota_id 本身已验证在 safe_ids 中，放行但标 warning。
-                            print(f"  ⚠️ 队名交叉校验跳过: {lid} ({home} vs {away}) reason中无队名/ID，无法交叉验证但放行（请人工检查）")
-                            # 不 continue，继续处理该订单
-
-        if not parsed.get("odds"):
-            odds = rt.dm.get_odds(lid)
-            bt, pk = parsed.get("bet_type", ""), parsed.get("pick", "")
-            if bt == "胜平负" and odds.get("eu"):
-                parsed["odds"] = odds["eu"].get(pk, 0)
-            elif bt == "亚盘" and odds.get("asian"):
-                parsed["odds"] = odds["asian"].get("h" if pk == "H" else "a", 0)
-            elif bt == "大小球" and odds.get("ou"):
-                parsed["odds"] = odds["ou"].get("over" if pk == "over" else "under", 0)
-
-        # 🔧 亚盘 handicap 权威赋值：直接取赔率数据里的盘口线（-asian.handicap），
-        # 数据层受=负/让=正 → 结算层受=正/让=负，故取反。不再依赖 LLM 符号或水位猜测。
-        if parsed.get("bet_type") == "亚盘":
-            asian = (rt.dm.get_odds(lid) or {}).get("asian", {})
-            if asian.get("handicap") is not None:
-                parsed["handicap"] = -float(asian["handicap"])
-            # 无 odds 数据时保留 LLM 输出的 handicap 作为兜底
-
-        orders.append(parsed)
-
-    # 🔧 同批去重：LLM 可能在 thinking 中先试探再重注，同一 (lota_id, bet_type)
-    # 保留最后一个（LLM 思考链的最终决定），避免试探注覆盖重注意图。
-    seen = {}
-    for o in orders:
-        key = (o.get("lota_id"), o.get("bet_type"))
-        if key in seen:
-            prev = seen[key]
-            print(f"  ⚠️ 同批重复 {key[0]} {key[1]}: "
-                  f"¥{prev.get('amount',0)} → ¥{o.get('amount',0)}（以后者为准）")
-        seen[key] = o
-    orders = list(seen.values())
-
+    orders = parse_orders(response, safe, rt.dm)
     return {**state, "orders": orders}
 
 
