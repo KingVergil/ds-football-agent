@@ -11,6 +11,7 @@
 #   ./batch_agents.sh status                        # 全部状态
 #   ./batch_agents.sh pending                       # 全部待结算
 #   ./batch_agents.sh dashboard                     # 刷新数据 → 打开 UI
+#   ./batch_agents.sh factor-induction              # 因子归纳（alpha 跨狗 1 次 + 非 alpha 各自）
 #   ./batch_agents.sh email-orders                 # 发送所有默认 agent 未结算订单邮件
 #   ./batch_agents.sh email-orders live            # 发送当前足球日（默认 agent）
 #   ./batch_agents.sh email-orders live 均注狗      # 只发均注狗
@@ -142,6 +143,10 @@ case "$cmd" in
             python "$SCRIPT_DIR/dsfootball_cli.py" agent "$agent" "$cmd" ${args[@]+"${args[@]}"} "--jingcai"
         done
         _refresh_dashboard noopen
+        ;;
+    factor-induction)
+        echo "🧠 因子归纳（alpha 跨狗 1 次 + 非 alpha 各自）..."
+        python "$SCRIPT_DIR/dsfootball_cli.py" factor-induction ${args[@]+"${args[@]}"}
         ;;
     email-orders)
         # 默认发送列表（命令行未指定 agent 时使用）
