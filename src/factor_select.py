@@ -67,7 +67,12 @@ def factor_profile(stats: dict, now: datetime | None = None) -> dict | None:
         h.get("return_ratio", 0.0) * w
         for h, w in zip(recent, weights)
     ) / wsum
-    hits = sum(1 for h in recent if h.get("hit") is True)
+    # 半赢(hit=0.5)按 0.5 命中计，半输(hit=-0.5)不计命中
+    hits = sum(
+        1.0 if h.get("hit") is True else
+        (0.5 if h.get("hit") == 0.5 else 0.0)
+        for h in recent
+    )
     n = len(recent)
     shrunk_rate = (hits + SHRINK_ALPHA) / (n + SHRINK_ALPHA + SHRINK_BETA)
 

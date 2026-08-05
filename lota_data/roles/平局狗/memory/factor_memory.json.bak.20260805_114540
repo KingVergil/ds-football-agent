@@ -1,11 +1,11 @@
 {
-  "updated_at": "2026-08-05T11:45:40.710423",
+  "updated_at": "2026-08-03T10:09:10.360015",
   "factor_perf": {
     "平手盘均衡": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -24,11 +24,11 @@
     },
     "必发平局买盘关注": {
       "total": 2,
-      "hit": 1.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 1,
+      "push": 0,
       "profit": 67.0,
-      "total_return": 1.34,
+      "total_return": 1.3399999999999999,
       "status": "dormant",
       "desc": "必发市场平局买盘量持续高于卖盘量，显示有资金主动介入平局方向，可作为辅助正向信号。",
       "first_seen": "2026-06-12",
@@ -52,9 +52,9 @@
     },
     "平赔上扬不利平": {
       "total": 3,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 1,
       "profit": -110.0,
       "total_return": -2.0,
       "status": "retired",
@@ -87,11 +87,11 @@
     },
     "小球升水示险": {
       "total": 3,
-      "hit": 1.0,
-      "miss": 1.0,
-      "push": 1.0,
+      "hit": 1,
+      "miss": 1,
+      "push": 1,
       "profit": 67.0,
-      "total_return": 1.34,
+      "total_return": 1.3399999999999999,
       "status": "dormant",
       "desc": "初盘小球低水设防，但临场阶段小球水位快速抬升，大小球水位趋于平衡甚至大球降水，预示进球预期增加，平局概率降低。",
       "first_seen": "2026-06-12",
@@ -122,9 +122,9 @@
     },
     "平离散过热反诱": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -100.0,
       "total_return": -2.0,
       "status": "dormant",
@@ -150,9 +150,9 @@
     },
     "离散平局走高不利平": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -105.0,
       "total_return": -2.0,
       "status": "dormant",
@@ -178,9 +178,9 @@
     },
     "大小球诱大平局难稳": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -55.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -199,9 +199,9 @@
     },
     "平赔剧烈波动示险": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -65.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -220,9 +220,9 @@
     },
     "公平盘实力差警戒": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -110.0,
       "total_return": -2.0,
       "status": "dormant",
@@ -248,9 +248,9 @@
     },
     "小球升水转大诱杀": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -269,9 +269,9 @@
     },
     "主胜凝聚平局伴跌": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -290,9 +290,9 @@
     },
     "平赔上扬不利平，必发平局买盘关注，小球升水示险，升盘降水不利平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "retired",
@@ -311,9 +311,9 @@
     },
     "公平盘均衡指向": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 27.36,
       "total_return": 1.14,
       "status": "dormant",
@@ -332,9 +332,9 @@
     },
     "平手盘浅盘造平": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 27.36,
       "total_return": 1.14,
       "status": "dormant",
@@ -353,9 +353,9 @@
     },
     "平赔临场急速收敛": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 27.36,
       "total_return": 1.14,
       "status": "dormant",
@@ -374,9 +374,9 @@
     },
     "大小球小球严防": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "dormant",
@@ -395,9 +395,9 @@
     },
     "深盘诱平陷阱": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -416,9 +416,9 @@
     },
     "平赔下山式收敛": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -437,9 +437,9 @@
     },
     "亚盘贴水失衡不利平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "dormant",
@@ -458,9 +458,9 @@
     },
     "亚盘浅开对冲实力差，离散平庸指向闷局": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 100.0,
       "total_return": 2.0,
       "status": "retired",
@@ -479,9 +479,9 @@
     },
     "平赔独降诱平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -500,9 +500,9 @@
     },
     "半球盘追平禁区": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "dormant",
@@ -521,9 +521,9 @@
     },
     "浅盘小球平赔共振": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "dormant",
@@ -542,9 +542,9 @@
     },
     "离散平淡造平": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "dormant",
@@ -563,9 +563,9 @@
     },
     "亚盘贴水失衡不利平，平赔与必发买盘背离，小球升水示险": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "retired",
@@ -584,9 +584,9 @@
     },
     "离散平局走高不利平，亚盘贴水失衡不利平，小球升水示险": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "retired",
@@ -603,15 +603,15 @@
         }
       ]
     },
-    "实力均衡浅盘": {
-      "total": 23,
-      "hit": 9.0,
-      "miss": 13.0,
-      "push": 1.0,
-      "profit": 193.36,
-      "total_return": 4.76,
+    "实力均衡浅盘✅": {
+      "total": 19,
+      "hit": 9,
+      "miss": 10,
+      "push": 0,
+      "profit": 353.36,
+      "total_return": 7.76,
       "status": "dormant",
-      "desc": "公平盘主客实力差极小、亚盘为平手或平半等浅盘，双方势均力敌利于平局。",
+      "desc": "",
       "first_seen": "2026-07-14",
       "last_seen": "2026-07-14",
       "history": [
@@ -747,50 +747,18 @@
           "profit": 95.0,
           "return_ratio": 1.9,
           "lota_id": "Lota4480407"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459821"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459729"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -60.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459803"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": null,
-          "profit": 0,
-          "return_ratio": 0.0,
-          "lota_id": ""
         }
-      ],
-      "aliases": [
-        "实力均衡浅盘❌",
-        "实力均衡浅盘"
       ]
     },
-    "大小球防小": {
-      "total": 23,
-      "hit": 9.0,
-      "miss": 13.0,
-      "push": 1.0,
-      "profit": 193.36,
-      "total_return": 4.76,
+    "大小球防小✅": {
+      "total": 18,
+      "hit": 9,
+      "miss": 9,
+      "push": 0,
+      "profit": 378.36,
+      "total_return": 8.76,
       "status": "dormant",
-      "desc": "机构大小球盘口偏小且小球水位持续压低，预期进球偏少，支持平局格局。",
+      "desc": "",
       "first_seen": "2026-07-14",
       "last_seen": "2026-07-14",
       "history": [
@@ -919,57 +887,18 @@
           "profit": 95.0,
           "return_ratio": 1.9,
           "lota_id": "Lota4480407"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468114"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468124"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468137"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -35.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468146"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": null,
-          "profit": 0,
-          "return_ratio": 0.0,
-          "lota_id": ""
         }
-      ],
-      "aliases": [
-        "大小球防小❌",
-        "大小球防小"
       ]
     },
-    "离散凌乱无凝聚": {
-      "total": 22,
-      "hit": 9.0,
-      "miss": 12.0,
-      "push": 1.0,
-      "profit": 253.36,
-      "total_return": 5.76,
+    "离散凌乱无凝聚✅": {
+      "total": 15,
+      "hit": 9,
+      "miss": 6,
+      "push": 0,
+      "profit": 558.36,
+      "total_return": 11.760000000000002,
       "status": "dormant",
-      "desc": "胜平负离散值均无明显极端低位，市场对某一方缺乏强烈共识，方向模糊时平局易出。",
+      "desc": "",
       "first_seen": "2026-07-14",
       "last_seen": "2026-07-14",
       "history": [
@@ -1077,69 +1006,16 @@
           "profit": 95.0,
           "return_ratio": 1.9,
           "lota_id": "Lota4480407"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468114"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -55.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468121"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468124"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459717"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459723"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4480394"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": null,
-          "profit": 0,
-          "return_ratio": 0.0,
-          "lota_id": ""
         }
-      ],
-      "aliases": [
-        "离散凌乱无凝聚❌",
-        "离散凌乱无凝聚"
       ]
     },
-    "平赔走势收敛 ⇒输": {
-      "total": 13,
-      "hit": 0.0,
-      "miss": 13.0,
-      "push": 0.0,
-      "profit": -665.0,
-      "total_return": -13.0,
+    "平赔走势收敛❌ ⇒输": {
+      "total": 5,
+      "hit": 0,
+      "miss": 5,
+      "push": 0,
+      "profit": -235.0,
+      "total_return": -5.0,
       "status": "retired",
       "desc": "",
       "first_seen": "2026-07-14",
@@ -1179,75 +1055,16 @@
           "profit": -35.0,
           "return_ratio": -1.0,
           "lota_id": "Lota4468146"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -55.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468121"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -65.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4460976"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459821"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459717"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459723"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459729"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -50.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4468137"
-        },
-        {
-          "date": "2026-07-14",
-          "hit": false,
-          "profit": -60.0,
-          "return_ratio": -1.0,
-          "lota_id": "Lota4459803"
         }
-      ],
-      "aliases": [
-        "平赔走势收敛✅ ⇒输"
       ]
     },
-    "平赔走势收敛 ⇒赢": {
+    "平赔走势收敛✅ ⇒赢": {
       "total": 9,
-      "hit": 9.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 9,
+      "miss": 0,
+      "push": 0,
       "profit": 858.36,
-      "total_return": 17.76,
+      "total_return": 17.759999999999998,
       "status": "retired",
       "desc": "",
       "first_seen": "2026-07-14",
@@ -1315,14 +1132,217 @@
           "profit": 95.0,
           "return_ratio": 1.9,
           "lota_id": "Lota4480407"
+        }
+      ]
+    },
+    "大小球防小❌": {
+      "total": 4,
+      "hit": 0,
+      "miss": 4,
+      "push": 0,
+      "profit": -185.0,
+      "total_return": -4.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468114"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468124"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468137"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -35.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468146"
+        }
+      ]
+    },
+    "离散凌乱无凝聚❌": {
+      "total": 6,
+      "hit": 0,
+      "miss": 6,
+      "push": 0,
+      "profit": -305.0,
+      "total_return": -6.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468114"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -55.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468121"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468124"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459717"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459723"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4480394"
+        }
+      ]
+    },
+    "平赔走势收敛✅ ⇒输": {
+      "total": 8,
+      "hit": 0,
+      "miss": 8,
+      "push": 0,
+      "profit": -430.0,
+      "total_return": -8.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -55.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468121"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -65.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4460976"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459821"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459717"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459723"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459729"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4468137"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -60.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459803"
+        }
+      ]
+    },
+    "实力均衡浅盘❌": {
+      "total": 3,
+      "hit": 0,
+      "miss": 3,
+      "push": 0,
+      "profit": -160.0,
+      "total_return": -3.0,
+      "status": "retired",
+      "desc": "",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459821"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -50.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459729"
+        },
+        {
+          "date": "2026-07-14",
+          "hit": false,
+          "profit": -60.0,
+          "return_ratio": -1.0,
+          "lota_id": "Lota4459803"
         }
       ]
     },
     "离散凌乱无凝聚?": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -60.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1339,11 +1359,74 @@
         }
       ]
     },
+    "实力均衡浅盘": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "公平盘主客实力差极小、亚盘为平手或平半等浅盘，双方势均力敌利于平局。",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "大小球防小": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "机构大小球盘口偏小且小球水位持续压低，预期进球偏少，支持平局格局。",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
+    "离散凌乱无凝聚": {
+      "total": 1,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
+      "profit": 0.0,
+      "total_return": 0.0,
+      "status": "retired",
+      "desc": "胜平负离散值均无明显极端低位，市场对某一方缺乏强烈共识，方向模糊时平局易出。",
+      "first_seen": "2026-07-14",
+      "last_seen": "2026-07-14",
+      "history": [
+        {
+          "date": "2026-07-14",
+          "hit": null,
+          "profit": 0,
+          "return_ratio": 0.0,
+          "lota_id": ""
+        }
+      ]
+    },
     "平赔走势收敛": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "retired",
@@ -1362,9 +1445,9 @@
     },
     "必发平局关注": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "retired",
@@ -1383,9 +1466,9 @@
     },
     "浅盘实力极近": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -160.0,
       "total_return": -2.0,
       "status": "retired",
@@ -1411,9 +1494,9 @@
     },
     "必发平局买盘": {
       "total": 3,
-      "hit": 1.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 2,
+      "push": 0,
       "profit": -40.0,
       "total_return": 0.0,
       "status": "active",
@@ -1446,9 +1529,9 @@
     },
     "平赔下行": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -60.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1467,9 +1550,9 @@
     },
     "离散凝聚平局": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -60.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1488,9 +1571,9 @@
     },
     "大小球极小": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -60.0,
       "total_return": -1.0,
       "status": "retired",
@@ -1509,9 +1592,9 @@
     },
     "必发平局资金涌入": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 138.0,
       "total_return": 2.3,
       "status": "dormant",
@@ -1530,9 +1613,9 @@
     },
     "平手盘离散偏平": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 138.0,
       "total_return": 2.3,
       "status": "dormant",
@@ -1551,9 +1634,9 @@
     },
     "公平盘实力密合": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 138.0,
       "total_return": 2.3,
       "status": "dormant",
@@ -1572,9 +1655,9 @@
     },
     "浅盘小球共振": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "active",
@@ -1593,9 +1676,9 @@
     },
     "平赔临场下行": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "active",
@@ -1614,9 +1697,9 @@
     },
     "必发平局买盘强": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "active",
@@ -1635,9 +1718,9 @@
     },
     "离散平淡": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 91.0,
       "total_return": 1.82,
       "status": "active",
@@ -1656,9 +1739,9 @@
     },
     "离散指数平淡": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 120.0,
       "total_return": 2.0,
       "status": "active",
@@ -1677,9 +1760,9 @@
     },
     "公平盘实力接近": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 120.0,
       "total_return": 2.0,
       "status": "active",
@@ -1698,9 +1781,9 @@
     },
     "大小球小球低水": {
       "total": 1,
-      "hit": 1.0,
-      "miss": 0.0,
-      "push": 0.0,
+      "hit": 1,
+      "miss": 0,
+      "push": 0,
       "profit": 120.0,
       "total_return": 2.0,
       "status": "active",
@@ -1719,9 +1802,9 @@
     },
     "浅盘低水避平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "active",
@@ -1740,9 +1823,9 @@
     },
     "平赔回升不追": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "active",
@@ -1761,9 +1844,9 @@
     },
     "预期进球超盘口": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -50.0,
       "total_return": -1.0,
       "status": "active",
@@ -1782,9 +1865,9 @@
     },
     "主胜赔降避平": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -110.0,
       "total_return": -2.0,
       "status": "active",
@@ -1810,9 +1893,9 @@
     },
     "必发弱不追平": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -110.0,
       "total_return": -2.0,
       "status": "active",
@@ -1838,9 +1921,9 @@
     },
     "离散平局凝聚": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -140.0,
       "total_return": -2.0,
       "status": "retired",
@@ -1866,9 +1949,9 @@
     },
     "浅盘小球保护": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -140.0,
       "total_return": -2.0,
       "status": "retired",
@@ -1894,9 +1977,9 @@
     },
     "平赔下行追平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",
@@ -1915,9 +1998,9 @@
     },
     "离散凝聚避平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -60.0,
       "total_return": -1.0,
       "status": "active",
@@ -1936,9 +2019,9 @@
     },
     "平赔下行过热陷阱": {
       "total": 2,
-      "hit": 0.0,
-      "miss": 2.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 2,
+      "push": 0,
       "profit": -107.0,
       "total_return": -2.0,
       "status": "active",
@@ -1964,9 +2047,9 @@
     },
     "大小球偏大避平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 1.0,
-      "push": 0.0,
+      "hit": 0,
+      "miss": 1,
+      "push": 0,
       "profit": -47.0,
       "total_return": -1.0,
       "status": "active",
@@ -1985,9 +2068,9 @@
     },
     "赔率上行避平": {
       "total": 1,
-      "hit": 0.0,
-      "miss": 0.0,
-      "push": 1.0,
+      "hit": 0,
+      "miss": 0,
+      "push": 1,
       "profit": 0.0,
       "total_return": 0.0,
       "status": "active",

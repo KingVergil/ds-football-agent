@@ -423,6 +423,14 @@ class FactorMemory:
         if not self._loaded:  # 防止覆盖磁盘上的因子库
             self.load()
         return_ratio = profit / bet_size if bet_size > 0 else 0.0
+        # 半赢/半输归一化：结算层用 hit=None 同时表示走水与半盘（quarter-ball），
+        # 这里按 profit 区分——profit≠0 的 None 是赢半/输半，不是走水。
+        if hit is None and profit > 0:
+            eff_hit = 0.5       # 赢半：按 0.5 命中统计
+        elif hit is None and profit < 0:
+            eff_hit = -0.5      # 输半：按 0.5 未中统计
+        else:
+            eff_hit = hit       # True / False / None(真走水)
         if factor_id not in self.factor_perf:
             action, target = self._consolidate_candidate(factor_id, desc)
             if action == "suppress":
@@ -445,9 +453,11 @@ class FactorMemory:
                 }
         p = self.factor_perf[factor_id]
         p["total"] += 1
-        if hit is True:       p["hit"] += 1
-        elif hit is False:    p["miss"] += 1
-        else:                 p["push"] += 1
+        if eff_hit is True:       p["hit"] += 1
+        elif eff_hit is False:    p["miss"] += 1
+        elif eff_hit == 0.5:      p["hit"] += 0.5
+        elif eff_hit == -0.5:     p["miss"] += 0.5
+        else:                     p["push"] += 1
         p["profit"] += profit
         p["total_return"] = p.get("total_return", 0.0) + return_ratio
         if desc:
@@ -457,7 +467,7 @@ class FactorMemory:
                 p["first_seen"] = date
             p["last_seen"] = date
             p.setdefault("history", []).append({
-                "date": date, "hit": hit,
+                "date": date, "hit": eff_hit,
                 "profit": profit, "return_ratio": return_ratio,
                 "lota_id": lota_id,
             })
