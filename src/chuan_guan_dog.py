@@ -15,6 +15,7 @@
 用法:
   python3 -m src.chuan_guan_dog analyze [YYYY-MM-DD] [--dry-run] [--stake-pct 5]
       # 默认走 LLM 分析（人设+竞彩数据+7狗倾向 → 腿/票型）；--rules 强制规则版
+      # 默认翻倍打法（50起步，不中翻倍中了复原）；--stake-pct N 切回固定仓位
       # 也可 --tickets 3串1,3过2 手动覆盖票型
   python3 -m src.chuan_guan_dog alpha [--exclude 均注狗]          # 开启 alpha（跨7狗因子+订单共识）
   python3 -m src.chuan_guan_dog analyze 2026-06-13 --alpha         # 开启后带 alpha 分析
@@ -53,7 +54,11 @@ class ChuanGuanDog(Agent):
     """竞彩让球胜平负 2/3串1 玩法 agent（独立角色/资金/订单）。"""
 
     # ── 可调参数 ──
-    STAKE_PCT = 5.0                 # 每张票占用资金比例（%）
+    STAKE_PCT = 5.0                 # 每张票占用资金比例（%）（非翻倍模式）
+    USE_MARTINGALE = True           # 翻倍打法：不中翻倍、中了复原
+    MARTINGALE_BASE = 50.0          # 起步注额
+    MARTINGALE_DOUBLE = 2.0         # 翻倍倍数
+    MARTINGALE_MAX_PCT = 50.0       # 单注上限 = 资金 * 此比例（防爆仓）
     PICK_N = 4                      # 参与排序选腿的最大场数（支持 4过3 需要 4 腿）
     MIN_ODDS = 1.30                 # 单腿赔率下限（太低=超重仓无价值）
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
@@ -661,6 +666,28 @@ pick: H
             })
         return built
 
+    def _martingale_stake(self, role: Role) -> float:
+        """翻倍打法当前注额：从最近已结算串关订单推导连续未中次数。
+
+        中了复原到起步注额，未中翻倍；空仓日/走水不影响阶梯。
+        单注上限 = 资金 * MARTINGALE_MAX_PCT（防爆仓）。
+        """
+        settled = [o for o in role.get_orders()
+                   if o.get("settled_at") and o.get("bet_type") == "串关"]
+        streak = 0
+        for o in reversed(settled):
+            if o.get("hit") is False:
+                streak += 1
+            elif o.get("hit") is True:
+                break
+            # hit None（走水）跳过不计
+        stake = self.MARTINGALE_BASE * (self.MARTINGALE_DOUBLE ** streak)
+        cap = role.capital * self.MARTINGALE_MAX_PCT / 100.0
+        stake = min(stake, cap)
+        if stake < self.MARTINGALE_BASE and role.capital >= self.MARTINGALE_BASE:
+            stake = self.MARTINGALE_BASE
+        return round(stake, 2)
+
     # ═══════════════════════════════════════════
     # analyze — 覆写：不跑 LLM 图，规则选腿 + 串关下单
     # ═══════════════════════════════════════════
@@ -698,7 +725,10 @@ pick: H
 
             placed, orders, skipped = 0, [], []
             for slip_i, slip in enumerate(slips):
-                slip_bet = round(role.capital * stake_pct / 100.0, 2)
+                if self.USE_MARTINGALE and stake_pct is None:
+                    slip_bet = self._martingale_stake(role)
+                else:
+                    slip_bet = round(role.capital * stake_pct / 100.0, 2)
                 if slip_bet <= 0 or slip_bet > role.capital:
                     skipped.append(f"{slip['ticket_type']} 资金不足")
                     continue
