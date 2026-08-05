@@ -55,16 +55,18 @@ class ChuanGuanDog(Agent):
 
     # ── 可调参数 ──
     STAKE_PCT = 5.0                 # 每张票占用资金比例（%）（非翻倍模式）
-    USE_MARTINGALE = True           # 翻倍打法：不中翻倍、中了复原
+    USE_MARTINGALE = False          # 翻倍打法开关（保本爆赚玩法用固定仓位，不翻倍）
     MARTINGALE_BASE = 50.0          # 起步注额
     MARTINGALE_DOUBLE = 2.0         # 翻倍倍数
     MARTINGALE_MAX_PCT = 50.0       # 单注上限 = 资金 * 此比例（防爆仓）
-    PICK_N = 4                      # 参与排序选腿的最大场数（支持 4过3 需要 4 腿）
+    PICK_N = 6                      # 参与排序选腿的最大场数（支持 5过3/6过4）
     MIN_ODDS = 1.30                 # 单腿赔率下限（太低=超重仓无价值）
     MAX_ODDS = 9.0                  # 单腿赔率上限（太高=隐含概率过低）
     MIN_CONF = 0.48                 # 隐含概率置信度下限
     START_CAPITAL = 1000.0          # 与其余狗一致，1000 起步
-    ALLOWED_TICKETS = ["2串1"]      # 人设限定：只允许 2串1（LLM 输出与规则兜底均过滤）
+    ALLOWED_TICKETS = ["2串1", "3串1", "4串1", "3过2", "4过3", "5过3", "6过4"]
+    DECIDE_PRIORITY = ["6过4", "5过3", "4过3", "3过2", "2串1"]
+    JC_ODDS_FACTOR = 0.9             # 竞彩赔率 ≈ Pinnacle 欧赔 × 0.9（返还率换算）
 
     # ── alpha 模式（跨7狗因子 + 订单共识）──
     ALPHA_DOGS = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
@@ -119,12 +121,8 @@ class ChuanGuanDog(Agent):
             if live or not any(m.get("jc_hhad") for m in ms):
                 ms = self._dm.refresh_matches_cache(cd, with_jc_odds=True)
             out.extend(ms or [])
-        return [
-            m for m in out
-            if start <= m.get("match_time", "") <= end
-            and m.get("jc_hhad")
-            and m.get("jc_hhad").get("goal_line") is not None
-        ]
+        # 竞彩场次都算候选：让球未开售的也能打不让球腿
+        return [m for m in out if start <= m.get("match_time", "") <= end]
 
     # ═══════════════════════════════════════════
     # 选腿 / 组票（可覆写为 LLM 或其他策略）
@@ -134,16 +132,35 @@ class ChuanGuanDog(Agent):
     def _implied_prob(odds: float) -> float:
         return 1.0 / odds if odds and odds > 0 else 0.0
 
-    def _score_leg(self, match: dict) -> Optional[dict]:
-        """单场让球胜平负：取隐含概率最高的一边作为腿；返回 None 表示放弃。"""
-        h = match.get("jc_hhad") or {}
+    def _jc_odds(self, match: dict) -> dict:
+        """竞彩胜平负赔率近似 = 项目现有 Pinnacle 欧赔 × 0.9（让球/不让球通用）。"""
+        o = (self._dm.get_odds(match.get("lota_id", "")) or {}).get("eu") or {}
         try:
-            ho, do, ao = float(h["home_odds"]), float(h["draw_odds"]), float(h["away_odds"])
+            return {
+                "h": round(float(o["h"]) * self.JC_ODDS_FACTOR, 2),
+                "d": round(float(o["d"]) * self.JC_ODDS_FACTOR, 2),
+                "a": round(float(o["a"]) * self.JC_ODDS_FACTOR, 2),
+            }
+        except (KeyError, TypeError, ValueError):
+            return {}
+
+    def _score_leg(self, match: dict) -> Optional[dict]:
+        """单场竞彩胜平负（让球/不让球）：取隐含概率最高的一边作为腿；返回 None 表示放弃。"""
+        h = match.get("jc_hhad") or {}
+        odds = self._jc_odds(match)
+        if not odds:
+            try:  # 无欧赔时兜底用让球赔率
+                odds = {"h": float(h["home_odds"]), "d": float(h["draw_odds"]), "a": float(h["away_odds"])}
+            except (KeyError, TypeError, ValueError):
+                return None
+        try:
             gl = float(h["goal_line"])
         except (KeyError, TypeError, ValueError):
-            return None
+            gl = 0.0  # 不让球
 
-        probs = {"H": self._implied_prob(ho), "D": self._implied_prob(do), "A": self._implied_prob(ao)}
+        probs = {"H": self._implied_prob(odds.get("h")),
+                 "D": self._implied_prob(odds.get("d")),
+                 "A": self._implied_prob(odds.get("a"))}
         norm = sum(probs.values())
         if norm <= 0:
             return None
@@ -151,9 +168,9 @@ class ChuanGuanDog(Agent):
             probs[k] /= norm
 
         pick = max(probs, key=probs.get)
-        odds = {"H": ho, "D": do, "A": ao}[pick]
+        leg_odds = odds["h" if pick == "H" else "d" if pick == "D" else "a"]
         conf = probs[pick]
-        if conf < self.MIN_CONF or odds < self.MIN_ODDS or odds > self.MAX_ODDS:
+        if conf < self.MIN_CONF or leg_odds < self.MIN_ODDS or leg_odds > self.MAX_ODDS:
             return None
 
         return {
@@ -165,7 +182,7 @@ class ChuanGuanDog(Agent):
             "jingcai_number": match.get("jingcai_number", ""),
             "pick": pick,
             "goal_line": gl,
-            "odds": odds,
+            "odds": leg_odds,
             "confidence": conf,
             "jc_hhad": h,
         }
@@ -208,6 +225,7 @@ class ChuanGuanDog(Agent):
         lines = []
         for m in matches:
             h = m.get("jc_hhad") or {}
+            jc = self._jc_odds(m)
             alpha_txt = ""
             if alpha_data:
                 leans = {"H": 0, "D": 0, "A": 0}
@@ -220,8 +238,8 @@ class ChuanGuanDog(Agent):
             lines.append(
                 f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
                 f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]} "
-                f"让球{h.get('goal_line','?')} 主/平/客="
-                f"{h.get('home_odds','?')}/{h.get('draw_odds','?')}/{h.get('away_odds','?')}{alpha_txt}"
+                f"{('让球'+str(h.get('goal_line')) if h.get('goal_line') is not None else '不让球')} "
+                f"胜平负赔率 H/D/A = {jc.get('h','?')}/{jc.get('d','?')}/{jc.get('a','?')}{alpha_txt}"
             )
         persona = role.persona_text()
         prompt = f"""你是竞彩串关分析 agent（串关狗）。
@@ -229,13 +247,19 @@ class ChuanGuanDog(Agent):
 ## 人设
 {persona}
 
-## {day_date} 足球日可投注竞彩让球胜平负场次
+## {day_date} 足球日可投注竞彩胜平负场次（让球/不让球可混串）
 {chr(10).join(lines)}
 
 ## 任务
-从上面场次中选出 2 场作为串关腿（一场最多一腿），每腿给出让球胜平负选择；票型固定 2串1。
+从上面场次中选出 2~6 场作为串关腿（一场最多一腿），每腿给出胜平负选择（让球或不让球）；票型由你按玩法自主决定。
 
-每个候选腿用一个 ```order 代码块输出（类型固定写 胜平负，盘口=该场竞彩让球线）：
+玩法理解（N过M 组合票 = 保本 + 爆赚）：
+- 5过3 = 5腿拆 10 注 3串1：命中 3/5 就回本，4/5 赚 4 倍，5/5 赚 10 倍
+- 6过4 = 6腿拆 15 注 4串1：命中 4/6 回本，5/6 赚 5 倍，6/6 赚 15 倍
+- 4过3 = 4腿拆 4 注 3串1；3过2 = 3腿拆 3 注 2串1；腿少时用这些，腿多且均衡时用 5过3/6过4
+- 用组合数量换容错与暴击：挂 1-2 场不伤，全中暴击
+
+每个候选腿用一个 ```order 代码块输出（类型固定写 胜平负；让球腿 盘口=该场让球线，不让球腿 盘口=0）：
 ```order
 lota_id: ...
 类型: 胜平负
@@ -246,8 +270,9 @@ pick: H
 理由: ≤40字
 ```
 
-最后另起一行输出票型，例如：票型: 2串1
-（**只允许 2串1**，不要输出其他票型）
+最后另起一行输出票型，例如：票型: 5过3
+（合法票型：2串1/3串1/4串1/3过2/4过3/5过3/6过4；所需腿数不能超过实际腿数）
+要求：单腿赔率 1.8~2.3 中庸偏价值，不追高赔冷门；不足 2-3 场好腿就空仓（只输出 票型: 无，不输出 order 块）。
 
 要求：
 - lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
@@ -289,10 +314,22 @@ pick: H
             seen.add(lid)
             m = cand_map[lid]
             h = m.get("jc_hhad") or {}
-            try:
-                gl = float(h.get("goal_line"))
-                odds = float({"H": h["home_odds"], "D": h["draw_odds"], "A": h["away_odds"]}[pick])
-            except Exception:
+            # 盘口非 0 = 让球腿（让球线以数据为准）；0/缺省 = 不让球腿
+            if parsed.get("handicap") not in (None, 0):
+                try:
+                    gl = float(h.get("goal_line")) if h.get("goal_line") is not None else float(parsed["handicap"])
+                except (TypeError, ValueError):
+                    gl = 0.0
+            else:
+                gl = 0.0
+            odds_map = self._jc_odds(m)
+            if not odds_map:
+                try:  # 无欧赔兜底用让球赔率
+                    odds_map = {"h": float(h["home_odds"]), "d": float(h["draw_odds"]), "a": float(h["away_odds"])}
+                except (KeyError, TypeError, ValueError):
+                    continue
+            odds = float(odds_map["h" if pick == "H" else "d" if pick == "D" else "a"])
+            if odds <= 0:
                 continue
             legs.append({
                 "lota_id": lid,
@@ -316,10 +353,10 @@ pick: H
         tk_m = re.search(r'票型[：:]\s*([^\n]+)', response)
         if tk_m:
             # 只提取允许的票型 token，忽略 LLM 行尾注释；去重防重复下注
-            for tk in re.findall(r"[234]串1|[34]过[23]", tk_m.group(1)):
+            for tk in re.findall(r"[2-6]串1|[3-6]过[2-5]", tk_m.group(1)):
                 spec = self._parse_ticket_spec(tk)
                 if (spec and tk in self.ALLOWED_TICKETS
-                        and spec[1] <= len(legs) and spec[0] >= spec[1]
+                        and spec[0] <= len(legs)
                         and tk not in tickets):
                     tickets.append(tk)
         return legs[: self.PICK_N], (tickets or None)
@@ -596,13 +633,12 @@ pick: H
         return legs
 
     def _decide_tickets(self, legs: list[dict]) -> list[str]:
-        """规则兜底票型：只允许 ALLOWED_TICKETS 中腿数够的组合（默认仅 2串1）。"""
-        out = []
-        for tk in self.ALLOWED_TICKETS:
+        """规则兜底票型：按腿数选一张最合适的（6过4 > 5过3 > 4过3 > 3过2 > 2串1）。"""
+        for tk in self.DECIDE_PRIORITY:
             spec = self._parse_ticket_spec(tk)
-            if spec and spec[1] <= len(legs) and spec[0] >= spec[1]:
-                out.append(tk)
-        return out
+            if spec and spec[0] <= len(legs):
+                return [tk]
+        return []
         return []
 
     @staticmethod
