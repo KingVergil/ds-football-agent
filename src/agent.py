@@ -20,6 +20,14 @@ from .order_utils import parse_orders
 from .environment import strip_scores, get_football_day, football_day_calendar_dates
 from .session_logger import SessionLogger
 from .base_llm import BaseLLMProvider
+from .store import _get_valid_section_slugs as _valid_section_slugs
+
+# 阶段5: 反思 key_slugs 可上报的合法数据段白名单
+SECTION_SLUG_WHITELIST = sorted(_valid_section_slugs())
+DEFAULT_SECTION_SLUGS = [
+    "match-head", "fair-odds", "eu-odds-pinnacle", "asian-handicap-pinnacle",
+    "over-under-crown", "betfair-buysell", "discrete-odds",
+]
 
 
 # ═══════════════════════════════════════════════
@@ -987,6 +995,15 @@ def node_reflect(state: AgentState) -> AgentState:
 - 连续命中时是否过于保守？连续亏损时是否应该收手？
 - 仓位和置信度是否匹配？今天最大的注是否真的是最有信心的？
 - 总结 1-2 条资金管理教训，写入 `money_lesson` 字段
+
+**Step 5 — slugs 标注（key_slugs 必须从白名单选）**
+- 白名单: {', '.join(SECTION_SLUG_WHITELIST)}
+- 默认常用段: {', '.join(DEFAULT_SECTION_SLUGS)}
+- 因子依赖非默认段时才上报（这是为了分析时自动加载对应数据段）:
+  亚盘澳门/皇冠(asian-handicap-macau/crown)、必发欧赔(betfair-eu)、
+  近期状态(home-recent/away-recent)、首发(lineup)、历史交锋(match-history)、
+  排名(rank-info)、进球/比分彩金(goal-bonus/score-bonus)、大小球澳门(over-under-macau)
+- ⚠️ 只报该因子真正依赖的段，不要全选；`noise_slugs` 报对判断无用的段
 
 输出格式 — 必须输出合法 JSON（使用 JSON Output 模式）：
 
