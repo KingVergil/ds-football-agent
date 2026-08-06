@@ -402,7 +402,7 @@ if __name__ == "__main__":
             d = t.date() if (t.hour, t.minute) >= (12, 1) else t.date() - _td(days=1)
             return d.isoformat()
 
-        agents_list = ["alpha2狗","alpha狗","梭哈2狗","梭哈3狗","平局狗","跟风狗","均注狗"]
+        agents_list = ["alpha2狗","alpha狗","梭哈2狗","梭哈3狗","平局狗","跟风狗","均注狗","串关狗"]
         all_orders = []
         curves = {}  # agent → [{date, capital}, ...]
 
@@ -416,48 +416,75 @@ if __name__ == "__main__":
             for o in role_orders:
                 lid = o.get("lota_id", "")
                 order_stored_score = o.get("score", "")
-                home, away, league, time, score = _extract_match(lid, order_stored_score)
+                legs = o.get("legs") or []
+                is_parlay = bool(legs) and o.get("bet_type") == "串关"
+                pick_disp = o.get("pick", "")
+                hc_disp = o.get("handicap")
+                reason_disp = (o.get("reason", "") or "")[:60]
 
-                if score == '-' or len(score) < 3:
-                    refreshed = dm.refresh_score_match(lid)
-                    if refreshed:
-                        api_score = refreshed.get("score") or f"{refreshed.get('home_score','')}:{refreshed.get('away_score','')}"
-                        api_state = refreshed.get("state", 0)
-                        score = api_score
-                        o["score"] = score
-                        if home in ("?", "") and refreshed.get("home_name"):
-                            home = refreshed.get("home_name", home)
-                        if away in ("?", "") and refreshed.get("away_name"):
-                            away = refreshed.get("away_name", away)
-                        if score and len(score) >= 3:
-                            print(f"  ✅ score补全: {lid} {home} vs {away} → {score}")
-                    if not score or len(score) < 3:
-                        # 未开赛的不报 warning（比分空缺是正常的）
-                        now_bj = _dt.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
-                        is_future = False
-                        if time:
-                            try:
-                                if _dt.strptime(time, "%Y-%m-%d %H:%M") > now_bj:
-                                    is_future = True
-                            except ValueError:
-                                pass
-                        if not is_future:
-                            print(f"  ⚠️ score缺失: {lid} {home} vs {away} (order_score={order_stored_score!r})")
+                if is_parlay:
+                    # 串关：按 legs 展开（每腿 对阵/选择/让球），比分取各腿
+                    leg_parts, pick_parts, hc_parts = [], [], []
+                    league = time = ""
+                    for l in legs:
+                        h, a, lg, mt, sc = _extract_match(l.get("lota_id", ""), l.get("score", ""))
+                        leg_parts.append(f"{h} vs {a}" + (f" {sc}" if sc else ""))
+                        pick_parts.append(l.get("pick", "?"))
+                        gl = l.get("goal_line")
+                        hc_parts.append(f"{float(gl):+.0f}" if isinstance(gl, (int, float)) else "-")
+                        league = lg or league
+                        time = mt or time
+                    home = " | ".join(leg_parts)
+                    away = ""
+                    score = ""
+                    pick_disp = " | ".join(pick_parts)
+                    hc_disp = " | ".join(hc_parts)
+                    reason_disp = " | ".join(
+                        (l.get("llm_reason") or "")[:50] for l in legs if l.get("llm_reason")
+                    )[:120]
+                else:
+                    home, away, league, time, score = _extract_match(lid, order_stored_score)
+
+                    if score == '-' or len(score) < 3:
+                        refreshed = dm.refresh_score_match(lid)
+                        if refreshed:
+                            api_score = refreshed.get("score") or f"{refreshed.get('home_score','')}:{refreshed.get('away_score','')}"
+                            api_state = refreshed.get("state", 0)
+                            score = api_score
+                            o["score"] = score
+                            if home in ("?", "") and refreshed.get("home_name"):
+                                home = refreshed.get("home_name", home)
+                            if away in ("?", "") and refreshed.get("away_name"):
+                                away = refreshed.get("away_name", away)
+                            if score and len(score) >= 3:
+                                print(f"  ✅ score补全: {lid} {home} vs {away} → {score}")
+                        if not score or len(score) < 3:
+                            # 未开赛的不报 warning（比分空缺是正常的）
+                            now_bj = _dt.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+                            is_future = False
+                            if time:
+                                try:
+                                    if _dt.strptime(time, "%Y-%m-%d %H:%M") > now_bj:
+                                        is_future = True
+                                except ValueError:
+                                    pass
+                            if not is_future:
+                                print(f"  ⚠️ score缺失: {lid} {home} vs {away} (order_score={order_stored_score!r})")
     
                 all_orders.append(dict(
                     agent=a_name, capital=capital,
                     lota_id=lid,
-                    match=f"{home} vs {away}",
+                    match=home if is_parlay else f"{home} vs {away}",
                     league=league,
                     time=time,
                     score=score,
-                    bet_type=o.get("bet_type", ""), pick=o.get("pick", ""),
-                    handicap=o.get("handicap"), odds=o.get("odds"),
+                    bet_type=o.get("bet_type", ""), pick=pick_disp,
+                    handicap=hc_disp, odds=o.get("odds"),
                     bet_size=o.get("bet_size", 0),
                     hit=o.get("hit"), profit=o.get("profit"),
                     settled=bool(o.get("settled_at")),
                     settled_at=str(o.get("settled_at", ""))[:10],
-                    reason=(o.get("reason", "") or "")[:60],
+                    reason=reason_disp,
                 ))
 
             # ── 日资金曲线（仅已结算，按比赛日期聚合）──

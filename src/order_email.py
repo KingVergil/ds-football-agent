@@ -76,6 +76,7 @@ def get_pending_orders(agent_name: str, day_start: str, day_end: str) -> list[di
             "odds": o.get("odds"),
             "bet_size": o.get("bet_size", 0),
             "reason": o.get("reason", ""),
+            "legs": o.get("legs", []),
             "home_name": match.get("home_name", ""),
             "away_name": match.get("away_name", ""),
             "league_name": match.get("league_name", ""),
@@ -313,10 +314,28 @@ def build_email_body(
 
         match_time_short = o["match_time"][5:16]
         league = o.get("league_name", "?")
-        home = o.get("home_name", "?")
-        away = o.get("away_name", "?")
-        pick = _pick_display(o)
-        hc_str = _fmt_hc(o.get("handicap"))
+        legs = o.get("legs") or []
+        is_parlay = o.get("bet_type") == "串关" and bool(legs)
+        if is_parlay:
+            # 串关：每腿一行展示（对阵/选择/让球），赔率为整票连乘
+            home = "<br>".join(
+                f"{l.get('home_name','?')} vs {l.get('away_name','?')}"
+                + (f" <span style='color:#999;font-size:11px'>{l.get('score','')}</span>" if l.get("score") else "")
+                for l in legs
+            )
+            away = ""
+            pick = "<br>".join(
+                f"{l.get('pick','?')}{float(l.get('goal_line')):+.0f}"
+                if isinstance(l.get("goal_line"), (int, float))
+                else l.get("pick", "?")
+                for l in legs
+            )
+            hc_str = "<br>".join(_fmt_hc(l.get("goal_line")) for l in legs)
+        else:
+            home = o.get("home_name", "?")
+            away = o.get("away_name", "?")
+            pick = _pick_display(o)
+            hc_str = _fmt_hc(o.get("handicap"))
         odds = o.get("odds") or "-"
         score = o.get("score", "")
         score_str = f' <span style="color:#999;font-size:11px">{score}</span>' if score else ""
