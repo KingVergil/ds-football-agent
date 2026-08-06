@@ -431,6 +431,13 @@ if __name__ == "__main__":
                         leg_parts.append(f"{h} vs {a}" + (f" {sc}" if sc else ""))
                         pick_parts.append(l.get("pick", "?"))
                         gl = l.get("goal_line")
+                        if not isinstance(gl, (int, float)):
+                            # 已结算订单的 legs 可能被覆盖丢失 goal_line → 从比赛缓存 jc_hhad 兜底
+                            _cm = dm.get_cached_match(l.get("lota_id", "")) or {}
+                            try:
+                                gl = float((_cm.get("jc_hhad") or {}).get("goal_line"))
+                            except (TypeError, ValueError):
+                                gl = None
                         hc_parts.append(f"{float(gl):+.0f}" if isinstance(gl, (int, float)) else "-")
                         league = lg or league
                         time = mt or time

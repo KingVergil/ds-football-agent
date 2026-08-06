@@ -1074,8 +1074,11 @@ pick: H
             h, a = (int(x) for x in sc.split(":"))
             adj = (h - a) + float(leg.get("goal_line") or 0)
             actual = "H" if adj > 0 else ("A" if adj < 0 else "D")
-            leg_results.append({"lota_id": lid, "score": sc, "pick": leg.get("pick"),
-                                "actual": actual, "hit": leg.get("pick") == actual})
+            leg_results.append({
+                "lota_id": lid, "score": sc, "pick": leg.get("pick"),
+                "goal_line": leg.get("goal_line"), "odds": leg.get("odds"),
+                "actual": actual, "hit": leg.get("pick") == actual,
+            })
 
         hit = bool(leg_results) and all(r["hit"] for r in leg_results)
         bet_size = float(order.get("bet_size") or 0)
