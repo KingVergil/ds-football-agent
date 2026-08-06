@@ -423,13 +423,13 @@ if __name__ == "__main__":
                 reason_disp = (o.get("reason", "") or "")[:60]
 
                 if is_parlay:
-                    # 串关：按 legs 展开（每腿 对阵/选择/让球），比分取各腿
+                    # 串关：按 legs 换行展开（每腿一行 对阵+比分 / 让胜让平让负 / 让球线）
                     leg_parts, pick_parts, hc_parts = [], [], []
                     league = time = ""
                     for l in legs:
                         h, a, lg, mt, sc = _extract_match(l.get("lota_id", ""), l.get("score", ""))
                         leg_parts.append(f"{h} vs {a}" + (f" {sc}" if sc else ""))
-                        pick_parts.append(l.get("pick", "?"))
+                        pk = l.get("pick", "?")
                         gl = l.get("goal_line")
                         if not isinstance(gl, (int, float)):
                             # 已结算订单的 legs 可能被覆盖丢失 goal_line → 从比赛缓存 jc_hhad 兜底
@@ -438,18 +438,26 @@ if __name__ == "__main__":
                                 gl = float((_cm.get("jc_hhad") or {}).get("goal_line"))
                             except (TypeError, ValueError):
                                 gl = None
-                        hc_parts.append(f"{float(gl):+.0f}" if isinstance(gl, (int, float)) else "-")
+                        if gl == 0:
+                            pick_parts.append({"H": "胜", "D": "平", "A": "负"}.get(pk, pk))
+                        else:
+                            pick_parts.append({"H": "让胜", "D": "让平", "A": "让负"}.get(pk, pk))
+                        hc_parts.append(
+                            f"{float(gl):+.0f}" if isinstance(gl, (int, float)) and gl != 0 else "-"
+                        )
                         league = lg or league
                         time = mt or time
-                    home = " | ".join(leg_parts)
+                    home = "<br>".join(leg_parts)
                     away = ""
                     score = ""
-                    pick_disp = " | ".join(pick_parts)
-                    hc_disp = " | ".join(hc_parts)
-                    reason_disp = " | ".join(
+                    pick_disp = "<br>".join(pick_parts)
+                    hc_disp = "<br>".join(hc_parts)
+                    bet_type_disp = "胜平负"
+                    reason_disp = "<br>".join(
                         (l.get("llm_reason") or "")[:50] for l in legs if l.get("llm_reason")
                     )[:120]
                 else:
+                    bet_type_disp = o.get("bet_type", "")
                     home, away, league, time, score = _extract_match(lid, order_stored_score)
 
                     if score == '-' or len(score) < 3:
@@ -485,7 +493,7 @@ if __name__ == "__main__":
                     league=league,
                     time=time,
                     score=score,
-                    bet_type=o.get("bet_type", ""), pick=pick_disp,
+                    bet_type=bet_type_disp, pick=pick_disp,
                     handicap=hc_disp, odds=o.get("odds"),
                     bet_size=o.get("bet_size", 0),
                     hit=o.get("hit"), profit=o.get("profit"),
