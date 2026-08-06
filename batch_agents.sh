@@ -152,6 +152,9 @@ case "$cmd" in
             echo ""
             echo "▸ 串关狗 — settle ${args[*]:-}（3串1 独立角色）"
             (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-}) 2>&1 | tail -3
+            echo ""
+            echo "🧠 因子归纳（结算后自动：alpha 跨狗 1 次 + 非 alpha 各自，--limit 30）..."
+            python "$SCRIPT_DIR/dsfootball_cli.py" factor-induction --limit 30
         fi
         _refresh_dashboard noopen
         ;;
