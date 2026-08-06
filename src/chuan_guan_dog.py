@@ -1208,6 +1208,7 @@ def main(argv: list[str] = None) -> int:
     p.add_argument("end", nargs="?", default=None, help="backtest 结束日 YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="只预览不落单")
     p.add_argument("--tickets", default=None, help="逗号分隔，如 3串1,3过2,4过3；不传则由 agent 自主决定")
+    p.add_argument("--live", action="store_true", help="强制刷新 jc_hhad 让球赔率与数据（默认只读缓存）")
     p.add_argument("--stake-pct", type=float, default=None, help="每张票资金占比%%")
     p.add_argument("--alpha", action="store_true", help="开启 alpha 模式（跨7狗因子+订单共识）并持久化")
     p.add_argument("--exclude", default=None, help="alpha 排除的角色，逗号分隔")
@@ -1234,7 +1235,7 @@ def main(argv: list[str] = None) -> int:
 
     if args.action == "analyze":
         tickets = [t.strip() for t in args.tickets.split(",")] if args.tickets else None
-        r = dog.analyze(args.day, live=False, dry_run=args.dry_run,
+        r = dog.analyze(args.day, live=args.live, dry_run=args.dry_run,
                         tickets=tickets, stake_pct=args.stake_pct, use_llm=not args.rules)
         tks = "+".join(r.get("tickets") or []) or "空仓"
         alpha_tag = " 🐺alpha" if r.get("alpha_mode") else ""
