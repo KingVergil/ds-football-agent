@@ -153,6 +153,9 @@ class ChuanGuanDog(Agent):
             ms = self._dm.get_cached_jc_matches(cd)
             if live or not any(m.get("jc_hhad") for m in ms):
                 ms = self._dm.refresh_matches_cache(cd, with_jc_odds=True)
+            # 🔧 刷新返回全量比赛 → 必须再按竞彩编号过滤，否则非竞彩场次（北单等）混入串关选项
+            # state=-1 是"未开赛"的正常状态，不能过滤
+            ms = [m for m in (ms or []) if m.get("jingcai_number")]
             out.extend(ms or [])
         # 竞彩场次都算候选：让球未开售的也能打不让球腿
         return [m for m in out if start <= m.get("match_time", "") <= end]
