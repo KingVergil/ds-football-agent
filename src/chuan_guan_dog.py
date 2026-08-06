@@ -34,6 +34,7 @@ import json
 import sys
 from datetime import date, datetime, timedelta, timezone
 from itertools import combinations
+from pathlib import Path
 from typing import Optional
 
 from .agent import Agent
@@ -42,6 +43,7 @@ from .environment import football_day_calendar_dates, get_football_day
 from .models import _uid
 from .role import Role
 
+ROLES_ROOT = Path(__file__).parent.parent / "lota_data" / "roles"
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
 
@@ -119,6 +121,15 @@ class ChuanGuanDog(Agent):
             except (FileNotFoundError, ValueError):
                 rt.role = Role(name=self.user, capital=self._capital)
                 rt.role.save()
+        # 派生角色（回测/探针）缺人设时，从基础串关狗复制，保证测试口径一致
+        try:
+            p = rt.role._persona_path
+            if rt.role.name != "串关狗" and not p.exists():
+                base_p = ROLES_ROOT / "串关狗" / "persona.md"
+                if base_p.exists():
+                    p.write_text(base_p.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            pass
         return rt.role
 
     def _runtime(self):
