@@ -324,12 +324,16 @@ def build_email_body(
                 for l in legs
             )
             away = ""
-            pick = "<br>".join(
-                f"{l.get('pick','?')}{float(l.get('goal_line')):+.0f}"
-                if isinstance(l.get("goal_line"), (int, float))
-                else l.get("pick", "?")
-                for l in legs
-            )
+            def _pick_cn(leg: dict) -> str:
+                """腿方向中文：让球盘 → 让胜/让平/让负；不让球 → 胜/平/负。"""
+                pk = leg.get("pick", "?")
+                gl = leg.get("goal_line")
+                if not isinstance(gl, (int, float)):
+                    return pk
+                if gl == 0:
+                    return {"H": "胜", "D": "平", "A": "负"}.get(pk, pk)
+                return {"H": "让胜", "D": "让平", "A": "让负"}.get(pk, pk)
+            pick = "<br>".join(_pick_cn(l) for l in legs)
             hc_str = "<br>".join(_fmt_hc(l.get("goal_line")) for l in legs)
         else:
             home = o.get("home_name", "?")
