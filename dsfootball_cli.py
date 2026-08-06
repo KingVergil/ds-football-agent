@@ -428,7 +428,13 @@ if __name__ == "__main__":
                     league = time = ""
                     for l in legs:
                         h, a, lg, mt, sc = _extract_match(l.get("lota_id", ""), l.get("score", ""))
-                        leg_parts.append(f"{h} vs {a}" + (f" {sc}" if sc else ""))
+                        line = f"{h} vs {a}" + (f" {sc}" if sc else "")
+                        lhit = l.get("hit")
+                        if lhit is True:
+                            line = f'<span style="color:#e74c3c;font-weight:bold">{line} ✅</span>'
+                        elif lhit is False:
+                            line = f'<span style="color:#999">{line} ❌</span>'
+                        leg_parts.append(line)
                         pk = l.get("pick", "?")
                         gl = l.get("goal_line")
                         if not isinstance(gl, (int, float)):
