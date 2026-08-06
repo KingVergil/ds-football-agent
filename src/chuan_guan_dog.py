@@ -68,7 +68,7 @@ class ChuanGuanDog(Agent):
     START_CAPITAL = 1000.0          # 与其余狗一致，1000 起步
     ALLOWED_TICKETS = ["2串1", "3串1", "4串1", "3过2", "4过3", "5过3", "6过4"]
     DECIDE_PRIORITY = ["6过4", "5过3", "4过3", "3过2", "2串1"]
-    JC_ODDS_FACTOR = 0.9             # 竞彩赔率 ≈ Pinnacle 欧赔 × 0.9（返还率换算）
+    JC_ODDS_FACTOR = 0.94            # 竞彩赔率 ≈ Pinnacle 欧赔 × 0.94（竞彩返还≈88% / PIN≈92-95%）
 
     # 票型玩法说明（prompt 动态生成，随 ALLOWED_TICKETS/--tickets 变化）
     TICKET_DESC = {
