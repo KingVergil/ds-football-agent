@@ -130,10 +130,16 @@ case "$cmd" in
         python "$SCRIPT_DIR/dsfootball_cli.py" prefetch ${args[0]:-} --jingcai
         echo "✅ 预取完成 → 并发分析 7 狗 (PARALLEL=${PARALLEL:-7})"
         _run_agents_parallel --prefetched
+        echo ""
+        echo "▸ 串关狗 — analyze ${args[0]:-}（3串1 专注模式）"
+        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog analyze ${args[0]:-} --tickets 3串1) 2>&1 | tail -4
         _refresh_dashboard open
         ;;
     status|pending)
         _run_agents_parallel
+        echo ""
+        echo "▸ 串关狗 — $cmd"
+        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog "$cmd") 2>&1 | tail -3
         ;;
     settle|factor-review)
         for agent in "${AGENTS[@]}"; do
@@ -142,6 +148,11 @@ case "$cmd" in
             echo ""
             python "$SCRIPT_DIR/dsfootball_cli.py" agent "$agent" "$cmd" ${args[@]+"${args[@]}"} "--jingcai"
         done
+        if [ "$cmd" = "settle" ]; then
+            echo ""
+            echo "▸ 串关狗 — settle ${args[*]:-}（3串1 独立角色）"
+            (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-}) 2>&1 | tail -3
+        fi
         _refresh_dashboard noopen
         ;;
     factor-induction)
