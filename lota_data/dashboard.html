@@ -32,7 +32,7 @@ body.hide-money .money{display:none}
 .section-label{font-size:11px;color:#8b949e;padding:6px 14px 2px;background:#0d1117;border-bottom:1px solid #21262d}
 .card-body table{width:100%;border-collapse:collapse;font-size:11px}
 .card-body th{text-align:left;padding:3px 8px;background:#0d1117;color:#8b949e;font-weight:500;position:sticky;top:0;z-index:1}
-.card-body td{padding:2px 8px;border-bottom:1px solid #1c2128;white-space:nowrap}
+.card-body td{padding:2px 8px;border-bottom:1px solid #6e7681;white-space:nowrap}
 .card-body tr:hover td{background:#1a1f28}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .bar-wrap{width:32px;height:4px;background:#21262d;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:2px}
@@ -274,7 +274,7 @@ agents.forEach(a=>{
     sorted.forEach(d=>{
       const pct = totalExposure>0?(d.bet_size/totalExposure*100).toFixed(1):0;
       const barW = Math.min(100, parseFloat(pct));
-      rows+=`<tr style="border-bottom:1px solid #6e7681">
+      rows+=`<tr>
         <td>${d.time?.slice(5)||'?'}</td>
         <td title="${d.league||''}">${d.match||'?'} <span class="muted" style="font-size:10px">${d.league||''}</span></td>
         <td class="num">${d.score||'-'}</td>
