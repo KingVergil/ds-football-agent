@@ -58,6 +58,7 @@ class ChuanGuanDog(Agent):
     # ── 可调参数 ──
     STAKE_PCT = 5.0                 # 每张票占用资金比例（%）（非翻倍模式）
     USE_MARTINGALE = False          # 翻倍打法开关（保本爆赚玩法用固定仓位，不翻倍）
+    MIN_LEG_VOTES = 2               # 腿强度阈值：信号投票 ≥ 该值才可入选串关腿（0-4）
     MARTINGALE_BASE = 50.0          # 起步注额
     MARTINGALE_DOUBLE = 2.0         # 翻倍倍数
     MARTINGALE_MAX_PCT = 50.0       # 单注上限 = 资金 * 此比例（防爆仓）
@@ -334,6 +335,94 @@ class ChuanGuanDog(Agent):
             pass
         return slugs
 
+    def _leg_signal_votes(self, match: dict) -> tuple[int, str, float]:
+        """腿强度投票（0-4）与建议方向，确定性信号：
+        离散极强(≤5) / 资金同向 / 欧赔同向 / 低水保护(≤0.88) 各 1 票。
+        方向默认跟离散凝聚，资金强背离(净流入≥3万)时反打跟资金。
+        返回 (votes, direction, odds)。
+        """
+        import re as _re
+        lid = match.get("lota_id", "")
+        if not lid:
+            return 0, "", 0.0
+        try:
+            sections = self._dm.get_tags(lid) or {}
+        except Exception:
+            return 0, "", 0.0
+
+        def _discrete():
+            best = None
+            for line in (sections.get("discrete-odds", "") or "").splitlines():
+                m = _re.search(r'Δt[+-]\d+m[↑↓→]*([\d.]+)/([\d.]+)/([\d.]+)', line)
+                if m:
+                    best = (float(m.group(1)), float(m.group(2)), float(m.group(3)))
+            return best
+
+        def _betfair():
+            net = {}
+            for side, key in [("H", "主胜"), ("D", "平局"), ("A", "客胜")]:
+                m = _re.search(rf'{key}买:\s*([\d.]+),\s*{key}卖:\s*([\d.]+)',
+                               sections.get("betfair-buysell", "") or "")
+                if m:
+                    net[side] = float(m.group(1)) - float(m.group(2))
+            return net
+
+        def _eu_down():
+            m = _re.search(r'Δt[+-]\d+m([↑↓→]+)([\d.]+)/([\d.]+)/([\d.]+)',
+                           sections.get("eu-odds-pinnacle", "") or "")
+            if not m:
+                return set()
+            return {s for i, s in enumerate(["H", "D", "A"])
+                    if i < len(m.group(1)) and m.group(1)[i] == "↓"}
+
+        def _ah():
+            m = (_re.search(r'Δt[+-]\d+m[↑↓→]*([\d.]+)/([^/]+)/([\d.]+)',
+                            sections.get("asian-handicap-pinnacle", "") or "")
+                 or _re.search(r'OPt[^=]*=([\d.]+)/([^/]+)/([\d.]+)',
+                               sections.get("asian-handicap-pinnacle", "") or ""))
+            if not m:
+                return None
+            hw, term, aw = float(m.group(1)), m.group(2), float(m.group(3))
+            gl = self._handicap_value(term)
+            return (hw, gl, aw) if gl is not None else None
+
+        disc = _discrete()
+        money = _betfair()
+        eu_down = _eu_down()
+        ah = _ah()
+        if not disc or not ah:
+            return 0, "", 0.0
+        sides = ["H", "D", "A"]
+        disc_dir = sides[min(range(3), key=lambda i: disc[i])]
+        disc_min = disc[sides.index(disc_dir)]
+        money_dir = None
+        if money:
+            money_dir = max(money, key=money.get)
+        hw, gl, aw = ah
+        side_water = hw if disc_dir == "H" else (aw if disc_dir == "A" else min(hw, aw))
+        votes = (1 if disc_min <= 5 else 0) + (1 if money_dir == disc_dir else 0) \
+            + (1 if disc_dir in eu_down else 0) + (1 if side_water <= 0.88 else 0)
+        direction = disc_dir
+        if money_dir and money_dir != disc_dir and abs(money.get(money_dir, 0)) >= 3.0:
+            direction = money_dir
+        if direction == "D":
+            direction = "A" if gl < 0 else "H"
+        odds = hw if direction == "H" else aw
+        return votes, direction, odds
+
+    @staticmethod
+    def _handicap_value(term: str) -> Optional[float]:
+        """亚盘中文让球术语 → 主队视角数值（受让=正，让球=负）。"""
+        table = {"平手": 0.0, "平半": 0.25, "半球": 0.5, "半一": 0.75, "一球": 1.0,
+                 "球半": 1.5, "一球半": 1.5, "两球": 2.0, "二球": 2.0, "两球半": 2.5,
+                 "三球": 3.0, "一球/球半": 1.25, "球半/两球": 1.75, "半球/一球": 0.75,
+                 "两球/两球半": 2.25}
+        term = (term or "").strip()
+        neg = not term.startswith("受")
+        base = term[1:] if term.startswith("受") else term
+        v = table.get(base)
+        return (-v if neg else v) if v is not None else None
+
     def _score_leg(self, match: dict) -> Optional[dict]:
         """单场竞彩胜平负（让球/不让球）：取隐含概率最高的一边作为腿；返回 None 表示放弃。"""
         h = match.get("jc_hhad") or {}
@@ -413,6 +502,20 @@ class ChuanGuanDog(Agent):
         if not matches:
             return [], None
 
+        # ── 强腿池：信号投票 ≥ MIN_LEG_VOTES 才可入选串关腿（多波次排序取 topN）──
+        strong: list[dict] = []
+        for m in matches:
+            votes, direction, _odds = self._leg_signal_votes(m)
+            if votes >= self.MIN_LEG_VOTES:
+                m["_votes"] = votes
+                m["_sig_dir"] = direction
+                strong.append(m)
+        strong.sort(key=lambda x: (-x["_votes"], x.get("match_time", "")))
+        if len(strong) < 3:
+            print(f"  ⏭ 强腿不足 3 条（{len(strong)}/{len(matches)} 场 ≥{self.MIN_LEG_VOTES}票），空仓")
+            return [], None
+        matches = strong
+
         # ── 自己的因子库（非 alpha：只用自己生成的因子）──
         # 历史回放/回测按模拟当日评估因子，避免真实时间把历史因子判休眠
         as_of = None
@@ -458,9 +561,10 @@ class ChuanGuanDog(Agent):
                                             extra_slugs=self_factor_slugs)
             mt16 = (m.get("match_time", "") or "").replace("T", " ")[:16]
             started_tag = " (已开赛，不可选)" if (now16 and mt16 <= now16) else ""
+            sig_tag = f" | 信号票数{m.get('_votes','')} 建议方向{m.get('_sig_dir','')}"
             lines.append(
                 f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
-                f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]}{started_tag} "
+                f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]}{started_tag}{sig_tag} "
                 f"{('让球'+str(h.get('goal_line')) if h.get('goal_line') is not None else '不让球')} "
                 f"{odds_txt}{alpha_txt}\n"
                 f"    因子数据段:\n{sec}"
@@ -576,7 +680,7 @@ pick: H
 
 要求：
 - lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
-- 保守原则：不够 2 场好腿就空仓（只输出 票型: 无，不输出任何 order 块）；不追高赔冷门
+- 保守原则：上面列表已按信号票数从高到低排序，优先选票数高的强腿；凑不齐 3 场强腿就空仓（只输出 票型: 无，不输出任何 order 块）；不追高赔冷门
 - 结合人设风格、自己的因子（如有）与 7 狗倾向（如有）决策，宁缺毋滥"""
         try:
             response = provider.call(
