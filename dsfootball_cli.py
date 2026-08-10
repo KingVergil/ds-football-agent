@@ -402,8 +402,8 @@ if __name__ == "__main__":
             d = t.date() if (t.hour, t.minute) >= (12, 1) else t.date() - _td(days=1)
             return d.isoformat()
 
-        agents_list = ["alpha2狗","alpha狗","梭哈2狗","梭哈3狗","平局狗","跟风狗","均注狗","串关狗"]
-        # --agent <名字>：只看/只跑指定狗（如串关狗）
+        agents_list = ["alpha2狗","alpha狗","梭哈2狗","梭哈3狗","平局狗","跟风狗","均注狗","串关2狗"]
+        # --agent <名字>：只看/只跑指定狗（如串关2狗）
         if "--agent" in sys.argv:
             agent_filter = sys.argv[sys.argv.index("--agent") + 1]
             agents_list = [a for a in agents_list if a == agent_filter]

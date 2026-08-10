@@ -5,7 +5,7 @@
 
 调度（已定）：
   - alpha 因子（alpha2狗/alpha狗/均注狗）：1 次归纳统一进全库（跨角色合并同模式因子）
-  - 非 alpha 因子（其余 4 狗）：各自归纳（只在角色内部合并）
+  - 非 alpha 因子（其余 5 狗，含串关2狗）：各自归纳（只在角色内部合并）
 
 合并候选策略（已定）：
   - 不做 kmeans；因子→slugs 是 one-hot 向量，bit 距离（对称差）≤2 的因子对进入 LLM 判重
@@ -38,7 +38,7 @@ AUDIT_LOG = ROOT / "scripts" / "factor_induction_audit.jsonl"
 BAK_SUFFIX = ".bak.20260805_phase3"
 
 ALPHA_ROLES = {"alpha2狗", "alpha狗", "均注狗"}
-ALL_ROLES = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
+ALL_ROLES = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "串关2狗"]
 BIT_DIST_MAX = 2
 NAME_RATIO_MIN = 0.60
 BIT_NAME_FLOOR = 0.35      # bit 候选还需名字相似度 ≥ 下限（slugs 共用核心段，纯 bit 距离会爆量）
