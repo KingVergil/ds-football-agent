@@ -90,7 +90,10 @@ def factor_profile(stats: dict, now: datetime | None = None) -> dict | None:
             except ValueError:
                 pass
         if diffs:
-            interval_days = max(sum(diffs) / len(diffs), 0.5)
+            # 同日聚类（interval≈0）不是有效触发间隔：若全在同一天触发，
+            # 回落默认半衰期，避免 1-2 天没触发就被误判休眠
+            _avg = sum(diffs) / len(diffs)
+            interval_days = _avg if _avg >= 1.0 else None
 
     dormant = False
     last_age_days = None

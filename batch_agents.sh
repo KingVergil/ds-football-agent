@@ -49,8 +49,10 @@ _football_label() {
 # 处理参数: "live" → 足球日日期
 # email-orders 模式下，第一个非 live 参数为日期，后续参数为 agent 名
 args=()
+was_live=0
 for a in "$@"; do
     if [ "$a" = "live" ]; then
+        was_live=1
         label="$(_football_label)"
         case "$cmd" in
             settle|factor-review)
@@ -131,15 +133,17 @@ case "$cmd" in
         echo "✅ 预取完成 → 并发分析 7 狗 (PARALLEL=${PARALLEL:-7})"
         _run_agents_parallel --prefetched
         echo ""
-        echo "▸ 串关狗 — analyze ${args[0]:-}（3串1 专注模式）"
-        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog analyze ${args[0]:-} --tickets 3串1) 2>&1 | tail -4
+        echo "▸ 串关2狗 — analyze ${args[0]:-}（3串1 专注模式，用自己的因子）"
+        live_flag=""
+        [ "$was_live" = "1" ] && live_flag="--live"
+        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog analyze ${args[0]:-} --tickets 3串1 --user 串关2狗 $live_flag) 2>&1 | tail -4
         _refresh_dashboard open
         ;;
     status|pending)
         _run_agents_parallel
         echo ""
-        echo "▸ 串关狗 — $cmd"
-        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog "$cmd") 2>&1 | tail -3
+        echo "▸ 串关2狗 — $cmd"
+        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog "$cmd" --user 串关2狗) 2>&1 | tail -3
         ;;
     settle|factor-review)
         for agent in "${AGENTS[@]}"; do
@@ -150,8 +154,8 @@ case "$cmd" in
         done
         if [ "$cmd" = "settle" ]; then
             echo ""
-            echo "▸ 串关狗 — settle ${args[*]:-}（3串1 独立角色）"
-            (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-}) 2>&1 | tail -3
+            echo "▸ 串关2狗 — settle ${args[*]:-}（3串1 独立角色，用自己的因子）"
+            (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-} --user 串关2狗) 2>&1 | tail -3
             echo ""
             echo "🧠 因子归纳（结算后自动：alpha 跨狗 1 次 + 非 alpha 各自，--limit 30）..."
             python "$SCRIPT_DIR/dsfootball_cli.py" factor-induction --limit 30

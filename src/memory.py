@@ -501,12 +501,13 @@ class FactorMemory:
 
     # ── 因子选择（注入 prompt 前）：样本窗 + 衰减加权 + 自适应休眠 ──
 
-    def selected_active(self) -> tuple[list[tuple[str, dict, dict]], list[tuple[str, dict, dict]], int]:
+    def selected_active(self, as_of=None) -> tuple[list[tuple[str, dict, dict]], list[tuple[str, dict, dict]], int]:
         """
         返回 (main, aux, dormant_count)：
           main — 窗口内 n>=2 且加权回报>0 的活跃因子（按加权回报降序，最多 12 个）
           aux  — 窗口内样本不足 / 加权回报<=0 的因子（观察区，慎用）
           dormant_count — 超过 3×平均触发间隔未触发（或已被 review 标记 dormant）的因子数
+        as_of: 评估基准时间（datetime）；历史回放时传模拟当日，默认用真实当前时间。
         """
         if not self._loaded or not self.factor_perf:
             return [], [], 0
@@ -518,7 +519,7 @@ class FactorMemory:
             if status == "dormant":
                 dormant_count += 1
                 continue
-            prof = factor_profile(s)
+            prof = factor_profile(s, now=as_of)
             if prof is None:
                 continue
             if prof["dormant"]:
@@ -533,11 +534,11 @@ class FactorMemory:
         aux.sort(key=lambda x: -x[2]["w_return"] if x[2] else 0)
         return main[:FACTOR_MAX_MAIN], aux[:6], dormant_count
 
-    def perf_text(self) -> str:
+    def perf_text(self, as_of=None) -> str:
         """分层注入：L1 负例护栏 + L2 正例(自适应main) + L3 观察摘要 + L4 休眠计数。"""
         if not self._loaded or not self.factor_perf:
             return ""
-        main, aux, dormant_count = self.selected_active()
+        main, aux, dormant_count = self.selected_active(as_of)
         retired = sorted(
             ((fid, s0) for fid, s0 in self.factor_perf.items() if s0.get("status") == "retired"),
             key=lambda x: -float(x[1].get("profit") or 0),
@@ -565,9 +566,9 @@ class FactorMemory:
             lines.append(f"  (另有 {dormant_count} 个休眠因子)")
         return "\n".join(lines)
 
-    def factor_desc_text(self) -> str:
+    def factor_desc_text(self, as_of=None) -> str:
         """L2 正例完整定义：只输出自适应 main 的定义（预算内，库再大不膨胀）。"""
-        main, _, _ = self.selected_active()
+        main, _, _ = self.selected_active(as_of)
         active_names = {fid for fid, _, _ in main}
         if not active_names:
             return ""

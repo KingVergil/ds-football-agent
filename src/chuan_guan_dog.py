@@ -2,7 +2,7 @@
 竞彩串关狗 — 独立于原有 agent 的串关玩法实现。
 
 通过继承 Agent 覆写 analyze / settle 行为，不改任何原有 agent 代码。
-独立角色/资金/订单（默认 user="串关狗"，落在 lota_data/roles/串关狗/）。
+独立角色/资金/订单（默认 user="串关2狗"，落在 lota_data/roles/串关2狗/）。
 
 玩法（v1 规则版）:
   - 数据: 从本地 matches 缓存读取竞彩场次（jc_hhad: goal_line + 主/平/客赔率）
@@ -104,7 +104,7 @@ class ChuanGuanDog(Agent):
     REVIEW_MIN_SAMPLES = 3          # 窗口内最少样本数才可退役
     REVIEW_RETIRE_RETURN = 0.0      # 窗口累计回报 ≤ 该值 → 退役候选
 
-    def __init__(self, user: str = "串关狗", capital: float = START_CAPITAL):
+    def __init__(self, user: str = "串关2狗", capital: float = START_CAPITAL):
         super().__init__(user=user)
         self._capital = capital
         self._dm = DataManager()
@@ -121,11 +121,11 @@ class ChuanGuanDog(Agent):
             except (FileNotFoundError, ValueError):
                 rt.role = Role(name=self.user, capital=self._capital)
                 rt.role.save()
-        # 派生角色（回测/探针）缺人设时，从基础串关狗复制，保证测试口径一致
+        # 派生角色（回测/探针）缺人设时，从基础串关2狗复制，保证测试口径一致
         try:
             p = rt.role._persona_path
-            if rt.role.name != "串关狗" and not p.exists():
-                base_p = ROLES_ROOT / "串关狗" / "persona.md"
+            if rt.role.name != "串关2狗" and not p.exists():
+                base_p = ROLES_ROOT / "串关2狗" / "persona.md"
                 if base_p.exists():
                     p.write_text(base_p.read_text(encoding="utf-8"), encoding="utf-8")
         except Exception:
@@ -135,6 +135,80 @@ class ChuanGuanDog(Agent):
     def _runtime(self):
         from .agent import _rt
         return _rt({"user": self.user})
+
+    def refresh_orders(self, day_date: str) -> dict:
+        """live 多波次刷新（对齐 7 狗 refresh_orders，按串关腿适配）：
+
+        - 含已开赛腿的旧单：保留（已开赛不可退，9 点再跑不撤 7 点已开赛的腿）
+        - 全未开赛的旧单：退回金额并删除，给新分析重新组合
+        返回刷新统计。
+        """
+        from datetime import date as _date, timedelta as _td
+        role = self._ensure_role()
+        now = _now_bj("%Y-%m-%d %H:%M")
+        d = _date.fromisoformat(day_date)
+        window_start = f"{day_date} 12:01"
+        window_end = f"{(d + _td(days=1)).isoformat()} 12:00"
+
+        def _norm_time(t: str) -> str:
+            return (t or "").replace("T", " ")[:16]
+
+        refunded = kept = 0
+        total_refund = 0.0
+        kept_orders: list[dict] = []
+        refunded_orders: list[dict] = []
+        for o in role.get_orders():
+            if o.get("settled_at"):
+                continue
+            times = [
+                _norm_time((self._dm.get_cached_match(lid) or {}).get("match_time", ""))
+                for lid in self._leg_ids(o)
+            ]
+            times = [t for t in times if t]
+            if not times:
+                continue
+            if not any(window_start <= t <= window_end for t in times):
+                continue
+            bet = float(o.get("bet_size", 0))
+            if any(t <= now for t in times):
+                kept += 1
+                kept_orders.append({
+                    "id": o.get("id"),
+                    "pick": o.get("pick", ""),
+                    "odds": o.get("odds", 0),
+                    "legs": [
+                        {"lota_id": l.get("lota_id"), "pick": l.get("pick")}
+                        for l in o.get("legs", [])
+                    ],
+                })
+                print(f"  🔒 保留 | {o.get('pick','')} bet{bet:.0f} — 含已开赛腿")
+            else:
+                role.deposit(bet)
+                role.remove_order(o.get("id", ""))
+                refunded += 1
+                total_refund += bet
+                refunded_orders.append({
+                    "id": o.get("id"),
+                    "pick": o.get("pick", ""),
+                    "odds": o.get("odds", 0),
+                    "legs": [
+                        {"lota_id": l.get("lota_id"), "pick": l.get("pick")}
+                        for l in o.get("legs", [])
+                    ],
+                })
+                print(f"  ↩ 退回 | {o.get('pick','')} bet{bet:.0f} — 全未开赛")
+        role.save()
+        print(f"  💰 刷新完成: 退回 {refunded} 单 ¥{total_refund:,.0f} | "
+              f"保留 {kept} 单 (含已开赛) | 余额 ¥{role.capital:,.0f}")
+        return {
+            "day": day_date,
+            "refunded": refunded,
+            "kept": kept,
+            "total_refund": total_refund,
+            "capital": role.capital,
+            "kept_orders": kept_orders,
+            "refunded_orders": refunded_orders,
+        }
 
     # ═══════════════════════════════════════════
     # 数据
@@ -158,6 +232,7 @@ class ChuanGuanDog(Agent):
             ms = [m for m in (ms or []) if m.get("jingcai_number")]
             out.extend(ms or [])
         # 竞彩场次都算候选：让球未开售的也能打不让球腿
+        # 同一足球日全量进入（含已开赛），开赛过滤在订单生成后做（live 多波次）
         return [m for m in out if start <= m.get("match_time", "") <= end]
 
     # ═══════════════════════════════════════════
@@ -197,17 +272,23 @@ class ChuanGuanDog(Agent):
         except (KeyError, TypeError, ValueError):
             return {}
 
-    def _match_sections_text(self, match: dict, budget: int = None) -> str:
+    def _match_sections_text(self, match: dict, budget: int = None,
+                             extra_slugs: list[str] = None) -> str:
         """拉取该场的因子相关数据段（离散/亚盘/必发/欧赔等），供 LLM 判断因子触发。
 
         参考单关狗阶段2：因子 slugs 决定取哪些段；串关固定取 7 个默认段
         （7 狗因子都建立在这些段上）。数据缺失时提示 prefetch。
+        extra_slugs: 本角色活跃因子的 slugs，追加进数据段（与 7 狗阶段2 对齐）。
         """
         lid = match.get("lota_id", "")
         if not lid:
             return ""
         try:
-            text = self._dm.get_sections(lid, self.FACTOR_SECTIONS)
+            slugs = list(self.FACTOR_SECTIONS)
+            for s in (extra_slugs or []):
+                if s not in slugs:
+                    slugs.append(s)
+            text = self._dm.get_sections(lid, slugs)
         except Exception:
             return ""
         if not text:
@@ -218,6 +299,40 @@ class ChuanGuanDog(Agent):
         if count_tokens(text) > budget:
             text = truncate_section(text, budget)
         return text
+
+    def _self_factor_text(self, role: Role, as_of=None) -> str:
+        """自己的因子库文本（非 alpha：只用自己生成的因子）。
+
+        与 7 狗 AgentMemory.format_for_prompt 的因子部分对齐：
+        L1 已证伪负例护栏 + L2 活跃因子（自适应得分）+ L3 观察 + 因子定义。
+        as_of: 历史回放时传模拟当日（datetime），避免因子按真实时间被判休眠。
+        """
+        try:
+            role.memory.factors.load()
+        except Exception:
+            return ""
+        parts = [
+            p for p in (
+                role.memory.factors.perf_text(as_of),
+                role.memory.factors.factor_desc_text(as_of),
+            ) if p
+        ]
+        return "\n\n".join(parts)
+
+    def _self_factor_slugs(self, role: Role, as_of=None) -> list[str]:
+        """本角色活跃因子的 slugs（用于扩展每场数据段，对齐 7 狗阶段2）。"""
+        slugs: list[str] = []
+        try:
+            role.memory.factors.load()
+            main, _, _ = role.memory.factors.selected_active(as_of)
+            for fid, sdata, _ in main:
+                fac_id = sdata.get("fac_id") or role.memory.factors.fac_id_for(fid)
+                for s in (sdata.get("slugs") or role.memory.factors._load_slugs(fac_id)):
+                    if s not in slugs:
+                        slugs.append(s)
+        except Exception:
+            pass
+        return slugs
 
     def _score_leg(self, match: dict) -> Optional[dict]:
         """单场竞彩胜平负（让球/不让球）：取隐含概率最高的一边作为腿；返回 None 表示放弃。"""
@@ -274,7 +389,8 @@ class ChuanGuanDog(Agent):
 
     def _select_legs_llm(self, matches: list[dict], day_date: str,
                          alpha_data: dict = None,
-                         forced_tickets: list = None) -> tuple[Optional[list[dict]], Optional[list[str]]]:
+                         forced_tickets: list = None,
+                         live_ctx: dict = None) -> tuple[Optional[list[dict]], Optional[list[str]]]:
         """LLM 分析选腿（与 Agent 同套输出契约）。
 
         人设 + 当天竞彩让球数据 + 7狗倾向 → 每腿一个 ```order 块 + 票型行，
@@ -297,6 +413,18 @@ class ChuanGuanDog(Agent):
         if not matches:
             return [], None
 
+        # ── 自己的因子库（非 alpha：只用自己生成的因子）──
+        # 历史回放/回测按模拟当日评估因子，避免真实时间把历史因子判休眠
+        as_of = None
+        if day_date:
+            try:
+                from datetime import datetime as _dt
+                as_of = _dt.strptime(day_date, "%Y-%m-%d")
+            except ValueError:
+                as_of = None
+        self_factor_text = self._self_factor_text(role, as_of)
+        self_factor_slugs = self._self_factor_slugs(role, as_of)
+
         cand_map = {m["lota_id"]: m for m in matches if m.get("lota_id")}
         # 数据段预算：总预算按场次均摊，单场不超过上限（防 prompt 膨胀）
         sec_budget = max(
@@ -305,6 +433,7 @@ class ChuanGuanDog(Agent):
                 self.SECTIONS_TOTAL_BUDGET // max(len(matches), 1)),
         )
         lines = []
+        now16 = _now_bj("%Y-%m-%d %H:%M") if live_ctx else ""
         for m in matches:
             h = m.get("jc_hhad") or {}
             jc = self._jc_odds(m)
@@ -325,15 +454,48 @@ class ChuanGuanDog(Agent):
                     f" | 让球{gl:+d}赔率 H/D/A = "
                     f"{hhad['h']:.2f}/{hhad['d']:.2f}/{hhad['a']:.2f}"
                 )
-            sec = self._match_sections_text(m, budget=sec_budget)
+            sec = self._match_sections_text(m, budget=sec_budget,
+                                            extra_slugs=self_factor_slugs)
+            mt16 = (m.get("match_time", "") or "").replace("T", " ")[:16]
+            started_tag = " (已开赛，不可选)" if (now16 and mt16 <= now16) else ""
             lines.append(
                 f"- {m.get('lota_id','')} | {m.get('jingcai_number','')} {m.get('home_name','?')} vs {m.get('away_name','?')} "
-                f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]} "
+                f"[{m.get('league_name','?')}] {m.get('match_time','')[:16]}{started_tag} "
                 f"{('让球'+str(h.get('goal_line')) if h.get('goal_line') is not None else '不让球')} "
                 f"{odds_txt}{alpha_txt}\n"
                 f"    因子数据段:\n{sec}"
             )
         persona = role.persona_text()
+        # live 多波次：展示保留/退回的历史订单组，要求"更优才下单"
+        live_note = ""
+        if live_ctx:
+            kept_orders = live_ctx.get("kept_orders") or []
+            refunded_orders = live_ctx.get("refunded_orders") or []
+            parts = []
+            if kept_orders:
+                kept_lines = "\n".join(
+                    f"- {o['pick']} @{o['odds']:.2f}"
+                    for o in kept_orders
+                )
+                parts.append(
+                    "## 🔒 已锁定保留订单（含已开赛腿，不可撤销；新组合不得含其任何腿）\n"
+                    + kept_lines
+                )
+            if refunded_orders:
+                refund_lines = "\n".join(
+                    f"- {o['pick']} @{o['odds']:.2f}"
+                    for o in refunded_orders
+                )
+                parts.append(
+                    "## ↩ 本轮已退回的历史订单（对比基准：只有组出更优组合才值得重新下单）\n"
+                    + refund_lines
+                )
+            live_note = "\n\n".join(parts)
+            live_note += (
+                "\n\n要求：已开赛(标注不可选)的比赛与保留订单中的腿，均不得作为新腿；"
+                "只有能组出**优于历史订单组**的组合才输出 order 块（综合赔率价值、信号强度、容错判断），"
+                "否则只输出 票型: 无（空仓），不为了下单而下单。"
+            )
         # alpha 模式（关闭时为空）：合格因子名单，仅这些因子触发的方向可当腿
         factor_hint = ""
         if alpha_data and alpha_data.get("qualified_factors"):
@@ -389,11 +551,23 @@ pick: H
 
 最后另起一行输出票型（合法票型：{', '.join(allowed)}；所需腿数不能超过实际腿数）
 要求：不追高赔冷门、不吃超低蚊子肉；{empty_line}"""
-        prompt = f"""你是竞彩串关分析 agent（串关狗）。
+        self_factor_block = ""
+        if self_factor_text:
+            self_factor_block = (
+                "## 你自己的因子库（只用自己生成的因子，非跨狗共享）\n"
+                + self_factor_text
+                + "\n\n使用方法：先判断哪些因子在当天数据中触发，再对照原始数据验证；"
+                "方向型因子支持的方向可作串关腿候选；预警/防冷因子用于规避和收紧条件；"
+                "已证伪因子（负例护栏）不得使用。"
+            )
+
+        prompt = f"""你是竞彩串关分析 agent（{role.name}）。
 
 ## 人设
 {persona}
 {factor_hint}
+{self_factor_block}
+{live_note}
 
 ## {day_date} 足球日可投注竞彩胜平负场次（让球/不让球可混串）
 {chr(10).join(lines)}
@@ -403,7 +577,7 @@ pick: H
 要求：
 - lota_id 必须来自上面的列表；pick 只能是 H/D/A（H=让球后主胜，D=平，A=让球后客胜）
 - 保守原则：不够 2 场好腿就空仓（只输出 票型: 无，不输出任何 order 块）；不追高赔冷门
-- 结合人设风格与 7 狗倾向（如有）决策，宁缺毋滥"""
+- 结合人设风格、自己的因子（如有）与 7 狗倾向（如有）决策，宁缺毋滥"""
         try:
             response = provider.call(
                 prompt,
@@ -900,6 +1074,11 @@ pick: H
                 sim_retired: set = None, use_llm: Optional[bool] = None) -> dict:
         day_date = day_date or self._default_day()
 
+        # live 多波次：先刷新未结算订单（含已开赛腿→保留；全未开赛→退回重选）
+        live_ctx = None
+        if live and not dry_run:
+            live_ctx = self.refresh_orders(day_date)
+
         session = self._begin_session("analyze", day_date)
         try:
             role = self._ensure_role()
@@ -913,6 +1092,7 @@ pick: H
                 legs, llm_tickets = self._select_legs_llm(
                     matches, day_date, alpha_data,
                     forced_tickets=list(tickets) if tickets else None,
+                    live_ctx=live_ctx,
                 )
                 if legs is not None:
                     source = "llm"
@@ -937,6 +1117,14 @@ pick: H
                     slips[0]["combos_count"] = 1
 
             placed, orders, skipped = 0, [], []
+            # live：保留单中已有的持仓 lota_id（新组合不得重复持仓）
+            pending_lids = set()
+            if live:
+                pending_lids = {
+                    lid for o in role.get_orders()
+                    if not o.get("settled_at")
+                    for lid in self._leg_ids(o)
+                }
             for slip_i, slip in enumerate(slips):
                 if self.USE_MARTINGALE and stake_pct is None:
                     slip_bet = self._martingale_stake(role)
@@ -949,6 +1137,21 @@ pick: H
                 slip_id = _uid("slip_")
                 sub_bet = round(slip_bet / slip["combos_count"], 2)
                 for idx, (combo, combo_odds) in enumerate(zip(slip["combos"], slip["sub_odds"]), 1):
+                    # live 安全网：新组合不得含已开赛腿（refresh 后防竞态）
+                    if live:
+                        now16 = _now_bj("%Y-%m-%d %H:%M")
+                        started = [
+                            l.get("lota_id") for l in combo
+                            if (self._dm.get_cached_match(l.get("lota_id", "")) or {})
+                               .get("match_time", "")[:16].replace("T", " ") <= now16
+                        ]
+                        if started:
+                            print(f"  🔒 跳过已开赛组合: {started}（维持原仓）")
+                            continue
+                        dup = [l.get("lota_id") for l in combo if l.get("lota_id") in pending_lids]
+                        if dup:
+                            print(f"  ⏭ 跳过含持仓腿组合: {dup}（保留单中已有）")
+                            continue
                     order = {
                         "id": _uid("ord_"),
                         "slip_id": slip_id,
@@ -1028,10 +1231,33 @@ pick: H
                     slips_failed += 1
             summary["slips_passed"] = slips_passed
             summary["slips_failed"] = slips_failed
+            # 结算后反思 — 因子生产（与 7 狗一致：LLM 提炼因子 + 归因 → FactorMemory）
+            try:
+                self._reflect_settled(role, settled_orders, day_date)
+            except Exception as e:
+                print(f"  ⚠️ {role.name}因子反思失败（不影响结算）: {e}")
             session.settlement(summary)
             return summary
         finally:
             self._end_session(session)
+
+    def _reflect_settled(self, role: Role, settled_orders: list[dict],
+                         day_date: Optional[str]) -> None:
+        """结算后因子生产 — 复用 7 狗 settle 图的 node_reflect 节点。
+
+        与 7 狗完全同构：LLM 提炼 alpha 因子 + 归因到订单 → 回写
+        roles/<角色名>/memory/factor_memory.json，供 factor-induction 统一归纳。
+        """
+        if not settled_orders:
+            return
+        from .agent import _rt, node_reflect
+        rt = _rt({"user": self.user})
+        if rt.provider is None:
+            from .providers.deepseek import DeepSeekProvider
+            self.set_provider(DeepSeekProvider())
+        rt.role = role
+        rt.last_settled_orders = settled_orders
+        node_reflect({"user": self.user, "day_date": day_date or ""})
 
     @staticmethod
     def _leg_ids(order: dict) -> list[str]:
@@ -1222,7 +1448,7 @@ def main(argv: list[str] = None) -> int:
                    help="backtest 因子退役审查方式（默认 llm 走 DeepSeek；sim=确定性模拟）")
     p.add_argument("--mode", choices=["llm", "rules"], default="llm",
                    help="backtest 选腿方式（默认 llm 走 DeepSeek 分析；rules=规则版）")
-    p.add_argument("--user", default="串关狗", help="角色名（独立资金/订单）")
+    p.add_argument("--user", default="串关2狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
 
     dog = ChuanGuanDog(user=args.user)
