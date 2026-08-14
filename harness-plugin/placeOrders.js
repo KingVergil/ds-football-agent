@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 import { beijingNowIso } from "./settle.js";
 import { orderLimitsFor, applyFundLimits } from "./fundLimits.js";
+import { extractOdds } from "./odds.js";
 
 function readJson(path) {
   try {
@@ -24,6 +25,27 @@ function readMatches(cacheDir, date) {
   if (Array.isArray(raw)) return raw;
   if (raw && Array.isArray(raw.matches)) return raw.matches;
   return [];
+}
+
+/**
+ * 从 features 缓存的 compact_fet 解析权威亚盘盘口（主队视角：负=主让/正=主受）。
+ * 落库前用它纠正 agent 传入的 handicap 符号，对齐 python-engine/src/order_utils.py
+ * 的 _fill_order_odds_and_handicap（那里用 -float(asian.handicap) 强制纠正）。
+ * 返回 null 表示无权威盘口可参考（缓存缺失/数据不全），此时保留 agent 原值。
+ */
+function readAuthoritativeHandicap(cacheDir, lotaId) {
+  try {
+    const raw = readJson(join(cacheDir, "features", `${lotaId}.json`));
+    if (!raw || typeof raw !== "object") return null;
+    const inner = raw.data && typeof raw.data === "object" ? raw.data : {};
+    const compactFet = raw.compact_fet || inner.compact_fet || "";
+    if (!compactFet) return null;
+    const odds = extractOdds(compactFet);
+    const hc = odds.asian && odds.asian.handicap;
+    return typeof hc === "number" && !Number.isNaN(hc) ? hc : null;
+  } catch {
+    return null;
+  }
 }
 
 function addDays(dayStr, n) {
@@ -164,6 +186,14 @@ export async function submitOrders(handles, dog, day, orders, cacheDir) {
     if (lid && startedLids.has(lid)) continue;
     if (lid && pendingMarkets.has(`${lid}|${o.bet_type}`)) continue;
     candidates.push(o);
+  }
+
+  // 3b. 对齐 Python _fill_order_odds_and_handicap：亚盘 handicap 用权威盘口纠正符号
+  for (const o of candidates) {
+    if (o.bet_type === "亚盘" && o.lota_id) {
+      const hc = readAuthoritativeHandicap(cacheDir, o.lota_id);
+      if (hc != null) o.handicap = hc;
+    }
   }
 
   // 4. 资金折算 或 FundManager
