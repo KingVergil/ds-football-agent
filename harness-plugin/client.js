@@ -97,6 +97,7 @@ window.__ModuleLoader__.load({
 .dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
 .dsd-matches-panel .dsd-table{font-size:11px}
 .dsd-matches-panel .dsd-table td{padding:2px 8px}
+.dsd-done td{color:var(--dsw-alias-state-error-primary)}
 .dsd-main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.7fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
 `;
@@ -293,7 +294,7 @@ window.__ModuleLoader__.load({
         var done = m.state === 6;
         var score = done && m.score ? m.score : "";
         var matchText = m.home + (score ? " " + score + " " : "  ") + m.away;
-        return h("tr", { key: m.lotaId },
+        return h("tr", { key: m.lotaId, className: done ? "dsd-done" : "" },
           h("td", { className: "dsd-num" }, (m.time || "").slice(11, 16)),
           h("td", { className: "dsd-td-match", title: m.number }, matchText),
           h("td", null, m.league || "—"));

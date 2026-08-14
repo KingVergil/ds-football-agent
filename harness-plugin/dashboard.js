@@ -81,7 +81,12 @@ function buildTodayMatches(cacheDir) {
         stateName: m.state_name || "",
         score: m.score || "",
       }))
-      .sort((a, b) => String(a.time).localeCompare(String(b.time))),
+      .sort((a, b) => {
+        const da = a.state === 6 ? 1 : 0;
+        const db = b.state === 6 ? 1 : 0;
+        if (da !== db) return da - db;
+        return String(a.time).localeCompare(String(b.time));
+      }),
   };
 }
 
