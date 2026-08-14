@@ -79,6 +79,23 @@ window.__ModuleLoader__.load({
 .dsd-table tbody tr:hover td{background:var(--dsw-alias-bg-layer-2)}
 .dsd-num{text-align:right;font-variant-numeric:tabular-nums}
 .dsd-td-match{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.dsd-podium{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:760px){.dsd-podium{grid-template-columns:1fr}}
+.dsd-podium-card{position:relative;border-radius:16px;padding:18px 12px;text-align:center;cursor:pointer;transition:transform .15s,box-shadow .15s;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);overflow:hidden}
+.dsd-podium-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.16)}
+.dsd-podium-card::before{content:'';position:absolute;inset:0;z-index:0;opacity:.55}
+.dsd-podium-1::before{background:linear-gradient(160deg,rgba(255,215,0,.20),rgba(255,180,0,.05))}
+.dsd-podium-2::before{background:linear-gradient(160deg,rgba(192,192,192,.20),rgba(160,160,160,.05))}
+.dsd-podium-3::before{background:linear-gradient(160deg,rgba(205,127,50,.20),rgba(180,100,40,.05))}
+.dsd-podium-card>*{position:relative;z-index:1}
+.dsd-podium-medal{font-size:32px;line-height:1}
+.dsd-podium-name{font-weight:800;font-size:15px;margin:8px 0 2px}
+.dsd-podium-sharpe{font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dsd-podium-cap{font-size:13px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-brand-primary)}
+.dsd-matches-panel{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:16px;padding:16px}
+.dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
+.dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
+.dsd-matches-panel .dsd-table{font-size:12px}
 `;
 
     function fmt(v) {
@@ -290,16 +307,17 @@ window.__ModuleLoader__.load({
         h("tbody", null, rows));
     }
 
-    function Leaderboard(props) {
-      return h("div", { className: "dsd-board" },
-        h("div", { className: "dsd-board-title" }, "🏆 夏普战力榜"),
-        props.rows.map(function (r) {
-          var medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
-          return h("div", { key: r.dog.name, className: "dsd-board-row" + (r.rank <= 3 ? " top" : ""), role: "button", onClick: r.onSelect },
-            h("span", { className: "dsd-board-rank" }, medal),
-            Avatar({ meta: r.meta, size: 30 }),
-            h("span", { className: "dsd-board-name" }, r.dog.name),
-            h("span", { className: "dsd-board-power" }, r.dog.sharpe == null ? "—" : Number(r.dog.sharpe).toFixed(2)));
+    function Podium(props) {
+      var top3 = props.rows.slice(0, 3);
+      return h("div", { className: "dsd-podium" },
+        top3.map(function (r) {
+          var medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : "🥉";
+          return h("div", { key: r.dog.name, className: "dsd-podium-card dsd-podium-" + r.rank, role: "button", tabIndex: 0, onClick: r.onSelect },
+            h("div", { className: "dsd-podium-medal" }, medal),
+            h("div", { style: { display: "flex", justifyContent: "center", marginTop: 8 } }, Avatar({ meta: r.meta, size: 48 })),
+            h("div", { className: "dsd-podium-name" }, r.dog.name),
+            h("div", { className: "dsd-podium-sharpe" }, "夏普 " + (r.dog.sharpe == null ? "—" : Number(r.dog.sharpe).toFixed(2))),
+            h("div", { className: "dsd-podium-cap" }, money(r.dog.capital, props.hide)));
         }));
     }
 
@@ -403,16 +421,11 @@ window.__ModuleLoader__.load({
         loading && !data ? h("div", { className: "dsd-empty" }, "加载中…") : null,
         data && !error ? (
           selDog ? h("div", null, DogDetail({ dog: selDog, radar: radars[selDog.name], meta: metaFor(selDog.name), hide: hideMoney, onBack: function () { setSelected(null); } }))
-            : h("div", { className: "dsd-layout" },
-                Leaderboard({ rows: rows }),
-                h("div", null,
-                  h("div", { className: "dsd-panel", style: { marginBottom: 14 } },
-                    h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
-                    h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))),
-                  h("div", { className: "dsd-grid" },
-                    sorted.map(function (dog) {
-                      return DogCard({ key: dog.name, dog: dog, radar: radars[dog.name], meta: metaFor(dog.name), hide: hideMoney, onSelect: function () { setSelected(dog.name); } });
-                    }))))
+            : h("div", null,
+                Podium({ rows: rows, hide: hideMoney }),
+                h("div", { className: "dsd-matches-panel" },
+                  h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
+                  h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))))
         ) : null);
     }
 
