@@ -167,6 +167,13 @@ window.__ModuleLoader__.load({
       return byName;
     }
 
+    function powerColor(radar) {
+      var sum = 0, n = 0;
+      for (var i = 0; i < radar.length; i++) { sum += Number(radar[i] || 0); n++; }
+      var avg = n ? sum / n : 0;
+      return avg >= 50 ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-state-success-primary)";
+    }
+
     function Avatar(props) {
       var meta = props.meta, size = props.size || 40;
       var bg = { width: size + "px", height: size + "px", background: "linear-gradient(135deg," + meta.c1 + "," + meta.c2 + ")" };
@@ -323,7 +330,7 @@ window.__ModuleLoader__.load({
 
     function DogCard(props) {
       var dog = props.dog, radar = props.radar, meta = props.meta, hide = props.hide, onSelect = props.onSelect;
-      var color = dog.pnl >= 0 ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-state-error-primary)";
+      var color = powerColor(radar);
       return h("div", { className: "dsd-card dsd-card-btn", role: "button", tabIndex: 0, onClick: onSelect },
         h("div", { className: "dsd-card-head" },
           Avatar({ meta: meta, size: 44 }),
@@ -340,7 +347,7 @@ window.__ModuleLoader__.load({
 
     function DogDetail(props) {
       var dog = props.dog, radar = props.radar, meta = props.meta, hide = props.hide, onBack = props.onBack;
-      var color = dog.pnl >= 0 ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-state-error-primary)";
+      var color = powerColor(radar);
       var pending = dog.orders.filter(function (o) { return !o.settled; });
       var settled = dog.orders.filter(function (o) { return o.settled; });
       return h("div", null,
