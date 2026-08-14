@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
 .dsd-podium-cap{font-size:13px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-brand-primary)}
 .dsd-matches-panel{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:16px;padding:16px}
 .dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
-.dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
+.dsd-matches-panel .dsd-orders{margin-top:0;max-height:150px;border-radius:12px}
 .dsd-matches-panel .dsd-table{font-size:11px}
 .dsd-matches-panel .dsd-table td{padding:2px 8px}
 .dsd-done td{color:var(--dsw-alias-state-error-primary)}
@@ -422,15 +422,14 @@ window.__ModuleLoader__.load({
         data && !error ? (
           selDog ? h("div", null, DogDetail({ dog: selDog, radar: radars[selDog.name], meta: metaFor(selDog.name), hide: hideMoney, onBack: function () { setSelected(null); } }))
             : h("div", null,
+                h("div", { className: "dsd-matches-panel" },
+                  h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
+                  h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))),
                 Podium({ rows: rows, hide: hideMoney }),
-                h("div", { className: "dsd-main" },
-                  h("div", { className: "dsd-matches-panel" },
-                    h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
-                    h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))),
-                  h("div", { className: "dsd-grid" },
-                    sorted.map(function (dog) {
-                      return DogCard({ key: dog.name, dog: dog, radar: radars[dog.name], meta: metaFor(dog.name), hide: hideMoney, onSelect: function () { setSelected(dog.name); } });
-                    }))))
+                h("div", { className: "dsd-grid" },
+                  sorted.map(function (dog) {
+                    return DogCard({ key: dog.name, dog: dog, radar: radars[dog.name], meta: metaFor(dog.name), hide: hideMoney, onSelect: function () { setSelected(dog.name); } });
+                  })))
         ) : null);
     }
 
