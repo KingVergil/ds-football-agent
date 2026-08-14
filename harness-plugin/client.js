@@ -96,6 +96,8 @@ window.__ModuleLoader__.load({
 .dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
 .dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
 .dsd-matches-panel .dsd-table{font-size:12px}
+.dsd-main{display:grid;grid-template-columns:minmax(300px,1fr) minmax(320px,1.6fr);gap:14px;align-items:start}
+@media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
 `;
 
     function fmt(v) {
@@ -287,21 +289,20 @@ window.__ModuleLoader__.load({
         return h("div", { className: "dsd-empty" }, "当日无竞彩（缓存可能未刷新，跑一次 lota_fetcher.js refresh-range）");
       }
       var rows = tm.matches.map(function (m) {
-        var tone = m.state === 6 ? "dsd-pos" : (m.state === 0 || m.state == null) ? "" : "dsd-pend";
-        var match = m.home + " vs " + m.away;
-        var sub = m.number + (m.league ? " · " + m.league : "");
+        var done = m.state === 6;
+        var tone = done ? "dsd-pos" : (m.state === 0 || m.state == null) ? "" : "dsd-pend";
         return h("tr", { key: m.lotaId },
           h("td", { className: "dsd-num" }, (m.time || "").slice(11, 16)),
-          h("td", { className: "dsd-td-match" },
-            h("div", null, match),
-            h("div", { className: "dsd-sub" }, sub)),
-          h("td", { className: tone }, m.stateName || "—"));
+          h("td", { className: "dsd-td-match", title: m.number }, m.home + " vs " + m.away),
+          h("td", null, m.league || "—"),
+          h("td", { className: tone }, done ? (m.score || "—") : (m.stateName || "—")));
       });
       return h("table", { className: "dsd-table" },
         h("thead", null, h("tr", null,
           h("th", { className: "dsd-num" }, "时间"),
           h("th", null, "比赛"),
-          h("th", null, "状态"))),
+          h("th", null, "联赛"),
+          h("th", null, "比分"))),
         h("tbody", null, rows));
     }
 
@@ -421,9 +422,14 @@ window.__ModuleLoader__.load({
           selDog ? h("div", null, DogDetail({ dog: selDog, radar: radars[selDog.name], meta: metaFor(selDog.name), hide: hideMoney, onBack: function () { setSelected(null); } }))
             : h("div", null,
                 Podium({ rows: rows, hide: hideMoney }),
-                h("div", { className: "dsd-matches-panel" },
-                  h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
-                  h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))))
+                h("div", { className: "dsd-main" },
+                  h("div", { className: "dsd-matches-panel" },
+                    h("div", { className: "dsd-panel-title" }, "📋 当日竞彩 · " + (data.todayMatches && data.todayMatches.day ? data.todayMatches.day : "—") + " · " + (data.todayMatches ? data.todayMatches.count : 0) + " 场"),
+                    h("div", { className: "dsd-orders" }, renderTodayMatches(data.todayMatches))),
+                  h("div", { className: "dsd-grid" },
+                    sorted.map(function (dog) {
+                      return DogCard({ key: dog.name, dog: dog, radar: radars[dog.name], meta: metaFor(dog.name), hide: hideMoney, onSelect: function () { setSelected(dog.name); } });
+                    }))))
         ) : null);
     }
 
