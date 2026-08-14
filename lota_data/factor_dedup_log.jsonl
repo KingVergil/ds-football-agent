@@ -1,5 +1,0 @@
-{"ts": "2026-08-04T12:10:40", "candidate": "浅盘高水阻上", "action": "suppress", "target": "浅盘高水阻上", "reason": "确定性兜底(desc一致+retired): LLM调用失败"}
-{"ts": "2026-08-04T12:10:43", "candidate": "深盘高水阻上", "action": "suppress", "target": "深盘高水诱上", "reason": "确定性兜底(desc一致+retired): LLM调用失败"}
-{"ts": "2026-08-04T12:12:06", "candidate": "深盘高水阻上", "action": "merge", "target": "深盘高水阻上", "reason": "名称和描述完全一致，为同一模式"}
-{"ts": "2026-08-05T11:29:21", "candidate": "离散凝聚搏下盘", "action": "merge", "target": "离散凝聚下盘", "reason": "候选因子名称与现有因子'离散凝聚下盘'几乎相同，均为离散凝聚时搏下盘，模式一致。"}
-{"ts": "2026-08-05T11:31:01", "candidate": "平离散过热反诱", "action": "create", "target": null, "reason": "现有retired因子未特指平局离散，且‘反诱’与‘翻车’语义差异明显，模式不匹配"}

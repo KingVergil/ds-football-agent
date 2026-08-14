@@ -1,0 +1,17 @@
+# ds-agents-lota-data 的挂载示例（composition）。
+#
+# 这不是可独立运行的脚本，而是给 Loader 的「插件行」清单：
+#   每一行 = 一个插件，name 指向 npm 包名 / 本地插件路径。
+# 把它并入你的 profile（或 agent preset 的 agent.cordis.yml）即可挂载。
+#
+# 注意（对齐 docs/harness_migration_plan.md）：
+#   - 数据只读工具不触网、不含密钥；下单走「引擎桥」调私有 Python。
+#   - cacheDir 指向缓存根目录；engineRoot 指向私有 Python 引擎（含 src/）。
+
+- id: lota-data
+  name: 'ds-agents-lota-data'
+  config:
+    # 本地缓存根目录（含 matches/ features/ tags/ predicts/ orders/）
+    cacheDir: ./python-engine/data
+    # 私有 Python 引擎根目录（ds_place_orders 桥会 python3 -m src.place_orders）
+    engineRoot: ./python-engine

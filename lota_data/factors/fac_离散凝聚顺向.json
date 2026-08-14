@@ -1,9 +1,0 @@
-{
-  "id": "fac_离散凝聚顺向",
-  "slugs": [
-    "discrete-odds",
-    "betfair-buysell"
-  ],
-  "content": "离散一方明显低于对手，且必发买盘优势或无背离，走该方盘口",
-  "updated_at": "2026-08-03T10:08:15.399912"
-}
