@@ -95,8 +95,10 @@ window.__ModuleLoader__.load({
 .dsd-matches-panel{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:16px;padding:16px}
 .dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
 .dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
-.dsd-matches-panel .dsd-table{font-size:12px}
-.dsd-main{display:grid;grid-template-columns:minmax(380px,1.5fr) minmax(300px,1fr);gap:14px;align-items:start}
+.dsd-matches-panel .dsd-table{font-size:11px}
+.dsd-matches-panel .dsd-table td{padding:3px 8px}
+.dsd-done td{color:var(--dsw-alias-state-error-primary)}
+.dsd-main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.7fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
 `;
 
@@ -290,19 +292,18 @@ window.__ModuleLoader__.load({
       }
       var rows = tm.matches.map(function (m) {
         var done = m.state === 6;
-        var tone = done ? "dsd-pos" : (m.state === 0 || m.state == null) ? "" : "dsd-pend";
-        return h("tr", { key: m.lotaId },
+        return h("tr", { key: m.lotaId, className: done ? "dsd-done" : "" },
           h("td", { className: "dsd-num" }, (m.time || "").slice(11, 16)),
           h("td", { className: "dsd-td-match", title: m.number }, m.home + " vs " + m.away),
           h("td", null, m.league || "—"),
-          h("td", { className: tone }, done ? (m.score || "—") : (m.stateName || "—")));
+          h("td", { className: "dsd-num" }, done ? (m.score || "—") : ""));
       });
       return h("table", { className: "dsd-table" },
         h("thead", null, h("tr", null,
           h("th", { className: "dsd-num" }, "时间"),
           h("th", null, "比赛"),
           h("th", null, "联赛"),
-          h("th", null, "比分"))),
+          h("th", { className: "dsd-num" }, "比分"))),
         h("tbody", null, rows));
     }
 
