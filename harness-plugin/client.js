@@ -96,8 +96,7 @@ window.__ModuleLoader__.load({
 .dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
 .dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
 .dsd-matches-panel .dsd-table{font-size:11px}
-.dsd-matches-panel .dsd-table td{padding:3px 8px}
-.dsd-done td{color:var(--dsw-alias-state-error-primary)}
+.dsd-matches-panel .dsd-table td{padding:2px 8px}
 .dsd-main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.7fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
 `;
@@ -292,18 +291,18 @@ window.__ModuleLoader__.load({
       }
       var rows = tm.matches.map(function (m) {
         var done = m.state === 6;
-        return h("tr", { key: m.lotaId, className: done ? "dsd-done" : "" },
+        var score = done && m.score ? m.score : "";
+        var matchText = m.home + (score ? " " + score + " " : "  ") + m.away;
+        return h("tr", { key: m.lotaId },
           h("td", { className: "dsd-num" }, (m.time || "").slice(11, 16)),
-          h("td", { className: "dsd-td-match", title: m.number }, m.home + " vs " + m.away),
-          h("td", null, m.league || "—"),
-          h("td", { className: "dsd-num" }, done ? (m.score || "—") : ""));
+          h("td", { className: "dsd-td-match", title: m.number }, matchText),
+          h("td", null, m.league || "—"));
       });
       return h("table", { className: "dsd-table" },
         h("thead", null, h("tr", null,
           h("th", { className: "dsd-num" }, "时间"),
           h("th", null, "比赛"),
-          h("th", null, "联赛"),
-          h("th", { className: "dsd-num" }, "比分"))),
+          h("th", null, "联赛"))),
         h("tbody", null, rows));
     }
 
