@@ -288,22 +288,20 @@ window.__ModuleLoader__.load({
       }
       var rows = tm.matches.map(function (m) {
         var tone = m.state === 6 ? "dsd-pos" : (m.state === 0 || m.state == null) ? "" : "dsd-pend";
+        var match = m.home + " vs " + m.away;
+        var sub = m.number + (m.league ? " · " + m.league : "");
         return h("tr", { key: m.lotaId },
-          h("td", null, m.number),
           h("td", { className: "dsd-num" }, (m.time || "").slice(11, 16)),
-          h("td", null, m.league),
-          h("td", { className: "dsd-td-match" }, m.home + " vs " + m.away),
-          h("td", { className: tone }, m.stateName || "—"),
-          h("td", { className: "dsd-num" }, m.score || "—"));
+          h("td", { className: "dsd-td-match" },
+            h("div", null, match),
+            h("div", { className: "dsd-sub" }, sub)),
+          h("td", { className: tone }, m.stateName || "—"));
       });
       return h("table", { className: "dsd-table" },
         h("thead", null, h("tr", null,
-          h("th", null, "编号"),
           h("th", { className: "dsd-num" }, "时间"),
-          h("th", null, "联赛"),
           h("th", null, "比赛"),
-          h("th", null, "状态"),
-          h("th", { className: "dsd-num" }, "比分"))),
+          h("th", null, "状态"))),
         h("tbody", null, rows));
     }
 
