@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
 .dsd-matches-panel .dsd-panel-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--dsw-alias-label-primary)}
 .dsd-matches-panel .dsd-orders{margin-top:0;max-height:none;border-radius:12px}
 .dsd-matches-panel .dsd-table{font-size:12px}
-.dsd-main{display:grid;grid-template-columns:minmax(300px,1fr) minmax(320px,1.6fr);gap:14px;align-items:start}
+.dsd-main{display:grid;grid-template-columns:minmax(380px,1.5fr) minmax(300px,1fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
 `;
 
@@ -330,7 +330,7 @@ window.__ModuleLoader__.load({
             h("div", { className: "dsd-name" }, dog.name),
             h("div", { className: "dsd-sub" }, "夏普 " + (dog.sharpe == null ? "—" : Number(dog.sharpe).toFixed(2)) + " · 待投 " + dog.pendingCount)),
           h("div", { className: "dsd-cap" }, h("div", { className: "dsd-money dsd-strong" }, money(dog.capital, hide)))),
-        h("div", { className: "dsd-radar-wrap" }, Radar({ values: radar, labels: DIM_LABELS, color: color, size: 168 })),
+        h("div", { className: "dsd-radar-wrap" }, Radar({ values: radar, labels: DIM_LABELS, color: color, size: 224 })),
         h("div", { className: "dsd-card-foot" },
           h("span", { className: dog.pnl >= 0 ? "dsd-pos" : "dsd-neg" }, "净粮 " + signed(dog.pnl)),
           h("span", { className: dog.roi >= 0 ? "dsd-pos" : "dsd-neg" }, "ROI " + pct(dog.roi)),
