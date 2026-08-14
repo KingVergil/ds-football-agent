@@ -1,0 +1,32 @@
+{
+  "name": "ds-agents-lota-data",
+  "version": "0.1.0",
+  "description": "DSH harness 插件：ds_agents 本地缓存只读工具（data 缓存目录）",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-storage-domain": "*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "keywords": ["dsh", "cordis", "plugin", "lota", "football"],
+  "license": "MIT"
+}

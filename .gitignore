@@ -1,0 +1,35 @@
+# ── 私有：Python 引擎 + 数据（不公开，见 docs/harness_migration_plan.md D7）──
+python-engine/
+
+# ── 私有工作区指令（含 open_id 等，不入库）──
+AGENTS.md
+
+# ── 私有：飞书/微信渠道权限规则（含 open_id 等，不入库）──
+docs/feishu-chat-rules.md
+
+# ── 另一条路线（Python SDK 驱动 harness，与 harness-plugin 并行，独立处理）──
+harness-sdk/
+
+# ── 测试 / 临时图片 ──
+7.jpeg
+
+# ── 环境与密钥 ──
+.env
+.env.*
+!.env.example
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ── 系统 / 编辑器 ──
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# ── Node（harness-plugin 若作为独立包时）──
+node_modules/

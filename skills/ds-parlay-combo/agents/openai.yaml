@@ -1,4 +1,0 @@
-interface:
-  display_name: "串关狗连招"
-  short_description: "单独启动串关狗分析(3串1)+dashboard+发邮件"
-  default_prompt: "跑串关狗连招：分析+看板+邮件"

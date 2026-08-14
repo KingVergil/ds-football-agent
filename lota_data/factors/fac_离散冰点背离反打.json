@@ -1,9 +1,0 @@
-{
-  "id": "fac_离散冰点背离反打",
-  "slugs": [
-    "discrete-odds",
-    "betfair-buysell"
-  ],
-  "content": "离散一方极低（近零），且必发卖盘远大于买盘，走对手受让盘",
-  "updated_at": "2026-08-03T10:08:15.401226"
-}
