@@ -185,8 +185,57 @@ function startMatchRefresher(ctx, engineRoot) {
   ctx.effect(() => () => clearInterval(timer));
 }
 
+/**
+ * 定时邮件任务：每天在 config.scheduledEmails 指定的时间点（HH:MM，北京时间），
+ * 自动跑全狗分析（batch_agents.sh analyze）+ 按 email_recipients.txt 名单发邮件。
+ * dsh 启动期间生效；无 batch_agents.sh（开源环境）自动跳过。
+ */
+function startScheduledJobs(ctx, engineRoot, config) {
+  const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
+    ? config.scheduledEmails : ["16:00", "18:00", "20:30"];
+  const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
+    ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
+  const batchSh = join(engineRoot, "batch_agents.sh");
+  if (!existsSync(batchSh)) return;
+
+  const bj = (ts) => new Date(ts + 8 * 3600 * 1000);
+  const dayOf = (ts) => bj(ts).toISOString().slice(0, 10);
+  const hhmm = (ts) => {
+    const d = bj(ts);
+    return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+  };
+
+  const fired = new Set();
+  let lastDay = "";
+  let running = false;
+
+  const run = () => {
+    if (running) return;
+    running = true;
+    const script = `cd "${engineRoot}" && ./batch_agents.sh analyze live && ./batch_agents.sh email-orders live ${agents.join(" ")}`;
+    const c = spawn("/bin/bash", ["-c", script], { stdio: "ignore" });
+    c.on("exit", () => { running = false; });
+    c.on("error", () => { running = false; });
+  };
+
+  const tick = () => {
+    const now = Date.now();
+    const day = dayOf(now);
+    if (day !== lastDay) { fired.clear(); lastDay = day; }
+    const t = hhmm(now);
+    if (times.includes(t) && !fired.has(t)) {
+      fired.add(t);
+      run();
+    }
+  };
+
+  const timer = setInterval(tick, 30 * 1000);
+  ctx.effect(() => () => clearInterval(timer));
+}
+
 function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
+  const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
 
   // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
   const domainHandles = setupDomains(ctx);
@@ -195,7 +244,10 @@ function apply(ctx, config = {}) {
   setupDashboard(ctx, domainHandles, cacheDir);
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
-  startMatchRefresher(ctx, resolve(config.engineRoot ?? join(cacheDir, "..")));
+  startMatchRefresher(ctx, engineRoot);
+
+  // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
+  startScheduledJobs(ctx, engineRoot, config);
 
   // ── 主循环 LLM 的 prompt section（analyze 框架 + 资金管理 + 结构化下单）──
   ctx.systemPrompt.section(ANALYZE_FRAMEWORK_SECTION);
