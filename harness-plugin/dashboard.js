@@ -249,7 +249,9 @@ function buildDashboard(rolesTable, matchMap) {
 
 /** 注册 /ds-dashboard 与 /ds-avatars 路由。幂等：由 ctx.effect 挂上并在卸载时移除。 */
 export function setupDashboard(ctx, domainHandles, cacheDir) {
-  const webServer = ctx.webServer;
+  // 用 ctx.get(strict=false) 而非 ctx.webServer 属性访问：headless 模式没有 webServer，
+  // 属性访问会抛 "cannot get property webServer without inject"。
+  const webServer = typeof ctx.get === "function" ? ctx.get("webServer", false) : undefined;
   if (!webServer) return;
 
   ctx.effect(() => {
