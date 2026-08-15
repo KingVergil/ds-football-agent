@@ -189,10 +189,12 @@ export async function submitOrders(handles, dog, day, orders, cacheDir) {
   }
 
   // 3b. 对齐 Python _fill_order_odds_and_handicap：亚盘 handicap 用权威盘口纠正符号
-  for (const o of candidates) {
+  // 注意：工具 schema 传入的 order 对象可能被冻结，不能原地赋值，需替换为新对象。
+  for (let i = 0; i < candidates.length; i++) {
+    const o = candidates[i];
     if (o.bet_type === "亚盘" && o.lota_id) {
       const hc = readAuthoritativeHandicap(cacheDir, o.lota_id);
-      if (hc != null) o.handicap = hc;
+      if (hc != null) candidates[i] = { ...o, handicap: hc };
     }
   }
 
