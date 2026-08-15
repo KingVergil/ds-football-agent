@@ -30,7 +30,9 @@ import { factorReview } from "./factorReview.js";
 import { judgeFactorDedup, inductFactors, inductAlpha, ALPHA_DOGS } from "./factorInduction.js";
 
 const name = "lota-data";
-const inject = ["tools", "storageDomain", "llm", "systemPrompt", "webServer"];
+// webServer 不放进 inject：headless(定时分析)没有 web 服务，放进去会导致插件 pending。
+// dashboard 用 ctx.webServer 判空优雅跳过；web 下 cordis 的 ctx.get 仍能取到该服务。
+const inject = ["tools", "storageDomain", "llm", "systemPrompt"];
 
 /** 效果 A analyze 框架 section（主循环 LLM 的 prompt 段，见 harness_js_reconstruction.md §2.5）。 */
 const ANALYZE_FRAMEWORK_SECTION = {
@@ -176,7 +178,7 @@ function startMatchRefresher(ctx, engineRoot) {
   const refresh = () => {
     if (running) return;
     running = true;
-    const c = spawn(process.execPath, [fetcher, "refresh-date", footballDay()], { stdio: "ignore" });
+    const c = spawn(process.execPath, [fetcher, "refresh-date", footballDay()], { stdio: "ignore", cwd: engineRoot });
     c.on("exit", () => { running = false; });
     c.on("error", () => { running = false; });
   };
@@ -187,16 +189,14 @@ function startMatchRefresher(ctx, engineRoot) {
 
 /**
  * 定时邮件任务：每天在 config.scheduledEmails 指定的时间点（HH:MM，北京时间），
- * 自动跑全狗分析（batch_agents.sh analyze）+ 按 email_recipients.txt 名单发邮件。
- * dsh 启动期间生效；无 batch_agents.sh（开源环境）自动跳过。
+ * 自动触发 harness 侧全部分析（headless agent 跑「全部分析」+ ds_export_to_python）
+ * + 按 email_recipients.txt 名单发邮件。dsh 启动期间生效。
  */
 function startScheduledJobs(ctx, engineRoot, config) {
   const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
     ? config.scheduledEmails : ["16:00", "18:00", "20:30"];
   const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
     ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
-  const batchSh = join(engineRoot, "batch_agents.sh");
-  if (!existsSync(batchSh)) return;
 
   const bj = (ts) => new Date(ts + 8 * 3600 * 1000);
   const dayOf = (ts) => bj(ts).toISOString().slice(0, 10);
@@ -212,7 +212,12 @@ function startScheduledJobs(ctx, engineRoot, config) {
   const run = () => {
     if (running) return;
     running = true;
-    const script = `cd "${engineRoot}" && ./batch_agents.sh analyze live && ./batch_agents.sh email-orders live ${agents.join(" ")}`;
+    // 1) harness 侧分析：headless agent 跑「全部分析」→ ds_export_to_python 导出到 data/roles
+    const task = "全部分析（7 只单关狗分析下单），下单完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。";
+    // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
+    const agentsPy = JSON.stringify(agents);
+    const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${agentsPy}]`;
+    const script = `dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
     const c = spawn("/bin/bash", ["-c", script], { stdio: "ignore" });
     c.on("exit", () => { running = false; });
     c.on("error", () => { running = false; });
