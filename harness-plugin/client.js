@@ -78,7 +78,8 @@ window.__ModuleLoader__.load({
 .dsd-table td{padding:5px 8px;border-top:1px solid var(--dsw-alias-border-l1);white-space:nowrap}
 .dsd-table tbody tr:hover td{background:var(--dsw-alias-bg-layer-2)}
 .dsd-num{text-align:right;font-variant-numeric:tabular-nums}
-.dsd-td-match{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.dsd-hcp{text-align:right;font-variant-numeric:tabular-nums;font-size:10px;color:var(--dsw-alias-label-secondary);padding:5px 3px}
+.dsd-td-match{max-width:200px;overflow:hidden;text-overflow:ellipsis}
 .dsd-podium{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 @media(max-width:760px){.dsd-podium{grid-template-columns:1fr}}
 .dsd-podium-card{position:relative;border-radius:16px;padding:18px 12px;text-align:center;cursor:pointer;transition:transform .15s,box-shadow .15s;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);overflow:hidden}
@@ -100,6 +101,22 @@ window.__ModuleLoader__.load({
 .dsd-done td{color:var(--dsw-alias-state-error-primary)}
 .dsd-main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.7fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
+.dsq-root{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance));max-width:var(--dsh-composer-card-max-width);margin:0 auto;display:flex;align-items:center;gap:6px;flex-shrink:0;padding:2px 0}
+.dsq-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1;padding:7px 10px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:border-color .12s,background .12s,color .12s}
+.dsq-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
+.dsq-btn:disabled{opacity:.6;cursor:default}
+.dsts-root{position:fixed;top:10px;left:10px;z-index:9999;width:300px;max-height:46vh;display:flex;flex-direction:column;gap:4px;font-size:11px}
+.dsts-head{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);padding:6px 10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.dsts-body{display:flex;flex-direction:column;gap:3px;overflow:auto;padding:4px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.dsts-row{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
+.dsts-row.dsts-running{border-left:2px solid var(--dsw-alias-brand-primary)}
+.dsts-row.dsts-completed{opacity:.72}
+.dsts-row.dsts-failed{border-left:2px solid var(--dsw-alias-state-error-primary)}
+.dsts-badge{flex:none;width:12px;text-align:center;font-size:10px;line-height:14px}
+.dsts-running .dsts-badge{color:var(--dsw-alias-brand-primary);animation:dsts-pulse 1s infinite}
+@keyframes dsts-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.dsts-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsts-phase{color:var(--dsw-alias-label-secondary);word-break:break-all;white-space:normal}
 `;
 
     function fmt(v) {
@@ -268,14 +285,15 @@ window.__ModuleLoader__.load({
       var rows = orders.map(function (o) {
         var tone = o.settled ? (o.profit > 0 ? "dsd-pos" : o.profit < 0 ? "dsd-neg" : "dsd-mut") : "dsd-pend";
         var pnl = o.settled ? (o.profit == null ? "—" : signed(o.profit)) : "⏳ 待投";
-        var hcp = o.handicap == null ? "" : ((o.handicap >= 0 ? "+" : "") + Number(o.handicap).toFixed(2));
-        var pick = (o.betType || "") + " " + (o.pickLabel || "") + (hcp ? " " + hcp : "");
+        var hcp = o.handicap == null ? "" : (o.betType === "大小球" ? Number(o.handicap).toFixed(2) : ((o.handicap >= 0 ? "+" : "") + Number(o.handicap).toFixed(2)));
+        var pick = (o.betType || "") + " " + (o.pickLabel || "");
         var date = (o.settledAt || o.time || "").slice(5) || "—";
         var title = (o.league || "") + (o.reason ? " | " + o.reason : "");
         return h("tr", { key: o.lotaId + "|" + o.betType + "|" + o.pick + "|" + o.settledAt },
           h("td", { className: "dsd-num" }, date),
           h("td", { className: "dsd-td-match", title: title }, (o.match || "—") + (o.league ? " · " + o.league : "")),
           h("td", null, pick),
+          h("td", { className: "dsd-num dsd-hcp" }, hcp || "—"),
           h("td", { className: "dsd-num" }, o.score || "—"),
           h("td", { className: "dsd-num" }, o.odds == null ? "—" : "@" + o.odds),
           h("td", { className: "dsd-num dsd-money" }, hide ? "•••" : fmt(o.betSize)),
@@ -286,6 +304,7 @@ window.__ModuleLoader__.load({
           h("th", { className: "dsd-num" }, "日期"),
           h("th", null, "比赛"),
           h("th", null, "选择"),
+          h("th", { className: "dsd-num" }, "盘口"),
           h("th", { className: "dsd-num" }, "比分"),
           h("th", { className: "dsd-num" }, "赔率"),
           h("th", { className: "dsd-num dsd-money" }, "投粮"),
@@ -379,6 +398,68 @@ window.__ModuleLoader__.load({
         settled.length ? h("div", { className: "dsd-orders" }, renderOrders(settled, hide)) : h("div", { className: "dsd-empty" }, "无已结算订单"));
     }
 
+    // 对话页左上方任务状态面板：轮询 /ds-tasks，展示运行中/最近任务（单狗/群狗都考虑）
+    function TaskStatusPanel() {
+      var state = React.useState(null);
+      var tasks = state[0], setTasks = state[1];
+      var openState = React.useState(false);
+      var open = openState[0], setOpen = openState[1];
+      React.useEffect(function () {
+        var timer = setInterval(function () {
+          fetch("/ds-tasks")
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (res && Array.isArray(res.tasks)) setTasks(res.tasks);
+            })
+            .catch(function () {});
+        }, 2500);
+        return function () { clearInterval(timer); };
+      }, []);
+
+      var list = tasks || [];
+      var running = list.filter(function (t) { return t.status === "running"; });
+      var shown = open ? list.slice(0, 14) : running.slice(0, 8);
+      if (!shown.length && !open) return null; // 无运行任务时收起（不占左上角）
+
+      var rows = shown.map(function (t) {
+        var params = t.params || {};
+        var dogs = params.dogs || (params.dog ? [params.dog] : (params.user ? [params.user] : null));
+        var pct = t.total > 0 ? Math.round((Number(t.done) || 0) / t.total * 100) : (t.status === "running" ? null : 100);
+        var icon = t.status === "running" ? "●" : t.status === "completed" ? "✓" : t.status === "failed" ? "✕" : "‖";
+        var title = t.title || t.type || "任务";
+        if (dogs && dogs.length) title += " · " + dogs.join("、");
+        return h("div", { key: t.id, className: "dsts-row dsts-" + t.status },
+          h("span", { className: "dsts-badge" }, icon),
+          h("div", { style: { minWidth: 0 } },
+            h("div", { className: "dsts-title" }, title),
+            h("div", { className: "dsts-phase" },
+              t.phase + (pct != null ? " " + pct + "%" : "") +
+              (t.detail ? " · " + String(t.detail).slice(0, 80) : ""))));
+      });
+
+      return h("div", { className: "dsts-root" },
+        h("button", { className: "dsts-head", onClick: function () { setOpen(!open); } },
+          "📡 任务 · " + running.length + " 运行中" + (running.length ? "" : "（点开看最近）")),
+        shown.length ? h("div", { className: "dsts-body" }, rows) : null);
+    }
+
+    // 快捷输入按钮：分析全部 / 结算全部 / 因子归纳全部 / 因子退役全部（对齐 分析流/结算流/因子流）
+    function QuickActions(props) {
+      var inputActions = props && props.inputActions;
+      if (!inputActions) return null;
+      var fire = function (text) {
+        inputActions.setDraft(text);
+        inputActions.submit("queue");
+      };
+      return h(React.Fragment, null,
+        h("div", { className: "dsq-root" },
+          h("button", { className: "dsq-btn", onClick: function () { fire("分析流：调用 ds_analyze_all_parallel(parallel=7) 并行分析全部 7 只狗（每狗独立 subagent），不要顺序逐狗。"); } }, "⚡ 分析全部"),
+          h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
+          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', limit=30) 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
+          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部")),
+        h(TaskStatusPanel, null));
+    }
+
     function Dashboard() {
       var dataState = React.useState(null);
       var data = dataState[0], setData = dataState[1];
@@ -451,6 +532,11 @@ window.__ModuleLoader__.load({
         return slots.register(
           { name: "conversation.view", id: "ds-dashboard", order: 20, label: "斗狗场" },
           function () { return h(Dashboard, null); });
+      });
+      slots.inject("conversation.input.dock", function () {
+        return slots.register(
+          { name: "conversation.input.dock", id: "ds-quick-actions", order: 30 },
+          function (props) { return h(QuickActions, props || {}); });
       });
     }
 

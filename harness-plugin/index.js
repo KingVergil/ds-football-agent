@@ -23,7 +23,9 @@ import { memoryQuery } from "./memory.js";
 import { beijingNowIso } from "./settle.js";
 import { settleDog, fetchScoresFromCache } from "./settleEngine.js";
 import { submitOrders, refreshOrders } from "./placeOrders.js";
-import { analyzeDogsParallel } from "./fanout.js";
+import { analyzeDogsParallel, footballDayLabel } from "./fanout.js";
+import { settleAll } from "./settleEngine.js";
+import { factorFlow } from "./flows.js";
 import { prepareDay, prepareRange } from "./dataflow.js";
 import { runReplay } from "./replay.js";
 import { createTaskRegistry, withTask } from "./taskStatus.js";
@@ -507,6 +509,71 @@ function apply(ctx, config = {}) {
       }),
     }));
 
+
+  // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
+  // ── ds_settle_all：结算流（纯 JS，无 LLM，每狗进度入任务状态）──
+  ctx.tools.register(defineTool({
+    name: "ds_settle_all",
+    description:
+      "结算流（纯 JS，无 LLM）：并行结算指定狗的未结算订单（只认 state==6 比分），每狗进度写入任务状态。适合「全部结算 / 结算7狗」。",
+    parameters: {
+      day: { type: "string", description: "足球日 YYYY-MM-DD（空=按北京时间自动推当日）" },
+      dogs: { type: "array", items: { type: "string" }, description: "要结算的狗名列表（空=默认 7 只真狗）" },
+      parallel: { type: "number", description: "最大并发数（默认 4）" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(8000),
+    },
+    execute: withTask(taskReg, { type: "settle-flow", title: "结算全部" }, async (args, _exec, progress) => {
+      try {
+        const day = args.day || footballDayLabel();
+        return await settleAll(domainHandles, cacheDir, {
+          day,
+          dogs: args.dogs,
+          parallel: args.parallel,
+          onProgress: (p) => progress({ phase: p.phase, done: p.idx, total: p.total, detail: p.detail }),
+        });
+      } catch (error) {
+        return { error: error.message };
+      }
+    }),
+  }));
+
+  // ── ds_factor_flow：因子流（阶段A/B/C；父任务带出多个子任务，各自精简 prompt）──
+  ctx.tools.register(defineTool({
+    name: "ds_factor_flow",
+    description:
+      "因子流：scope=induct 跑 阶段A 非alpha归纳→阶段B alpha barrier；scope=review 跑 阶段C 退役（非alpha先行/alpha收尾，支持 user_notes）；scope=all 全跑。每阶段/每狗一个独立子任务（各自精简 prompt），进度写入任务状态。适合「全部因子归纳 / 全部因子退役」。",
+    parameters: {
+      scope: { type: "string", description: "induct / review / all（默认 all）" },
+      end_date: { type: "string", description: "评估窗口结束日 YYYY-MM-DD（空=今天）" },
+      dogs: { type: "array", items: { type: "string" }, description: "狗名列表（空=默认 7 只真狗）" },
+      model: { type: "string", description: "旁路 LLM 模型（默认 deepseek-v4-flash 省 token）" },
+      limit: { type: "number", description: "每 scope 最多 LLM 判重次数（默认 30）" },
+      user_notes: { type: "string", description: "用户调整意见（阶段C 退役评估注入）" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(8000),
+    },
+    execute: withTask(taskReg, { type: "factor-flow", title: "因子流" }, async (args, _exec, progress) => {
+      try {
+        return await factorFlow(domainHandles, ctx, {
+          scope: args.scope || "all",
+          endDate: args.end_date,
+          dogs: args.dogs,
+          model: args.model,
+          limit: args.limit,
+          userNotes: args.user_notes,
+          cacheDir,
+          onProgress: (p) => progress({ phase: p.phase, done: p.done, total: p.total, detail: p.detail }),
+        });
+      } catch (error) {
+        return { error: error.message };
+      }
+    }),
+  }));
 
   // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
   ctx.tools.register(defineTool({

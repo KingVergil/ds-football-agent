@@ -129,9 +129,10 @@
 | 分析组 | `refresh_orders` / `submit_orders` | 分析子流（下单生命周期） |
 | 结算组 | `ds_settle_js` / `fetch_scores` | 结算子流 |
 | 因子组 | `ds_reflect_js` / `ds_factor_induction` / `ds_factor_dedup` / `ds_factor_review_js` | 因子流（阶段 0 反思 → alpha barrier） |
-| 编排组 | `ds_analyze_all_parallel` / `ds_settle_all`* / `ds_factor_flow`* / `ds_replay` | 流入口（父 agent 专用） |
+| 编排组 | `ds_analyze_all_parallel` / `ds_settle_all` / `ds_factor_flow` / `ds_replay` | 流入口（父 agent 专用） |
 
-`*` = 后续按本设计新增的流入口工具。
+`ds_settle_all`（结算流，纯 JS 无 LLM）与 `ds_factor_flow`（因子流，scope=induct/review/all）已注册；
+对话页左上角有任务状态面板（`/ds-tasks` 轮询），快捷按钮已对齐 分析全部/结算全部/因子归纳全部/因子退役全部。
 
 ## 4. 对 replay / runtime 的后续影响（占位）
 

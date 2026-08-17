@@ -7,6 +7,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { settleOrder, beijingNowIso } from "./settle.js";
+import { DS_REAL_DOGS } from "./storage.js";
+
+function round2(x) {
+  return Math.round(x * 100) / 100;
+}
 
 function readJson(path) {
   try {
@@ -111,5 +116,56 @@ export async function settleDog(handles, dog, day, cacheDir) {
     pnl: Math.round(pnl * 100) / 100,
     capital: Math.round(capital * 100) / 100,
     orders: settledList,
+  };
+}
+
+/**
+ * 结算流（纯 JS，无 LLM）：并行结算多只狗的未结算订单（只认 state==6 比分）。
+ * 每狗进度通过 onProgress 上报（idx/total/dog/status），供任务状态展示。
+ */
+export async function settleAll(handles, cacheDir, { day, dogs = DS_REAL_DOGS, parallel = 4, onProgress } = {}) {
+  const dogList = (dogs && dogs.length ? dogs : DS_REAL_DOGS).slice();
+  const progress = typeof onProgress === "function" ? onProgress : () => {};
+  const rows = new Array(dogList.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < dogList.length) {
+      const idx = cursor++;
+      const dog = dogList[idx];
+      progress({ idx, total: dogList.length, dog, phase: `结算 ${dog}` });
+      try {
+        const res = await settleDog(handles, dog, day, cacheDir);
+        rows[idx] = { dog, ok: !res.error, ...res };
+      } catch (e) {
+        rows[idx] = { dog, ok: false, error: String((e && e.message) || e) };
+      }
+      progress({
+        idx: idx + 1,
+        total: dogList.length,
+        dog,
+        status: rows[idx].ok ? "ok" : "fail",
+        phase: `结算 ${idx + 1}/${dogList.length}`,
+        detail: `${rows[idx].settled || 0}单 PnL${rows[idx].pnl != null ? rows[idx].pnl : 0}`,
+      });
+    }
+  };
+
+  const workers = Math.max(1, Math.min(Number(parallel) || dogList.length, dogList.length || 1));
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+
+  const okCount = rows.filter((r) => r && r.ok).length;
+  const totalPnl = rows.reduce((s, r) => s + (r && r.pnl || 0), 0);
+  return {
+    ok: okCount === rows.length,
+    day,
+    dogs: dogList,
+    ok_count: okCount,
+    fail_count: rows.length - okCount,
+    total_pnl: round2(totalPnl),
+    rows,
+    text: rows
+      .map((r) => `${r.ok ? "OK " : "FAIL "}${r.dog} 结算${r.settled || 0}单 PnL${r.pnl != null ? r.pnl : "?"}`)
+      .join("\n"),
   };
 }
