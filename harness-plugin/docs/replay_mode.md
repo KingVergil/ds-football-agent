@@ -57,6 +57,8 @@ ds_replay(
 - 范围 matches 文件在准备后**快照进** `<cacheDir>/replays/<run_id>/cache/matches/`，
   逐日只读快照——运行中的 web 刷新器（每 30 分钟重写当前足球日 matches）不会污染回放边界；
 - 起点 storage 域全量快照 → `<cacheDir>/replays/<run_id>/snapshot/`；
+- **阶段检查点**（目标4）：每天在 结算前（`<day>__pre-settle`，分析+下单后）与 因子流前（`<day>__pre-factor`，结算后）各存一份，结束后补 `<end>__post-factor`（终态）。
+  回放报告的"检查点"列表列出全部恢复点；用 `ds_replay_restore(run_id, checkpoint)` 可把线上角色恢复到对应阶段（`start` 回起点）。
 - `reset="zero"`：指定狗重置为 `initial_capital`（默认 10000）+ 空订单/因子/反思；
 - `restore_after`（默认 true）：跑完自动还原起点，线上角色不被回放污染；
 - `persona_overrides` / `user_notes` 即"从某一点修改角色的一部分"，比较不同条件下的轨迹时用。
