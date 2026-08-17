@@ -126,7 +126,7 @@ export function cleanFactorName(raw, fpKeys) {
 
 /**
  * 完整 factor_review：门控 + 旁路 LLM 评估 + set_status 写回。
- * @param {object} opts { userNotes, persona } — 用户调整意见注入评估 prompt；persona 覆盖默认读取。
+ * @param {object} opts { userNotes, persona, model } — 用户调整意见注入评估 prompt；persona 覆盖默认读取；model 覆盖旁路 LLM。
  */
 export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheDir, opts = {}) {
   const [factorsDomain, reflectionsDomain] = await Promise.all([
@@ -167,7 +167,7 @@ export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheD
   // 4. 旁路 LLM 评估
   let data = null;
   try {
-    data = parseReflectJson(await streamReflectJson(ctx, prompt));
+    data = parseReflectJson(await streamReflectJson(ctx, prompt, { model: opts.model }));
   } catch (e) {
     return { ok: false, error: `factor_review LLM 失败: ${e.message}` };
   }
