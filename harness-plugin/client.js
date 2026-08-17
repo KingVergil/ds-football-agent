@@ -105,9 +105,10 @@ window.__ModuleLoader__.load({
 .dsq-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1;padding:7px 10px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:border-color .12s,background .12s,color .12s}
 .dsq-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
 .dsq-btn:disabled{opacity:.6;cursor:default}
-.dsts-root{position:fixed;top:10px;left:10px;z-index:9999;width:300px;max-height:46vh;display:flex;flex-direction:column;gap:4px;font-size:11px}
-.dsts-head{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);padding:6px 10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.18)}
-.dsts-body{display:flex;flex-direction:column;gap:3px;overflow:auto;padding:4px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.dsts-badge-root{position:relative;display:inline-flex;align-items:center}
+.dsts-badge-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1;padding:6px 10px;border-radius:999px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.dsts-badge-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
+.dsts-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:9999;width:340px;max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:3px;padding:6px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.22);font-size:11px}
 .dsts-row{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsts-row.dsts-running{border-left:2px solid var(--dsw-alias-brand-primary)}
 .dsts-row.dsts-completed{opacity:.72}
@@ -398,14 +399,12 @@ window.__ModuleLoader__.load({
         settled.length ? h("div", { className: "dsd-orders" }, renderOrders(settled, hide)) : h("div", { className: "dsd-empty" }, "无已结算订单"));
     }
 
-    // 对话记录左侧任务状态面板：轮询 /ds-tasks，常驻显示运行中/最近任务（单狗/群狗都考虑）
-    function TaskStatusPanel() {
+    // 会话头部右侧任务状态徽章：常驻显示运行中数，点击展开任务列表（单狗/群狗都考虑）
+    function TaskStatusBadge() {
       var state = React.useState(null);
       var tasks = state[0], setTasks = state[1];
       var openState = React.useState(false);
       var open = openState[0], setOpen = openState[1];
-      var posState = React.useState(null);
-      var pos = posState[0], setPos = posState[1];
       React.useEffect(function () {
         var timer = setInterval(function () {
           fetch("/ds-tasks")
@@ -415,33 +414,12 @@ window.__ModuleLoader__.load({
             })
             .catch(function () {});
         }, 2500);
-        function measure() {
-          // 放在对话列右侧空白：列右缘 + 8px；若放不下（窄屏）则贴最右，不遮挡对话
-          var PANEL_W = 300;
-          var vw = window.innerWidth || document.documentElement.clientWidth || 1200;
-          var el = document.querySelector('[data-slot="conversation.session"]') ||
-                   document.querySelector('[data-slot="conversation\\.session"]');
-          if (el) {
-            var r = el.getBoundingClientRect();
-            var left = r.right + 8;
-            if (left + PANEL_W > vw - 8) left = vw - PANEL_W - 8;
-            setPos({ left: Math.max(8, left), top: r.top + 12 });
-          } else {
-            setPos({ left: Math.max(8, vw - PANEL_W - 8), top: 12 });
-          }
-        }
-        measure();
-        window.addEventListener("resize", measure);
-        return function () {
-          clearInterval(timer);
-          window.removeEventListener("resize", measure);
-        };
+        return function () { clearInterval(timer); };
       }, []);
 
       var list = tasks || [];
       var running = list.filter(function (t) { return t.status === "running"; });
-      var recent = list.filter(function (t) { return t.status !== "running"; }).slice(0, 4);
-      var shown = open ? list.slice(0, 14) : running.slice(0, 6).concat(recent);
+      var shown = (open ? list : list.slice(0, 8));
 
       var rows = shown.map(function (t) {
         var params = t.params || {};
@@ -459,20 +437,14 @@ window.__ModuleLoader__.load({
               (t.detail ? " · " + String(t.detail).slice(0, 80) : ""))));
       });
 
-      var empty = !shown.length
-        ? h("div", { className: "dsts-body" },
-            h("div", { className: "dsts-row" },
-              h("span", { className: "dsts-badge" }, "–"),
-              h("div", { className: "dsts-phase" }, "暂无任务（跑分析/结算/因子流时实时显示）")))
-        : null;
-
-      return h("div", {
-        className: "dsts-root",
-        style: pos ? { left: pos.left + "px", top: pos.top + "px" } : undefined,
-      },
-        h("button", { className: "dsts-head", onClick: function () { setOpen(!open); } },
-          "📡 任务 · " + running.length + " 运行中" + (running.length ? "" : " · 最近 " + recent.length)),
-        shown.length ? h("div", { className: "dsts-body" }, rows) : empty);
+      return h("div", { className: "dsts-badge-root" },
+        h("button", {
+          className: "dsts-badge-btn",
+          onClick: function () { setOpen(!open); },
+          title: "任务状态（运行中/最近）",
+        }, "📡 " + running.length + " 运行中"),
+        open ? h("div", { className: "dsts-panel" },
+          rows.length ? rows : h("div", { className: "dsts-phase" }, "暂无任务（跑分析/结算/因子流时实时显示）")) : null);
     }
 
     // 快捷输入按钮：分析全部 / 结算全部 / 因子归纳全部 / 因子退役全部（对齐 分析流/结算流/因子流）
@@ -483,13 +455,11 @@ window.__ModuleLoader__.load({
         inputActions.setDraft(text);
         inputActions.submit("queue");
       };
-      return h(React.Fragment, null,
-        h("div", { className: "dsq-root" },
-          h("button", { className: "dsq-btn", onClick: function () { fire("分析流：调用 ds_analyze_all_parallel(parallel=7) 并行分析全部 7 只狗（每狗独立 subagent），不要顺序逐狗。"); } }, "⚡ 分析全部"),
-          h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
-          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', limit=30) 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
-          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部")),
-        h(TaskStatusPanel, null));
+      return h("div", { className: "dsq-root" },
+        h("button", { className: "dsq-btn", onClick: function () { fire("分析流：调用 ds_analyze_all_parallel(parallel=7) 并行分析全部 7 只狗（每狗独立 subagent），不要顺序逐狗。"); } }, "⚡ 分析全部"),
+        h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
+        h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', limit=30) 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
+        h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部"));
     }
 
     function Dashboard() {
@@ -569,6 +539,11 @@ window.__ModuleLoader__.load({
         return slots.register(
           { name: "conversation.input.dock", id: "ds-quick-actions", order: 30 },
           function (props) { return h(QuickActions, props || {}); });
+      });
+      slots.inject("conversation.session.header.utilities", function () {
+        return slots.register(
+          { name: "conversation.session.header.utilities", id: "ds-task-status", order: 40 },
+          function () { return h(TaskStatusBadge, null); });
       });
     }
 
