@@ -138,5 +138,4 @@
 - **replay 日管线顺序**：数据准备（prepareRange）→ 分析流 → 结算流 → 因子流（0 反思 → A→B→C barrier）→ dashboard。
 - **runtime**：每个子流 subagent 的 `toolFilter` 只放该组工具（deny 其余），减少跨组误调；流入口（编排组）只有父 agent 可见。
 - **alpha barrier 实现**：阶段 B 必须显式 `await` 阶段 A 全部完成，禁止把 alpha 与非 alpha 归纳放进同一个 `Promise.all`。
-- **已知差异**：当前 `replay.js` 的逐日归纳是 alpha 先、非 alpha 后（`inductAlpha` 在前），且反思在结算子流内（逐狗 settle→reflect），与新设计相反，后续按 因子流阶段 0 → A → B 顺序修正。
-- **`lota_matches` 描述/默认 type**：当前描述无 type 边界，是 181 场数据泄露根因，runtime 修改时按 1.1 的限定规则改。
+- **已落地（commit 11e5687）**：`replay.js` 因子流已按 阶段0 反思 → 阶段A 非alpha → 阶段B alpha barrier → 阶段C 退役（非alpha先行/alpha收尾）重排；`lota_matches` 已默认 `lottery_type="jingcai"` 并边界化描述；分析子流 `toolFilter` 已按工具组收紧。
