@@ -12,6 +12,7 @@ import { readMatchesCache } from "../fanout.js";
 import {
   snapshotDomains, restoreDomains, resetRolesToZero,
   snapshotMatchesRange, readReplayDay,
+  writeDomainSnapshot, restoreDomainSnapshot, listCheckpoints,
 } from "../replay.js";
 
 function makeCache() {
@@ -130,6 +131,32 @@ test("snapshotDomains / restoreDomains 往返", async () => {
     const after = roles.table("roles").get("梭哈2狗");
     assert.equal(after.capital, 1234);
     assert.equal(after.orders.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("阶段检查点：writeDomainSnapshot / restoreDomainSnapshot / listCheckpoints", async () => {
+  const handles = fakeHandles();
+  const roles = await handles.ds_roles;
+  await roles.table("roles").put("梭哈2狗", {
+    name: "梭哈2狗", capital: 1000, initial_capital: 1000, orders: [],
+  });
+  const dir = mkdtempSync(join(tmpdir(), "ds-replay-cp-"));
+  try {
+    const cp = join(dir, "checkpoints", "2026-07-25__pre-settle");
+    await writeDomainSnapshot(handles, cp);
+    // 模拟结算后状态变化
+    await roles.table("roles").put("梭哈2狗", {
+      name: "梭哈2狗", capital: 500, initial_capital: 1000, orders: [{ lota_id: "L1" }],
+    });
+    assert.equal(roles.table("roles").get("梭哈2狗").capital, 500);
+    // 恢复到结算前
+    await restoreDomainSnapshot(handles, cp);
+    const back = roles.table("roles").get("梭哈2狗");
+    assert.equal(back.capital, 1000);
+    assert.deepEqual(back.orders, []);
+    assert.deepEqual(listCheckpoints(dir), ["start", "2026-07-25__pre-settle"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

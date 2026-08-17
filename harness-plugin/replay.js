@@ -14,7 +14,7 @@
  *   - 起点快照（storage 域全量）→ replayDir/snapshot/，可 restore_after 还原（默认还原）
  *   - reset="zero" 时从初始资金/空记忆开始（"从 0 开始"）
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { beijingNowIso } from "./settle.js";
@@ -93,8 +93,8 @@ export function readReplayDay(cacheDir, replayDir, day) {
   };
 }
 
-/** 快照全部 storage 域到 replayDir/snapshot/。 */
-export async function snapshotDomains(handles, dir) {
+/** 快照全部 storage 域到 destDir（文件直接放 destDir 下）。 */
+export async function writeDomainSnapshot(handles, destDir) {
   const out = {};
   for (const [domainName, tableName] of Object.entries(SNAPSHOT_TABLES)) {
     const domain = await handles[domainName];
@@ -102,16 +102,16 @@ export async function snapshotDomains(handles, dir) {
     const rec = {};
     for (const [key, value] of table.entries()) rec[key] = value;
     out[domainName] = rec;
-    writeJson(join(dir, "snapshot", `${domainName}__${tableName}.json`), rec);
+    writeJson(join(destDir, `${domainName}__${tableName}.json`), rec);
   }
   return out;
 }
 
-/** 从 replayDir/snapshot/ 还原 storage 域。 */
-export async function restoreDomains(handles, dir) {
+/** 从 srcDir 还原 storage 域（文件直接放 srcDir 下）。 */
+export async function restoreDomainSnapshot(handles, srcDir) {
   const restored = {};
   for (const [domainName, tableName] of Object.entries(SNAPSHOT_TABLES)) {
-    const rec = readJson(join(dir, "snapshot", `${domainName}__${tableName}.json`));
+    const rec = readJson(join(srcDir, `${domainName}__${tableName}.json`));
     if (!rec) continue;
     const domain = await handles[domainName];
     const table = domain.table(tableName);
@@ -119,6 +119,28 @@ export async function restoreDomains(handles, dir) {
     restored[domainName] = Object.keys(rec).length;
   }
   return restored;
+}
+
+/** 快照全部 storage 域到 replayDir/snapshot/（兼容旧 API）。 */
+export async function snapshotDomains(handles, dir) {
+  return writeDomainSnapshot(handles, join(dir, "snapshot"));
+}
+
+/** 从 replayDir/snapshot/ 还原 storage 域（兼容旧 API）。 */
+export async function restoreDomains(handles, dir) {
+  return restoreDomainSnapshot(handles, join(dir, "snapshot"));
+}
+
+/** 列出回放目录下的全部检查点（start + 各阶段）。 */
+export function listCheckpoints(replayDir) {
+  const cpDir = join(replayDir, "checkpoints");
+  if (!existsSync(cpDir)) return ["start"];
+  const names = [];
+  for (const f of readdirSync(cpDir)) {
+    if (f.endsWith(".json")) continue;
+    if (existsSync(join(cpDir, f))) names.push(f);
+  }
+  return ["start", ...names.sort()];
 }
 
 /** reset="zero"：把指定狗重置为初始资金 + 空订单/因子/反思（从 0 开始）。 */
@@ -231,6 +253,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   // 2) 逐日管线
   const trajectory = []; // { day, dogs: { dog: {capital, placed, pnl, pending, factors} } }
   const reviewLog = [];
+  const checkpointLog = [];
   const startCapital = {};
   for (const dog of dogs) {
     const domain = await handles["ds_roles"];
@@ -282,6 +305,12 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
       log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} [${row.stopReason}] ${String(row.text || "").slice(0, 120).replace(/\n/g, " ")}`);
     }
 
+    // 检查点：结算前（分析+下单后的状态）
+    const preSettle = `${d}__pre-settle`;
+    await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preSettle));
+    checkpointLog.push({ name: preSettle, day: d, phase: "结算前" });
+    log.push(`   📍 检查点: ${preSettle}`);
+
     // 2.3 结算（纯结算；反思移入因子流阶段 0）
     const dayTraj = { day: d, dogs: {} };
     const settledByDog = {};
@@ -308,6 +337,12 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
       };
       log.push(`   💰 ${dog}: 结算${dayTraj.dogs[dog].settled}单 PnL${dayTraj.dogs[dog].pnl} → 余额${dayTraj.dogs[dog].capital}`);
     }
+
+    // 检查点：因子流前（结算后的状态）
+    const preFactor = `${d}__pre-factor`;
+    await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preFactor));
+    checkpointLog.push({ name: preFactor, day: d, phase: "因子流前" });
+    log.push(`   📍 检查点: ${preFactor}`);
 
     // 2.4 因子流（docs/workflow_tool_groups.md §2.3：阶段0 反思 → A 非alpha → B alpha barrier → C 退役）
     try {
@@ -375,6 +410,11 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
     trajectory.push(dayTraj);
   }
 
+  // 回放结束时补一个"因子流后"检查点（含全部阶段的最终状态）
+  const postFactor = `${end}__post-factor`;
+  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", postFactor));
+  checkpointLog.push({ name: postFactor, day: end, phase: "因子流后（终态）" });
+
   // 3) 报告
   const finalCapital = {};
   for (const dog of dogs) {
@@ -399,6 +439,8 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
     end_capital: finalCapital,
     trajectory,
     factor_reviews: reviewLog,
+    checkpoints: listCheckpoints(replayDir),
+    checkpoint_log: checkpointLog,
     warnings: log.filter((l) => l.startsWith("⚠️")),
   };
   writeJson(join(replayDir, "report.json"), report);
@@ -482,6 +524,10 @@ ${rows || "(无轨迹)"}
 ## 起点 vs 终点
 
 ${cmp}
+
+## 检查点（可恢复到某阶段前）
+
+${(report.checkpoints || ["start"]).map((c) => `- \`${c}\``).join("\n")}
 
 ## 因子退役记录（含用户意见）
 

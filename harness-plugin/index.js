@@ -27,7 +27,7 @@ import { analyzeDogsParallel, footballDayLabel } from "./fanout.js";
 import { settleAll } from "./settleEngine.js";
 import { factorFlow } from "./flows.js";
 import { prepareDay, prepareRange } from "./dataflow.js";
-import { runReplay } from "./replay.js";
+import { runReplay, restoreDomainSnapshot, listCheckpoints } from "./replay.js";
 import { createTaskRegistry, withTask } from "./taskStatus.js";
 import {
   buildReflectPrompt, streamReflectJson, parseReflectJson, applyReflection,
@@ -576,6 +576,37 @@ function apply(ctx, config = {}) {
   }));
 
   // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
+  // ── ds_replay_restore：回放检查点恢复（回到结算前 / 因子流前）──
+  ctx.tools.register(defineTool({
+    name: "ds_replay_restore",
+    description:
+      "把 storage 域恢复到某次回放的检查点：run_id + checkpoint（start / <day>__pre-settle / <day>__pre-factor / <end>__post-factor，见回放报告检查点列表）。恢复后线上角色回到该阶段状态。",
+    parameters: {
+      run_id: { type: "string", required: true, description: "回放 run_id（replay_<start>_<end>_<ts>）" },
+      checkpoint: { type: "string", required: true, description: "检查点名：start 或 <day>__pre-settle / <day>__pre-factor 等" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(),
+    },
+    execute: withTask(taskReg, { type: "replay-restore", title: "回放恢复" }, async (args) => {
+      try {
+        const replayDir = join(cacheDir, "replays", args.run_id);
+        if (!existsSync(replayDir)) return { error: `回放不存在: ${args.run_id}` };
+        const src = args.checkpoint === "start"
+          ? join(replayDir, "snapshot")
+          : join(replayDir, "checkpoints", args.checkpoint);
+        if (!existsSync(src)) {
+          return { error: `检查点不存在: ${args.checkpoint}（可用: ${listCheckpoints(replayDir).join(", ")}）` };
+        }
+        const restored = await restoreDomainSnapshot(domainHandles, src);
+        return { ok: true, run_id: args.run_id, checkpoint: args.checkpoint, restored };
+      } catch (error) {
+        return { error: error.message };
+      }
+    }),
+  }));
+
   ctx.tools.register(defineTool({
     name: "ds_prepare_day",
     description:
