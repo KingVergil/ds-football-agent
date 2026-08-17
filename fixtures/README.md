@@ -35,4 +35,4 @@ tar -xzf testdata-14d.tar.gz
 ## 说明
 
 - `tags/<id>.json`（段落）未打包，因为可由 `features/<id>.json` 里的 `compact_fet` 文本按 [`cache_format_spec.md`](../harness-plugin/docs/cache_format_spec.md) 的段落规则即时切分。
-- 要真实/最新数据，用私有 `lota_fetcher.js` 抓取（见 [`fetcher_protocol.md`](../harness-plugin/docs/fetcher_protocol.md)）。
+- 要真实/最新数据，用私有 `lota_fetcher.js`（放插件目录，见 [`fetcher_protocol.md`](../harness-plugin/docs/fetcher_protocol.md)）抓取。

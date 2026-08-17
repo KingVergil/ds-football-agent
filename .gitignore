@@ -21,6 +21,9 @@ harness-sdk/
 # ── Node（harness-plugin 本地测试依赖，指向 dsh profile 的 node_modules）──
 harness-plugin/node_modules
 
+# ── 私有：Lota 数据获取层（单独分发，不入库）──
+harness-plugin/lota_fetcher.js
+
 # ── Python ──
 __pycache__/
 *.py[cod]

@@ -63,7 +63,7 @@ Fetcher 抓完数据后，必须把下面三类文件写进 `cacheDir`（格式�
 
 拿到它之后：
 
-1. **放哪**：任意目录，推荐放在 `cacheDir` 的父目录下（这样默认 `data/` 就对齐 `cacheDir`）。也可放别处，用环境变量指回：
+1. **放哪**：插件会自动找 `harness-plugin/lota_fetcher.js`（或 dsh 安装目录同文件），找不到再回退 `cacheDir` 的父目录。推荐直接放插件目录；也可放别处，用环境变量指回：
 
    ```bash
    export LOTA_DATA_ROOT=/path/to/cacheDir        # 默认 ./data

@@ -51,7 +51,8 @@ harness-plugin/
 - 缓存格式见 [`docs/cache_format_spec.md`](docs/cache_format_spec.md)
 - 数据怎么进缓存、私有 `lota_fetcher.js` 放哪怎么用，见 [`docs/fetcher_protocol.md`](docs/fetcher_protocol.md)
 
-拿到私有 `lota_fetcher.js` 后，放到 `cacheDir` 父目录，跑 `refresh-range` + `prefetch` 写缓存即可。
+拿到私有 `lota_fetcher.js` 后，放到本插件目录（`harness-plugin/lota_fetcher.js`，dsh 安装时同文件跟随插件），
+插件会自动优先找插件目录、回退 `cacheDir` 父目录；跑 `refresh-range` + `prefetch` 写缓存即可。
 
 ## License
 
