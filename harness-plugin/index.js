@@ -25,7 +25,7 @@ import { settleDog, fetchScoresFromCache } from "./settleEngine.js";
 import { submitOrders, refreshOrders } from "./placeOrders.js";
 import { analyzeDogsParallel, footballDayLabel } from "./fanout.js";
 import { settleAll } from "./settleEngine.js";
-import { factorFlow } from "./flows.js";
+import { factorFlow, settledOrdersForDay, latestSettledDay } from "./flows.js";
 import { prepareDay, prepareRange } from "./dataflow.js";
 import { runReplay, restoreDomainSnapshot, listCheckpoints } from "./replay.js";
 import { createTaskRegistry, withTask } from "./taskStatus.js";
@@ -664,14 +664,16 @@ function apply(ctx, config = {}) {
       limit: { type: "number", description: "每 scope 最多 LLM 判重次数（默认 30）" },
       user_notes: { type: "string", description: "用户调整意见（阶段C 退役评估注入）" },
       reflect_day: { type: "string", description: "阶段0 反思目标足球日（YYYY-MM-DD）；'auto' 或空 = 自动选最近有已结算订单的足球日" },
+      parallel: { type: "number", description: "因子专员子任务并发数（默认 7）" },
     },
     output: {
       schema: LOOSE_OBJECT,
       render: jsonRender(8000),
     },
-    execute: withTask(taskReg, { type: "factor-flow", title: "因子流" }, async (args, _exec, progress) => {
+    execute: withTask(taskReg, { type: "factor-flow", title: "因子流" }, async (args, exec, progress) => {
       try {
-        return await factorFlow(domainHandles, ctx, {
+        if (!exec || !exec.agent) return { error: "exec.agent 不存在，无法启动因子专员子任务" };
+        return await factorFlow(ctx, domainHandles, {
           scope: args.scope || "all",
           endDate: args.end_date,
           dogs: args.dogs,
@@ -679,9 +681,37 @@ function apply(ctx, config = {}) {
           limit: args.limit,
           userNotes: args.user_notes,
           cacheDir,
+          engineRoot,
+          pythonBin,
           reflectDay: args.reflect_day,
+          parallel: args.parallel,
+          parent: exec.agent,
+          signal: exec.signal,
           onProgress: (p) => progress({ phase: p.phase, done: p.done, total: p.total, detail: p.detail }),
         });
+      } catch (error) {
+        return { error: error.message };
+      }
+    }),
+  });
+
+  // ── ds_settled_js：只读取某狗某足球日的已结算订单（因子专员子任务用）──
+  registerTool({
+    name: "ds_settled_js",
+    description:
+      "只读：返回某只狗在某足球日窗口（[D 12:01, D+1 12:00]）已结算的订单列表（含 lota_id/类型/pick/比分/hit/profit/金额/理由）。供因子反思用。",
+    parameters: {
+      user: { type: "string", required: true, description: "狗名（角色），如 梭哈2狗" },
+      day: { type: "string", required: true, description: "足球日 YYYY-MM-DD" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(6000),
+    },
+    execute: withTask(taskReg, { type: "factor-read", title: "读已结算订单" }, async (args) => {
+      try {
+        const orders = await settledOrdersForDay(domainHandles, cacheDir, args.user, args.day);
+        return { user: args.user, day: args.day, count: orders.length, orders };
       } catch (error) {
         return { error: error.message };
       }
