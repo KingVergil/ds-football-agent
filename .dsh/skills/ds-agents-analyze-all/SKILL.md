@@ -1,6 +1,6 @@
 ---
 name: analyze-all
-description: 一键跑全部 7 只单关狗（不含串关2狗）的足球投注分析下单：refresh_orders → lota 读数据 → 读人设/记忆/资金 → 独立判断 → submit_orders。适用于用户说「全部分析」「跑全部狗」「分析7狗」「全量分析」时。
+description: 一键并行跑全部 7 只单关狗（不含串关2狗）的足球投注分析下单：ds_analyze_all_parallel fan-out 7 个独立 subagent，每狗执行 refresh_orders → lota 读数据 → 读人设/记忆/资金 → 独立判断 → submit_orders。适用于用户说「全部分析」「跑全部狗」「分析7狗」「全量分析」时。
 ---
 
 # 全部分析（7 只单关狗）
@@ -11,15 +11,13 @@ description: 一键跑全部 7 只单关狗（不含串关2狗）的足球投注
 
 alpha2狗、alpha狗、梭哈2狗、梭哈3狗、均注狗、平局狗、跟风狗（共 7 只）。
 
-## 步骤（共用同一份赛前数据，每只狗独立判断）
+## 步骤（subagent fan-out 并行，每狗独立会话）
 
 1. **定足球日**：北京时间 ≥12:00 用今天，<12:00 用昨天。
-2. **refresh_orders(user, day) × 7**：退回窗口内未开赛旧单（已开赛的保留）。
-3. **读数据**：`lota_matches(day, strip_scores=true)` 列比赛。≤50 场必须逐场读全关键段落；>50 场按联赛/时间粗筛主流竞彩场次。逐场 `lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"])`。
-4. **读人设**：`read python-engine/data/roles/<狗>/persona.md`。
-5. **读记忆 + 资金**：`ds_memory_js(user, day)` + `ds_capital_js(user)` × 7。
-6. **独立判断**：结合活跃因子 + 已证伪护栏（勿只按直觉解读离散凝聚，历史「离散极低」可能是诱杀），按人设档位定信心比例。
-7. **submit_orders(user, day, orders) × 7** 结构化下单。
+2. **并行 fan-out**：调 `ds_analyze_all_parallel(day=<足球日>, parallel=7)`。该工具会为每只狗启动一个独立 subagent，并发执行 refresh_orders → 读数据 → 读人设 → 读记忆/资金 → 独立判断 → submit_orders。
+3. **汇总检查**：工具返回每狗 `ok/stopReason/text`；若某狗 `ok=false`，单独重跑该狗（`ds_analyze_all_parallel(dogs=["<狗名>"], parallel=1)` 或按步骤手动分析该狗）。
+
+> 不要父 agent 自己顺序逐狗分析——把并发交给 `ds_analyze_all_parallel`。
 
 ## 关键约定
 

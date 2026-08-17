@@ -63,16 +63,26 @@ function nowBj() {
   return beijingNowIso().replace("T", " ");
 }
 
+/** 把北京时间字符串 "YYYY-MM-DD HH:MM[:SS]" 解析成 UTC epoch 毫秒（减 8h）。
+ *  时间戳比较，免疫时区/格式/秒位，避免字符串字典序在开赛边界误判。解析失败返回 null。 */
+function bjToEpoch(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || "").trim());
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) - 8 * 3600 * 1000;
+}
+
 /** 已开赛比赛的 lota_id 集合（仅当 now 仍落在足球日窗口内时生效）。 */
 function computeStartedLids(cacheDir, day) {
-  const [start, end] = getFootballDay(day);
-  const now = nowBj();
-  if (!(start <= now && now <= end)) return new Set();
+  const nowEpoch = Date.now();
+  const startEpoch = bjToEpoch(`${day} 12:01:00`);
+  const endEpoch = bjToEpoch(`${addDays(day, 1)} 12:00:00`);
+  if (startEpoch == null || endEpoch == null) return new Set();
+  if (!(nowEpoch >= startEpoch && nowEpoch <= endEpoch)) return new Set();
   const started = new Set();
   for (const date of [day, addDays(day, 1)]) {
     for (const m of readMatches(cacheDir, date)) {
-      const mt = m && m.match_time;
-      if (mt && start <= mt && mt <= end && mt <= now && m.lota_id) {
+      const mtEpoch = bjToEpoch(m && m.match_time);
+      if (mtEpoch != null && mtEpoch >= startEpoch && mtEpoch <= endEpoch && mtEpoch <= nowEpoch && m.lota_id) {
         started.add(m.lota_id);
       }
     }
@@ -100,16 +110,22 @@ export async function refreshOrders(handles, dog, day, cacheDir) {
   if (!role) return { error: `角色 ${dog} 不存在` };
 
   const orders = role.orders || [];
-  const now = nowBj().slice(0, 16); // "YYYY-MM-DD HH:MM"
+  const nowEpoch = Date.now();
+  const nowStr = nowBj().slice(0, 16); // 日志用
   const windowStart = `${day} 12:01`;
   const windowEnd = `${addDays(day, 1)} 12:00`;
+  const windowStartEpoch = bjToEpoch(`${day} 12:01:00`);
+  const windowEndEpoch = bjToEpoch(`${addDays(day, 1)} 12:00:00`);
 
-  // lota_id → match_time（当天窗口涉及的日期）
-  const matchTimes = {};
+  // lota_id → match_time 字符串（日志）+ epoch（比较）（当天窗口涉及的日期）
+  const matchStrs = {};
+  const matchEpochs = {};
   for (const date of [day, addDays(day, 1)]) {
     for (const m of readMatches(cacheDir, date)) {
       if (m && m.lota_id && m.match_time) {
-        matchTimes[m.lota_id] = String(m.match_time).replace("T", " ").slice(0, 16);
+        const s = String(m.match_time).replace("T", " ").slice(0, 16);
+        matchStrs[m.lota_id] = s;
+        matchEpochs[m.lota_id] = bjToEpoch(s);
       }
     }
   }
@@ -125,20 +141,24 @@ export async function refreshOrders(handles, dog, day, cacheDir) {
       newOrders.push(o);
       continue;
     }
-    const mt = matchTimes[o.lota_id] || "";
-    const inWindow = mt && windowStart <= mt && mt <= windowEnd;
+    const mtEpoch = matchEpochs[o.lota_id];
+    const mtStr = matchStrs[o.lota_id] || "";
+    const inWindow = mtEpoch != null && windowStartEpoch != null && windowEndEpoch != null
+      && windowStartEpoch <= mtEpoch && mtEpoch <= windowEndEpoch;
     if (!inWindow) {
       newOrders.push(o); // 不在当天窗口，保留
       continue;
     }
     const betSize = Number(o.bet_size || 0);
-    if (mt <= now) {
+    if (mtEpoch <= nowEpoch) {
       kept += 1; // 已开赛 → 保留
       newOrders.push(o);
+      console.log(`[refresh_orders] ${dog} KEEP   ${o.lota_id} (mt=${mtStr} <= now=${nowStr}) 已开赛保留`);
     } else {
       capital += betSize; // 未开赛 → 退回金额，删除订单
       refunded += 1;
       totalRefund += betSize;
+      console.log(`[refresh_orders] ${dog} REFUND ${o.lota_id} (mt=${mtStr} > now=${nowStr}) 未开赛退回 bet=${betSize}`);
     }
   }
 

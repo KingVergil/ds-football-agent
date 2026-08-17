@@ -1,0 +1,87 @@
+# 回放模式（replay mode）
+
+把旧 Python `dsfootball_cli.py agent <狗> runall <start> <end> --jingcai` 的日维度流程迁到
+DSH harness：**数据准备先行 → 逐日（分析 → 结算 → 反思 → 因子归纳 → 周期性因子退役）**，
+记录每狗每日轨迹，出一份可对比的报告。
+
+## 数据获取边界（所有流程共同的前置）
+
+无论分析 / 结算 / 因子 / 回放，都先走 `ds_prepare_day` / `prepareRange`，角色只消费结果：
+
+| 模式 | 行为 |
+|---|---|
+| `live` | 强制刷新（私有 Python prefetch 的 live-strict 语义：未开赛场次刷新失败拒绝旧缓存，旧赔率不进 prompt） |
+| `replay`（历史） | **缓存优先**：matches 有缓存直接读；缺了才调私有 fetcher 从 URL 拉一次；features/tags 同理，只按竞彩场次补齐（`prefetch --jingcai`，已有有效缓存跳过） |
+
+竞彩边界在 LLM 之前确定：
+- 足球日窗口 `[D 12:01, D+1 12:00]`（跨两个日历日期）；
+- 只保留 `jingcai_number` 非空的场次，北单 / 无号在进入任何 prompt 之前就被排除；
+- 返回的比赛列表已 `strip_scores`（防后视）。
+
+实现：`harness-plugin/dataflow.js`。分析框架（system prompt `ds-agents-analyze`）已改为
+先调 `ds_prepare_day(day, mode="live")`，禁止再用 `lota_matches` 拉全量。
+
+## 回放工具
+
+```
+ds_replay(
+  start: "YYYY-MM-DD",
+  end:   "YYYY-MM-DD",
+  dogs?: ["梭哈2狗", ...],          // 空 = 7 只真狗
+  parallel?: 4,                     // 分析并发（默认 = 狗数）
+  model?: "deepseek-v4-flash",      // 旁路 LLM（反思/退役），默认 flash 省 token
+  user_notes?: "近期连败，退役标准收紧…",   // 用户调整意见 → 注入周期性因子退役评估
+  persona_overrides?: { "梭哈2狗": "…" }, // 人设覆盖（分析/反思/退役共用）
+  factor_review_every?: 7,          // 每隔 N 天做一次因子退役（默认 7）
+  reset?: "none" | "zero",          // zero = 从初始资金 + 空记忆开始
+  restore_after?: true,             // 跑完还原起点状态（默认 true，不污染线上角色）
+  run_id?: "replay_20260713_2"
+)
+```
+
+## 每日管线
+
+```
+0. 范围数据一次性准备（prepareRange：缓存优先，缺了拉 URL）
+1. 并行分析：fan-out 每狗独立 subagent（比赛列表已注入 + 人设已注入上下文）
+2. 结算：settleDog（纯 JS，只认 state==6 比分）
+3. 反思：旁路 LLM（模型可覆盖，默认 flash）
+4. 因子归纳：alpha 跨狗 1 次 + 非 alpha 各自（flash 判重）
+5. 每 factor_review_every 天：因子退役评估（代码门控 + 旁路 LLM；user_notes 注入评估 prompt）
+```
+
+## 轨迹对比与隔离
+
+- 每狗每日快照（余额 / 待定 / 当日下单 / 结算 PnL / 活跃因子数）→
+  `<cacheDir>/replays/<run_id>/report.json` + `report.md`；
+- 范围 matches 文件在准备后**快照进** `<cacheDir>/replays/<run_id>/cache/matches/`，
+  逐日只读快照——运行中的 web 刷新器（每 30 分钟重写当前足球日 matches）不会污染回放边界；
+- 起点 storage 域全量快照 → `<cacheDir>/replays/<run_id>/snapshot/`；
+- `reset="zero"`：指定狗重置为 `initial_capital`（默认 10000）+ 空订单/因子/反思；
+- `restore_after`（默认 true）：跑完自动还原起点，线上角色不被回放污染；
+- `persona_overrides` / `user_notes` 即"从某一点修改角色的一部分"，比较不同条件下的轨迹时用。
+
+## 一次最小验证
+
+```bash
+# headless 跑 1 天、1 只狗、每天退役（验证全管线）
+dsh --profile headless \
+  "调 ds_replay(start='2026-08-16', end='2026-08-16', dogs=['梭哈2狗'], parallel=1, factor_review_every=1, reset='zero', restore_after=true, user_notes='验证用：因子退役保守，宁可多保留') 并汇报回放目录与结果"
+```
+
+## 与旧 runall 的差异
+
+- 数据：旧 runall 每天 live 强制刷新；回放默认历史缓存优先（符合"历史读缓存、缺了读 URL"）。
+- 因子归纳：旧 runall 本身不逐日归纳（batch_agents 结算后归纳）；回放按日归纳，符合"日维度"要求。
+- 退役：旧 runall 固定 7 天一次、无人工输入；回放周期可配且可注入用户意见。
+- 轨迹：旧 runall 只打日志；回放产出结构化 report.json + markdown。
+
+## 注意事项
+
+- **历史日优先**：回放按历史语义（缓存优先、缺了拉 URL）设计，建议回放已过足球日的窗口
+  （如回放 07-25 时今天已是 08-17）。回放"当前足球日"时：比赛均已开赛 → 已开赛保护会
+  拦下单（0 单），且 web 刷新器可能并发改写缓存——已用快照隔离，但结果仍是 live 语义。
+- 旁路 LLM（反思/因子归纳/因子退役）默认 `deepseek-v4-flash` 省 token；主分析轮次模型
+  跟随会话配置（headless 默认也是 flash）。
+- 竞彩边界统一由 `dataflow.js` 提供：足球日窗口 + `jingcai_number` 非空，
+  北单/无号在 LLM 之前排除；fan-out 注入的列表与 `ds_prepare_day` 同一口径。
