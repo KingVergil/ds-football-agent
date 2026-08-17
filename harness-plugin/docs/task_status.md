@@ -92,9 +92,4 @@ finish({ok, detail, result_summary})      → completed / failed
 
 ## 8. 实现清单（后续执行）
 
-1. `harness-plugin/taskStatus.js`：registry（start/update/finish/list/read/prune）+ `withTask` 包装器 + 原子持久化。
-2. `harness-plugin/index.js`：apply 创建 registry；各工具 execute 包 `withTask`；长任务接 progress。
-3. `harness-plugin/fanout.js` / `dataflow.js` / `replay.js`：加 `onProgress` 钩子（per-dog / per-step / per-day）。
-4. `harness-plugin/dashboard.js`：`/ds-tasks` 端点 + `/ds-dashboard` 附带 `tasks`。
-5. 测试：`taskStatus` 单测（生命周期 / 持久化 / withTask 成功与异常 / prune / interrupted 兜底）。
-6. 同步 dsh 安装目录 + 提交。
+> ✅ 已实现并提交（commit 11e5687）：taskStatus.js、全工具 withTask 包装、fanout/dataflow/replay 的 onProgress、/ds-tasks 端点 + dashboard tasks 字段、taskStatus 单测（10 个测试全过）、dsh 安装目录已同步。
