@@ -13,6 +13,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 // ⚠️ 数据专有：见 odds.js 头部注释。用户自定义数据源时需修改/替换 odds.js。
 import { extractOdds } from "./odds.js";
@@ -178,8 +179,10 @@ const LOOSE_OBJECT = { type: "object", additionalProperties: true };
  * 比赛信息定时刷新：每 30 分钟跑一次私有 lota_fetcher 的 refresh-date，刷新 matches
  * 缓存里的比分/状态（供斗狗场展示）。dsh 启动即生效；无私有 fetcher（开源环境）自动跳过。
  */
-function startMatchRefresher(ctx, engineRoot) {
-  const fetcher = join(engineRoot, "lota_fetcher.js");
+function startMatchRefresher(ctx, engineRoot, cacheDir) {
+  // 私有 fetcher 优先插件目录（单独分发），缺了回退 engineRoot（老位置兼容）
+  const local = join(fileURLToPath(new URL(".", import.meta.url)), "lota_fetcher.js");
+  const fetcher = existsSync(local) ? local : join(engineRoot, "lota_fetcher.js");
   if (!existsSync(fetcher)) return;
   const bj = (ts) => new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const footballDay = () => bj(Date.now() - (12 * 3600 + 60) * 1000);
@@ -187,7 +190,11 @@ function startMatchRefresher(ctx, engineRoot) {
   const refresh = () => {
     if (running) return;
     running = true;
-    const c = spawn(process.execPath, [fetcher, "refresh-date", footballDay()], { stdio: "ignore", cwd: engineRoot });
+    const c = spawn(process.execPath, [fetcher, "refresh-date", footballDay()], {
+      stdio: "ignore",
+      cwd: engineRoot,
+      env: { ...process.env, LOTA_DATA_ROOT: cacheDir },
+    });
     c.on("exit", () => { running = false; });
     c.on("error", () => { running = false; });
   };
@@ -261,7 +268,7 @@ function apply(ctx, config = {}) {
   setupDashboard(ctx, domainHandles, cacheDir);
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
-  startMatchRefresher(ctx, engineRoot);
+  startMatchRefresher(ctx, engineRoot, cacheDir);
 
   // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
   startScheduledJobs(ctx, engineRoot, config);

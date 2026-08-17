@@ -9,13 +9,14 @@
  *   - 竞彩边界：所有返回的比赛列表都按足球日窗口 [D 12:01, D+1 12:00] + jingcai_number 过滤，
  *     北单/无号场次在 LLM 之前就被排除（对齐 Python --jingcai 与 fanout readMatchesCache）。
  *
- * 网络只发生在私有 fetcher（engineRoot/lota_fetcher.js）或私有 Python prefetch，
+ * 网络只发生在私有 fetcher（harness-plugin/lota_fetcher.js，单独分发）或私有 Python prefetch，
  * 插件本身不写死 URL/key。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 /** day±n 的日期串（UTC 计算，避免宿主机时区漂移）。 */
 export function addDays(dayStr, n) {
@@ -106,13 +107,14 @@ function lotaKeyFromZshrc() {
 }
 
 /** spawn 一个私有命令（fetcher / python prefetch），继承 env + LOTA_API_KEY 兜底。 */
-export function runPrivateCmd(cmd, args, cwd, { timeoutMs = 300000 } = {}) {
+export function runPrivateCmd(cmd, args, cwd, { timeoutMs = 300000, env = {} } = {}) {
   return new Promise((resolve) => {
-    const env = {
+    const childEnv = {
       ...process.env,
       LOTA_API_KEY: process.env.LOTA_API_KEY || lotaKeyFromZshrc(),
+      ...env,
     };
-    const child = spawn(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, { cwd, env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let done = false;
@@ -139,11 +141,16 @@ export function runPrivateCmd(cmd, args, cwd, { timeoutMs = 300000 } = {}) {
   });
 }
 
-/** 私有 fetcher 路径 + node 命令。 */
+/**
+ * 私有 fetcher 路径：优先插件目录（harness-plugin/lota_fetcher.js，单独分发），
+ * 缺了回退 engineRoot（老位置兼容）。返回 node 命令 + fetcher 路径。
+ */
 function fetcherCmd(engineRoot) {
+  const local = join(fileURLToPath(new URL(".", import.meta.url)), "lota_fetcher.js");
+  const fetcher = existsSync(local) ? local : join(engineRoot, "lota_fetcher.js");
   return {
     node: process.execPath,
-    fetcher: join(engineRoot, "lota_fetcher.js"),
+    fetcher,
   };
 }
 
@@ -154,7 +161,10 @@ export async function fetchMissingMatches(cacheDir, engineRoot, dates) {
   const failed = [];
   for (const date of dates) {
     if (hasMatchesFile(cacheDir, date)) continue; // 缓存优先
-    const r = await runPrivateCmd(node, [fetcher, "refresh-date", date], engineRoot, { timeoutMs: 180000 });
+    const r = await runPrivateCmd(node, [fetcher, "refresh-date", date], engineRoot, {
+      timeoutMs: 180000,
+      env: { LOTA_DATA_ROOT: cacheDir },
+    });
     if (r.code === 0 && hasMatchesFile(cacheDir, date)) fetched.push(date);
     else failed.push({ date, code: r.code, stderr: String(r.stderr || "").slice(0, 300) });
   }
@@ -174,7 +184,10 @@ export async function fillMissingFeatures(cacheDir, engineRoot, dates) {
       done.push(date);
       continue;
     }
-    const r = await runPrivateCmd(node, [fetcher, "prefetch", date, "--jingcai"], engineRoot, { timeoutMs: 600000 });
+    const r = await runPrivateCmd(node, [fetcher, "prefetch", date, "--jingcai"], engineRoot, {
+      timeoutMs: 600000,
+      env: { LOTA_DATA_ROOT: cacheDir },
+    });
     if (r.code === 0) done.push(date);
     else failed.push({ date, code: r.code, stderr: String(r.stderr || "").slice(0, 300) });
   }
