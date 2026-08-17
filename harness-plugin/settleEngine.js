@@ -3,11 +3,12 @@
  * 从 ds_roles 域读未结算订单 → 取比分（matches 缓存，仅 state==6）→ settleOrder → 写回 + 更新 capital。
  * 无 LLM、无 Python 桥。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { settleOrder, beijingNowIso } from "./settle.js";
 import { DS_REAL_DOGS } from "./storage.js";
+import { prepareDay } from "./dataflow.js";
 
 function round2(x) {
   return Math.round(x * 100) / 100;
@@ -122,12 +123,28 @@ export async function settleDog(handles, dog, day, cacheDir) {
 /**
  * 结算流（纯 JS，无 LLM）：并行结算多只狗的未结算订单（只认 state==6 比分）。
  * 每狗进度通过 onProgress 上报（idx/total/dog/status），供任务状态展示。
+ * 结算前默认先做数据准备（prepareDay live 刷新比分缓存），保证"结算流=管理比赛数据+并行结算"。
  */
-export async function settleAll(handles, cacheDir, { day, dogs = DS_REAL_DOGS, parallel = 4, onProgress } = {}) {
+export async function settleAll(handles, cacheDir, {
+  day, dogs = DS_REAL_DOGS, parallel = 4, onProgress,
+  prepare = true, engineRoot = "", pythonBin = "python",
+} = {}) {
   const dogList = (dogs && dogs.length ? dogs : DS_REAL_DOGS).slice();
   const progress = typeof onProgress === "function" ? onProgress : () => {};
   const rows = new Array(dogList.length);
   let cursor = 0;
+  const warnings = [];
+
+  // 0) 数据准备（管理比赛数据：确保比分缓存就绪；纯数据操作，无 LLM）
+  let dataPrep = null;
+  if (prepare && engineRoot && day) {
+    progress({ phase: "数据准备（刷新比分缓存）", idx: 0, total: 1 });
+    dataPrep = await prepareDay({
+      cacheDir, engineRoot, day, mode: "live", jingcaiOnly: true, pythonBin,
+      onProgress: (p) => progress({ phase: `数据准备：${p.phase}`, idx: 0, total: 1, detail: p.detail }),
+    });
+    warnings.push(...(dataPrep.warnings || []));
+  }
 
   const worker = async () => {
     while (cursor < dogList.length) {
@@ -156,6 +173,26 @@ export async function settleAll(handles, cacheDir, { day, dogs = DS_REAL_DOGS, p
 
   const okCount = rows.filter((r) => r && r.ok).length;
   const totalPnl = rows.reduce((s, r) => s + (r && r.pnl || 0), 0);
+  // 缺失比分统计：有未结算订单但缓存里没有 state==6 比分的场次
+  const missing = [];
+  const seen = new Set();
+  for (const r of rows) {
+    if (!r || r.error || r.settled >= r.unsettled) continue;
+    const role = (await handles["ds_roles"]).table("roles").get(r.dog);
+    const pend = ((role && role.orders) || []).filter((o) => !o.settled_at);
+    for (const o of pend) {
+      if (!o.lota_id || seen.has(o.lota_id)) continue;
+      seen.add(o.lota_id);
+      const m = findMatchInCache(cacheDir, o.lota_id);
+      if (!m || m.state !== 6) {
+        missing.push({
+          lota_id: o.lota_id,
+          dog: r.dog,
+          match: m ? `${m.home_name || "?"} vs ${m.away_name || "?"}` : "?",
+        });
+      }
+    }
+  }
   return {
     ok: okCount === rows.length,
     day,
@@ -163,9 +200,34 @@ export async function settleAll(handles, cacheDir, { day, dogs = DS_REAL_DOGS, p
     ok_count: okCount,
     fail_count: rows.length - okCount,
     total_pnl: round2(totalPnl),
+    data_prep: dataPrep && {
+      window_total: dataPrep.window_total,
+      jingcai_count: dataPrep.jingcai_count,
+      fetches: dataPrep.fetches,
+    },
+    warnings,
+    missing_scores: missing.slice(0, 30),
+    hint: missing.length
+      ? `有 ${missing.length} 个未结算场次缺完场比分（缓存里没有 state==6），已列入 missing_scores；可稍后重试或检查数据源。`
+      : "",
     rows,
     text: rows
       .map((r) => `${r.ok ? "OK " : "FAIL "}${r.dog} 结算${r.settled || 0}单 PnL${r.pnl != null ? r.pnl : "?"}`)
       .join("\n"),
   };
+}
+
+/** 在 matches 缓存里找某场（扫描最近 8 个日期文件）。 */
+function findMatchInCache(cacheDir, lotaId) {
+  const dir = join(cacheDir, "matches");
+  if (!existsSync(dir)) return null;
+  const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort().slice(-8);
+  for (const f of files) {
+    try {
+      const raw = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      const ms = Array.isArray(raw) ? raw : (raw && raw.matches) || [];
+      for (const m of ms) if (m && m.lota_id === lotaId) return m;
+    } catch {}
+  }
+  return null;
 }
