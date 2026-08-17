@@ -663,6 +663,7 @@ function apply(ctx, config = {}) {
       model: { type: "string", description: "旁路 LLM 模型（默认 deepseek-v4-flash 省 token）" },
       limit: { type: "number", description: "每 scope 最多 LLM 判重次数（默认 30）" },
       user_notes: { type: "string", description: "用户调整意见（阶段C 退役评估注入）" },
+      reflect_day: { type: "string", description: "阶段0 反思目标足球日（YYYY-MM-DD）；'auto' 或空 = 自动选最近有已结算订单的足球日" },
     },
     output: {
       schema: LOOSE_OBJECT,
@@ -678,6 +679,7 @@ function apply(ctx, config = {}) {
           limit: args.limit,
           userNotes: args.user_notes,
           cacheDir,
+          reflectDay: args.reflect_day,
           onProgress: (p) => progress({ phase: p.phase, done: p.done, total: p.total, detail: p.detail }),
         });
       } catch (error) {

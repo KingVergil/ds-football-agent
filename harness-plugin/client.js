@@ -458,7 +458,7 @@ window.__ModuleLoader__.load({
       return h("div", { className: "dsq-root" },
         h("button", { className: "dsq-btn", onClick: function () { fire("分析流：调用 ds_analyze_all_parallel(parallel=7) 并行分析全部 7 只狗（每狗独立 subagent），不要顺序逐狗。"); } }, "⚡ 分析全部"),
         h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
-        h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', limit=30) 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
+          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', reflect_day='auto', limit=30) 先对最近已结算日（如0816）的订单反思生成新因子，再 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
         h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部"));
     }
 
