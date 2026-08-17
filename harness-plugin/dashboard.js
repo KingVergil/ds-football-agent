@@ -8,6 +8,8 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { readTasks } from "./taskStatus.js";
+
 /** 真实参与分析的 8 只狗（7 只真狗 + 串关2狗；排除 _simwk、_sim0804、_snapshot、__mt_*、test_verify 等临时副本与快照）。 */
 const REAL_DOGS = [
   "alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "串关2狗",
@@ -273,6 +275,7 @@ export function setupDashboard(ctx, domainHandles, cacheDir) {
           fillMissingFromTags(cacheDir, matchMap, needed);
           const result = buildDashboard(rolesDomain.table("roles"), matchMap);
           result.todayMatches = buildTodayMatches(cacheDir);
+          result.tasks = readTasks(cacheDir).tasks || [];
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
           res.end(JSON.stringify(result));
         } catch (e) {
@@ -282,6 +285,18 @@ export function setupDashboard(ctx, domainHandles, cacheDir) {
       },
     });
   }, "ds-dashboard.route");
+
+  // /ds-tasks：任务状态（运行中/最近完成），供外部 UI 轮询
+  ctx.effect(() => {
+    return webServer.register({
+      kind: "exact",
+      path: "/ds-tasks",
+      handler: (req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(readTasks(cacheDir)));
+      },
+    });
+  }, "ds-tasks.route");
 
   ctx.effect(() => {
     return webServer.register({

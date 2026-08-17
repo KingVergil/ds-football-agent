@@ -198,28 +198,33 @@ export async function fillMissingFeatures(cacheDir, engineRoot, dates) {
  * 准备某足球日数据（LLM 前的确定性数据边界）。
  * @param {object} opts cacheDir / engineRoot / day / mode("live"|"replay") / jingcaiOnly / pythonBin
  */
-export async function prepareDay({ cacheDir, engineRoot, day, mode = "replay", jingcaiOnly = true, pythonBin = "python" }) {
+export async function prepareDay({ cacheDir, engineRoot, day, mode = "replay", jingcaiOnly = true, pythonBin = "python", onProgress } = {}) {
+  const progress = typeof onProgress === "function" ? onProgress : () => {};
   const calDates = calendarDatesForDay(day);
   const warnings = [];
   const fetches = { matches: [], features: [] };
 
   if (mode === "live") {
     // live：强制刷新 + 竞彩预取（Python prefetch 的 live-strict / TTL 语义，拒绝旧赔率）
+    progress({ phase: "live 预取", detail: `${day}（强制刷新）` });
     const r = await runPrivateCmd(pythonBin, ["dsfootball_cli.py", "prefetch", day, "--jingcai"], engineRoot, { timeoutMs: 900000 });
     if (r.code !== 0) {
       warnings.push(`live prefetch 失败(code=${r.code}): ${String(r.stderr || "").slice(0, 300)}`);
     }
   } else {
     // replay / 历史：matches 缓存优先，缺了才从 URL 拉一次
+    progress({ phase: "拉比赛缓存", detail: calDates.join("、") });
     const m = await fetchMissingMatches(cacheDir, engineRoot, calDates);
     fetches.matches = m.fetched;
     for (const f of m.failed) warnings.push(`refresh-date 失败 ${f.date}: ${f.stderr}`);
     // features/tags 缓存优先，缺的按竞彩场次补齐
+    progress({ phase: "补 features/tags", detail: calDates.join("、") });
     const f = await fillMissingFeatures(cacheDir, engineRoot, calDates);
     fetches.features = f.done;
     for (const ff of f.failed) warnings.push(`prefetch 失败 ${ff.date}: ${ff.stderr}`);
   }
 
+  progress({ phase: "过滤竞彩", detail: day });
   const windowTotal = jingcaiWindowMatches(cacheDir, day, { jingcaiOnly: false }).length;
   const matches = jingcaiOnly
     ? jingcaiWindowMatches(cacheDir, day, { strip: true, jingcaiOnly: true })
@@ -251,7 +256,8 @@ export async function prepareDay({ cacheDir, engineRoot, day, mode = "replay", j
  * 准备回放范围数据：一次性把 [start, end] 涉及的日历日期比赛 + 竞彩 features/tags 拉齐，
  * 之后逐日循环只读缓存，不触网。
  */
-export async function prepareRange({ cacheDir, engineRoot, start, end, pythonBin = "python" }) {
+export async function prepareRange({ cacheDir, engineRoot, start, end, pythonBin = "python", onProgress } = {}) {
+  const progress = typeof onProgress === "function" ? onProgress : () => {};
   const dates = new Set();
   let d = start;
   while (d <= end) {
@@ -259,8 +265,11 @@ export async function prepareRange({ cacheDir, engineRoot, start, end, pythonBin
     d = addDays(d, 1);
   }
   const dateList = [...dates].sort();
+  progress({ phase: "拉比赛缓存（范围）", done: 0, total: dateList.length, detail: `${start} ~ ${end}` });
   const m = await fetchMissingMatches(cacheDir, engineRoot, dateList);
+  progress({ phase: "补 features/tags（范围）", done: m.fetched.length, total: dateList.length });
   const f = await fillMissingFeatures(cacheDir, engineRoot, dateList);
+  progress({ phase: "范围数据就绪", done: dateList.length, total: dateList.length });
   return {
     dates: dateList,
     matches_fetched: m.fetched,
