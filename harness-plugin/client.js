@@ -416,14 +416,18 @@ window.__ModuleLoader__.load({
             .catch(function () {});
         }, 2500);
         function measure() {
-          // 定位到对话记录区（session 根）的左边缘，避免盖住左侧会话列表
+          // 放在对话列右侧空白：列右缘 + 8px；若放不下（窄屏）则贴最右，不遮挡对话
+          var PANEL_W = 300;
+          var vw = window.innerWidth || document.documentElement.clientWidth || 1200;
           var el = document.querySelector('[data-slot="conversation.session"]') ||
                    document.querySelector('[data-slot="conversation\\.session"]');
           if (el) {
             var r = el.getBoundingClientRect();
-            setPos({ left: r.left + 8, top: r.top + 12 });
+            var left = r.right + 8;
+            if (left + PANEL_W > vw - 8) left = vw - PANEL_W - 8;
+            setPos({ left: Math.max(8, left), top: r.top + 12 });
           } else {
-            setPos({ left: 10, top: 10 });
+            setPos({ left: Math.max(8, vw - PANEL_W - 8), top: 12 });
           }
         }
         measure();
