@@ -291,6 +291,9 @@ function startMatchRefresher(ctx, engineRoot, cacheDir) {
  * + 按 email_recipients.txt 名单发邮件。dsh 启动期间生效。
  */
 function startScheduledJobs(ctx, engineRoot, config) {
+  // 防递归：本插件拉起的 headless 子进程带 DSH_SCHEDULED_RUN=1，不再注册定时器
+  // （否则子进程 tick() 注册即检查，同一分钟又触发拉起孙进程 → 无限递归）
+  if (process.env.DSH_SCHEDULED_RUN === "1") return;
   const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
     ? config.scheduledEmails : ["15:58", "18:15", "20:15"];
   const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
@@ -316,7 +319,7 @@ function startScheduledJobs(ctx, engineRoot, config) {
     const agentsPy = JSON.stringify(agents);
     const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${agentsPy}]`;
     // headless 需要 DEEPSEEK_API_KEY；dsh web 进程环境可能没有（非交互式启动），从 ~/.zshrc 兜底读一次
-    const script = `export DEEPSEEK_API_KEY="$(grep -o 'sk-[a-zA-Z0-9]*' ~/.zshrc | head -1)" && dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
+    const script = `export DEEPSEEK_API_KEY="$(grep -o 'sk-[a-zA-Z0-9]*' ~/.zshrc | head -1)" && export DSH_SCHEDULED_RUN=1 && dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
     const c = spawn("/bin/bash", ["-c", script], { stdio: "ignore" });
     c.on("exit", () => { running = false; });
     c.on("error", () => { running = false; });
@@ -585,8 +588,15 @@ function apply(ctx, config = {}) {
       execute: withTask(taskReg, { type: "analyze", title: "并行分析全部" }, async (args, exec, progress) => {
         try {
           if (!exec || !exec.agent) return { error: "exec.agent 不存在，无法启动 subagent" };
+          // 分析流第 1 步：管理比赛数据（live 强制刷新，拒绝旧赔率）
+          const day = args.day || footballDayLabel();
+          progress({ phase: "数据准备（live 刷新）", done: 0, total: 1, detail: day });
+          const prep = await prepareDay({
+            cacheDir, engineRoot, day, mode: "live", jingcaiOnly: true, pythonBin,
+            onProgress: (p) => progress({ phase: `数据准备：${p.phase}`, done: 0, total: 1, detail: p.detail }),
+          });
           return await analyzeDogsParallel(ctx, {
-            day: args.day,
+            day,
             dogs: args.dogs,
             parallel: args.parallel,
             parent: exec.agent,
@@ -597,7 +607,11 @@ function apply(ctx, config = {}) {
               done: p.idx, total: p.total,
               detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail,
             }),
-          });
+          }).then((res) => ({ ...res, data_prep: {
+            window_total: prep.window_total,
+            jingcai_count: prep.jingcai_count,
+            warnings: prep.warnings,
+          } }));
         } catch (error) {
           return { error: error.message };
         }
