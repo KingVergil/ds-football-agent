@@ -398,12 +398,14 @@ window.__ModuleLoader__.load({
         settled.length ? h("div", { className: "dsd-orders" }, renderOrders(settled, hide)) : h("div", { className: "dsd-empty" }, "无已结算订单"));
     }
 
-    // 对话页左上方任务状态面板：轮询 /ds-tasks，展示运行中/最近任务（单狗/群狗都考虑）
+    // 对话记录左侧任务状态面板：轮询 /ds-tasks，常驻显示运行中/最近任务（单狗/群狗都考虑）
     function TaskStatusPanel() {
       var state = React.useState(null);
       var tasks = state[0], setTasks = state[1];
       var openState = React.useState(false);
       var open = openState[0], setOpen = openState[1];
+      var posState = React.useState(null);
+      var pos = posState[0], setPos = posState[1];
       React.useEffect(function () {
         var timer = setInterval(function () {
           fetch("/ds-tasks")
@@ -413,13 +415,29 @@ window.__ModuleLoader__.load({
             })
             .catch(function () {});
         }, 2500);
-        return function () { clearInterval(timer); };
+        function measure() {
+          // 定位到对话记录区（session 根）的左边缘，避免盖住左侧会话列表
+          var el = document.querySelector('[data-slot="conversation.session"]') ||
+                   document.querySelector('[data-slot="conversation\\.session"]');
+          if (el) {
+            var r = el.getBoundingClientRect();
+            setPos({ left: r.left + 8, top: r.top + 12 });
+          } else {
+            setPos({ left: 10, top: 10 });
+          }
+        }
+        measure();
+        window.addEventListener("resize", measure);
+        return function () {
+          clearInterval(timer);
+          window.removeEventListener("resize", measure);
+        };
       }, []);
 
       var list = tasks || [];
       var running = list.filter(function (t) { return t.status === "running"; });
-      var shown = open ? list.slice(0, 14) : running.slice(0, 8);
-      if (!shown.length && !open) return null; // 无运行任务时收起（不占左上角）
+      var recent = list.filter(function (t) { return t.status !== "running"; }).slice(0, 4);
+      var shown = open ? list.slice(0, 14) : running.slice(0, 6).concat(recent);
 
       var rows = shown.map(function (t) {
         var params = t.params || {};
@@ -437,10 +455,20 @@ window.__ModuleLoader__.load({
               (t.detail ? " · " + String(t.detail).slice(0, 80) : ""))));
       });
 
-      return h("div", { className: "dsts-root" },
+      var empty = !shown.length
+        ? h("div", { className: "dsts-body" },
+            h("div", { className: "dsts-row" },
+              h("span", { className: "dsts-badge" }, "–"),
+              h("div", { className: "dsts-phase" }, "暂无任务（跑分析/结算/因子流时实时显示）")))
+        : null;
+
+      return h("div", {
+        className: "dsts-root",
+        style: pos ? { left: pos.left + "px", top: pos.top + "px" } : undefined,
+      },
         h("button", { className: "dsts-head", onClick: function () { setOpen(!open); } },
-          "📡 任务 · " + running.length + " 运行中" + (running.length ? "" : "（点开看最近）")),
-        shown.length ? h("div", { className: "dsts-body" }, rows) : null);
+          "📡 任务 · " + running.length + " 运行中" + (running.length ? "" : " · 最近 " + recent.length)),
+        shown.length ? h("div", { className: "dsts-body" }, rows) : empty);
     }
 
     // 快捷输入按钮：分析全部 / 结算全部 / 因子归纳全部 / 因子退役全部（对齐 分析流/结算流/因子流）
