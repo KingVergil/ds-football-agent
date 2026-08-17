@@ -13,8 +13,67 @@ import { beijingNowIso } from "./settle.js";
 import { DS_REAL_DOGS } from "./storage.js";
 import { inductFactors, inductAlpha, ALPHA_DOGS } from "./factorInduction.js";
 import { factorReview } from "./factorReview.js";
+import { reflectDog } from "./replay.js";
+import { readPersona } from "./reflect.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const FLOW_MODEL = "deepseek-v4-flash";
+
+/** 比赛开赛时间 → 足球日标签（[D 12:01, D+1 12:00]，12:00 前归上一足球日）。 */
+function footballDayOf(matchTime) {
+  const t = String(matchTime || "").replace("T", " ").slice(0, 16);
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(t);
+  if (!m) return "";
+  const [y, mo, d, hh, mm] = m.slice(1).map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d + (hh >= 12 || (hh === 12 && mm >= 1) ? 0 : -1)));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** 从 matches 缓存构建 lota_id → match_time（扫描最近 10 个日期文件）。 */
+function buildMatchTimeMap(cacheDir) {
+  const dir = join(cacheDir, "matches");
+  const map = {};
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort().slice(-10); } catch { return map; }
+  for (const f of files) {
+    try {
+      const raw = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      const ms = Array.isArray(raw) ? raw : (raw && raw.matches) || [];
+      for (const m of ms) if (m && m.lota_id && m.match_time && !map[m.lota_id]) map[m.lota_id] = m.match_time;
+    } catch {}
+  }
+  return map;
+}
+
+/** 某狗的已结算订单里，属于某足球日的部分（保持订单原字段，供 reflectDog 使用）。 */
+async function settledOrdersForDay(handles, cacheDir, dog, day) {
+  const rolesDomain = await handles["ds_roles"];
+  const role = rolesDomain.table("roles").get(dog);
+  if (!role) return [];
+  const matchTime = buildMatchTimeMap(cacheDir);
+  return (role.orders || []).filter((o) => {
+    if (!o.settled_at) return false;
+    return footballDayOf(matchTime[o.lota_id]) === day;
+  });
+}
+
+/** 自动选"最近有已结算订单的足球日"（reflectDay='auto'/空时）。 */
+async function latestSettledDay(handles, cacheDir, dogs) {
+  const rolesDomain = await handles["ds_roles"];
+  const matchTime = buildMatchTimeMap(cacheDir);
+  let best = "";
+  for (const dog of dogs) {
+    const role = rolesDomain.table("roles").get(dog);
+    if (!role) continue;
+    for (const o of (role.orders || [])) {
+      if (!o.settled_at) continue;
+      const d = footballDayOf(matchTime[o.lota_id]);
+      if (d && d > best) best = d;
+    }
+  }
+  return best;
+}
 
 /**
  * 因子流。
@@ -30,6 +89,7 @@ export async function factorFlow(handles, ctx, {
   limit = 30,
   userNotes = "",
   cacheDir = "",
+  reflectDay = "",
   onProgress,
 } = {}) {
   const dogList = (dogs && dogs.length ? dogs : DS_REAL_DOGS).slice();
@@ -38,6 +98,43 @@ export async function factorFlow(handles, ctx, {
   const progress = typeof onProgress === "function" ? onProgress : () => {};
   const log = [];
   const end = endDate || beijingNowIso().slice(0, 10);
+
+  // ── 阶段 0：反思（可选）。reflectDay='auto'/空 = 最近有已结算订单的足球日；
+  //    已有当天反思的狗跳过（幂等）。目标是"从某批结算订单生成新因子"（如 0816 订单）。──
+  let reflectTarget = String(reflectDay || "").trim();
+  if (reflectTarget && reflectTarget !== "auto") {
+    // 显式日期，原样使用
+  } else if (cacheDir) {
+    reflectTarget = await latestSettledDay(handles, cacheDir, dogList);
+  } else {
+    reflectTarget = "";
+  }
+  if (reflectTarget) {
+    progress({ phase: `因子流·阶段0 反思 ${reflectTarget}`, done: 0, total: dogList.length });
+    let doneCount = 0;
+    for (const dog of dogList) {
+      const settled = await settledOrdersForDay(handles, cacheDir, dog, reflectTarget);
+      let skipped = "无该日结算单";
+      if (settled.length) {
+        const refsRec = (await handles["ds_reflections"]).table("reflections").get(dog) || {};
+        const already = (refsRec.reflections || []).some((r) => r.date === reflectTarget);
+        if (already) {
+          skipped = "已有当天反思（幂等跳过）";
+        } else {
+          progress({ phase: `因子流·阶段0·反思 ${dog}`, done: doneCount, total: dogList.length, detail: `${settled.length} 单` });
+          const persona = cacheDir ? readPersona(cacheDir, dog) : "";
+          const r = await reflectDog(handles, ctx, dog, reflectTarget, settled, { model, persona });
+          if (r && r.ok === false) log.push(`⚠️ 反思 ${dog} 失败: ${r.error}`);
+          else log.push(`🧠 阶段0 ${dog}: 反思 ${settled.length} 单`);
+          doneCount += 1;
+          progress({ phase: `因子流·阶段0·反思 ${dog}`, done: doneCount, total: dogList.length, status: "ok" });
+          continue;
+        }
+      }
+      doneCount += 1;
+      progress({ phase: `因子流·阶段0·反思 ${dog}`, done: doneCount, total: dogList.length, detail: skipped });
+    }
+  }
 
   const inductOne = async (dog) => {
     const factorsDomain = await handles["ds_factors"];
