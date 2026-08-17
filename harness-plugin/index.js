@@ -10,7 +10,7 @@
  *   - 导出 { name, inject, apply }
  *   - apply(ctx, config) 内用 ctx.tools.register(defineTool({...}))
  */
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,86 @@ const name = "lota-data";
 // webServer 不放进 inject：headless(定时分析)没有 web 服务，放进去会导致插件 pending。
 // dashboard 用 ctx.webServer 判空优雅跳过；web 下 cordis 的 ctx.get 仍能取到该服务。
 const inject = ["tools", "storageDomain", "llm", "systemPrompt", "subagents"];
+
+// dsh-scope 顶层加载（避免 agent/created 与动态 import 的竞态）；无 dsh 环境时为 null
+let dshScope = null;
+try {
+  dshScope = await import("@deepseek-ai/dsh-scope");
+} catch {
+  dshScope = null;
+}
+
+/** 单进程单例守卫：同一进程内多个 preset 挂载本插件时，全局副作用（工具/路由/定时器/prompt section）只注册一次。 */
+const __singletonKeys = new Set();
+function once(key) {
+  if (__singletonKeys.has(key)) return false;
+  __singletonKeys.add(key);
+  return true;
+}
+
+/**
+ * agent 模式：toolAllowlist 时，监听 agent/created，对加入本 preset 的 agent
+ * 用其 scoped ctx 调 tools.restrict({allow})，把宿主平面（bash/fs/skills 等）工具一并遮蔽。
+ * 动态 import dsh-scope，避免在无 dsh 环境下加载失败。
+ */
+function setupAgentModeRestrict(ctx, cacheDir, config) {
+  // config.toolAllowlist（单模式）或 config.agentModePresets（preset 名 → 工具列表）
+  const presets = config.agentModePresets && typeof config.agentModePresets === "object"
+    ? config.agentModePresets
+    : null;
+  const single = Array.isArray(config.toolAllowlist) && config.toolAllowlist.length
+    ? [...config.toolAllowlist]
+    : null;
+  if (!presets && !single) return;
+  if (!dshScope) {
+    console.warn(`[lota-data] dsh-scope 不可用，agent 模式无法按 scope 遮蔽工具`);
+    return;
+  }
+  const { scopeOf, scopeParentOf } = dshScope;
+  // 本插件实例所在的 scope（预设挂载时 = preset standing scope；profile 挂载时 = 根 scope）
+  let myScope = null;
+  try { myScope = scopeOf(ctx) ?? null; } catch {}
+  const debugLog = [];
+  const record = (entry) => {
+    debugLog.push(entry);
+    try {
+      const dir = join(cacheDir, "tasks");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "agent-mode-debug.json"), JSON.stringify({ events: debugLog.slice(-50) }, null, 2), "utf8");
+    } catch {}
+  };
+  ctx.on("agent/created", ({ agent }) => {
+    try {
+      const agentCtx = agent && agent.ctx;
+      const agentId = String((agent && agent.id) || agent && agent.ctx && "?");
+      const agentScope = agentCtx ? scopeOf(agentCtx) : undefined;
+      const presetScope = agentScope ? scopeParentOf(agentScope) : undefined;
+      const presetKey = presetScope == null ? "" : String(presetScope);
+      let allowlist = null;
+      if (single) {
+        allowlist = single;
+      } else if (presets) {
+        for (const [name, tools] of Object.entries(presets)) {
+          // 恒等优先（dsh 内部按 scope key 对象比较）；字符串兜底
+          const byIdentity = myScope != null && presetScope === myScope;
+          if (byIdentity || presetKey === name || presetKey.endsWith(`/${name}`) || presetKey.includes(name)) {
+            allowlist = tools;
+            break;
+          }
+        }
+      }
+      const matched = Boolean(allowlist && allowlist.length);
+      record({ agent: agentId, hasCtx: Boolean(agentCtx), agentScope: agentScope == null ? null : String(agentScope), presetKey, byIdentity: myScope != null && presetScope === myScope, matched, allowlist: allowlist || null });
+      if (matched && agentCtx && typeof agentCtx.tools?.restrict === "function") {
+        agentCtx.tools.restrict({ allow: allowlist });
+        console.log(`[lota-data] agent 模式白名单已应用 ${agentId}: ${allowlist.join(", ")}`);
+      }
+    } catch (e) {
+      record({ error: String((e && e.message) || e) });
+      console.warn(`[lota-data] agent 模式 restrict 失败: ${(e && e.message) || e}`);
+    }
+  });
+}
 
 /** 效果 A analyze 框架 section（主循环 LLM 的 prompt 段，见 harness_js_reconstruction.md §2.5）。 */
 const ANALYZE_FRAMEWORK_SECTION = {
@@ -262,25 +342,40 @@ function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
   const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
   const pythonBin = config.pythonBin ?? "python";
+  const toolAllowlist = Array.isArray(config.toolAllowlist) && config.toolAllowlist.length
+    ? [...config.toolAllowlist]
+    : null;
   const taskReg = createTaskRegistry(cacheDir);
 
   // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
   const domainHandles = setupDomains(ctx);
 
   // ── 「斗狗场」仪表盘（/ds-dashboard JSON + /ds-avatars 图片，客户端 tab）──
-  setupDashboard(ctx, domainHandles, cacheDir);
+  if (once("dashboard-routes")) setupDashboard(ctx, domainHandles, cacheDir);
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
-  startMatchRefresher(ctx, engineRoot, cacheDir);
+  if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir);
 
   // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
-  startScheduledJobs(ctx, engineRoot, config);
+  if (once(`scheduler:${engineRoot}`)) startScheduledJobs(ctx, engineRoot, config);
 
   // ── 主循环 LLM 的 prompt section（analyze 框架 + 资金管理 + 结构化下单）──
-  ctx.systemPrompt.section(ANALYZE_FRAMEWORK_SECTION);
+  if (once("section:ds-agents-analyze")) ctx.systemPrompt.section(ANALYZE_FRAMEWORK_SECTION);
+
+  // ── 工具注册（按本 preset 的 scope 注册；toolAllowlist 时只注册白名单内工具）──
+  const registerTool = (definition) => {
+    if (toolAllowlist && !toolAllowlist.includes(definition.name)) return;
+    ctx.tools.register(defineTool(definition));
+  };
+
+  // ── agent 模式：toolAllowlist / agentModePresets 时，对加入对应 preset 的 agent
+  //    用 agent scoped ctx 遮蔽宿主平面工具（bash/fs/skills 等）──
+  if (toolAllowlist || config.agentModePresets) {
+    setupAgentModeRestrict(ctx, cacheDir, config);
+  }
 
   // ── ds_capital_js：纯 JS 查资金（读 ds_roles 域，无 Python 桥）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_capital_js",
     description:
       "查询某只狗的资金现状（读 ds_roles 域）：余额/锁定敞口/全金额/未结算数/约束。产出 order 前先查，金额=信心比例×full_capital。只读。",
@@ -298,10 +393,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_memory_js：纯 JS 读因子记忆 + 历史反思（对齐 Python format_for_prompt）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_memory_js",
     description:
       "读某只狗的历史记忆（读 ds_roles/ds_factors/ds_reflections/ds_slugs）：订单统计、连胜连败、最近订单、活跃因子/已证伪模式（factor_perf）、数据段表现（slug_stats）、历史反思、昨日结算回顾。分析下单前必读，判断信号时结合活跃因子与已证伪模式（例如「离散极低」可能是诱杀而非看好）。只读。",
@@ -329,10 +424,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_migrate_storage：Python 数据 → storage 域（一次性迁移）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_migrate_storage",
     description:
       "把 python-engine/data 下的 roles/factor_memory/reflection_memory/slug_memory 迁进 storage 域（ds_roles/ds_factors/ds_reflections/ds_slugs）。默认只迁 7 只真实狗（跳过临时快照），幂等（put 全量覆盖）。dry_run 只报告不写。",
@@ -350,10 +445,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_export_to_python：storage 域 → Python 文件（反向迁移，7 只真实狗）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_export_to_python",
     description:
       "把 storage 域（ds_roles/ds_factors/ds_reflections/ds_slugs/ds_factor_registry）还原成 Python 文件（data/roles/<狗>/<狗>.json + memory/*.json + factors/fac_*.json）。默认只导出 7 只真实狗（跳过临时快照）。dry_run 只报告不写。",
@@ -371,10 +466,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── fetch_scores：取比分（仅 state==6 完场权威，进行中/未开绝不返回）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "fetch_scores",
     description: "从 matches 缓存取比分（仅 state==6 完场权威，进行中/未开的比分绝不返回）。只读。",
     parameters: {
@@ -387,10 +482,10 @@ function apply(ctx, config = {}) {
     execute: withTask(taskReg, { type: "match-read", title: "取比分" }, async (args) => {
       return { scores: fetchScoresFromCache(cacheDir, args.dates) };
     }),
-  }));
+  });
 
   // ── ds_settle_js：纯 JS 结算（settleOrder → 写 ds_roles 域，无 Python 桥）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_settle_js",
     description:
       "纯 JS 结算某只狗的未结算订单：取比分(state==6)→settleOrder(亚盘/大小球/胜平负/赢半输半)→写回 ds_roles 域 + 更新 capital。无 LLM、无 Python 桥。",
@@ -409,10 +504,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── refresh_orders：live 重跑前置，退回未开赛订单金额（对齐 Agent.refresh_orders）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "refresh_orders",
     description:
       "刷新当天订单组（live 重跑前置）：把足球日窗口内未开赛的未结算订单退回金额并删除，已开赛的保留。分析当天前先调它，对齐旧 LangGraph 的 analyze(live=True) 行为。",
@@ -431,10 +526,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── submit_orders：纯 JS 下单（结构化订单，业务规则全部 JS 化，无 Python 桥）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "submit_orders",
     description:
       "把结构化订单落库（纯 JS）：跳过 skip → 已开赛保护 → 去重(lota_id,bet_type) → 资金折算(scale=余额/全金额)或硬约束 → 扣资金。订单是结构化数组，无需 order 文本。",
@@ -471,10 +566,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_analyze_all_parallel：subagent fan-out 并行分析（计划 D3，每狗独立 session）──
-  ctx.tools.register(defineTool({
+  registerTool({
       name: "ds_analyze_all_parallel",
       description:
         "并行分析全部（默认 7 只单关狗）：每狗启动一个独立 subagent 会话，并发执行 refresh_orders→读数据→读人设/记忆/资金→独立判断→submit_orders。父 agent 只做 fan-out 与汇总，不亲自逐狗分析。适合「全部分析 / 分析全部狗 / 跑全部狗」。",
@@ -507,12 +602,12 @@ function apply(ctx, config = {}) {
           return { error: error.message };
         }
       }),
-    }));
+    });
 
 
   // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
   // ── ds_settle_all：结算流（纯 JS，无 LLM，每狗进度入任务状态）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_settle_all",
     description:
       "结算流（纯 JS，无 LLM）：并行结算指定狗的未结算订单（只认 state==6 比分），每狗进度写入任务状态。适合「全部结算 / 结算7狗」。",
@@ -532,16 +627,18 @@ function apply(ctx, config = {}) {
           day,
           dogs: args.dogs,
           parallel: args.parallel,
+          engineRoot,
+          pythonBin,
           onProgress: (p) => progress({ phase: p.phase, done: p.idx, total: p.total, detail: p.detail }),
         });
       } catch (error) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_factor_flow：因子流（阶段A/B/C；父任务带出多个子任务，各自精简 prompt）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_factor_flow",
     description:
       "因子流：scope=induct 跑 阶段A 非alpha归纳→阶段B alpha barrier；scope=review 跑 阶段C 退役（非alpha先行/alpha收尾，支持 user_notes）；scope=all 全跑。每阶段/每狗一个独立子任务（各自精简 prompt），进度写入任务状态。适合「全部因子归纳 / 全部因子退役」。",
@@ -573,11 +670,11 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
   // ── ds_replay_restore：回放检查点恢复（回到结算前 / 因子流前）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_replay_restore",
     description:
       "把 storage 域恢复到某次回放的检查点：run_id + checkpoint（start / <day>__pre-settle / <day>__pre-factor / <end>__post-factor，见回放报告检查点列表）。恢复后线上角色回到该阶段状态。",
@@ -605,9 +702,9 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_prepare_day",
     description:
       "LLM 之前的数据准备（数据获取边界）：一次性获取某足球日的比赛并过滤竞彩（jingcai_number 非空，北单/无号排除），返回 strip_scores 后的候选列表。mode=live 强制刷新（拒绝旧赔率）；mode=replay 缓存优先、缺了才拉 URL。分析/回放前必须先调它拿比赛列表，禁止用 lota_matches 拉全量。",
@@ -640,10 +737,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_persona_js：角色数据助手（人设 + 日常比赛范围 + 资金现状，一次注入）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_persona_js",
     description:
       "读某只狗的角色数据并注入上下文：人设（persona.md，投注风格/仓位档位/行为准则）+ 日常比赛范围（默认 jc 竞彩，可 beidan/all）+ 资金现状（余额/锁定敞口/全金额/约束）。分析下单前必读，金额 = 信心比例 × full_capital。只读。",
@@ -670,10 +767,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_replay：回放模式（runall 日维度流程迁移）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_replay",
     description:
       "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日并行分析（fan-out subagent）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估（可注入 user_notes 用户调整意见 / persona_overrides 人设覆盖）。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。reset=zero 从初始资金+空记忆开始；默认 restore_after 还原起点状态。旁路 LLM 默认 deepseek-v4-flash 省 token。",
@@ -722,11 +819,11 @@ function apply(ctx, config = {}) {
         return { ok: false, error: error.message };
       }
     }),
-  }));
+  });
 
 
   // ── ds_reflect_js：纯 JS 结算后反思（旁路 LLM + 写回 storage，无 Python 桥）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_reflect_js",
     description:
       "纯 JS 结算后反思：读结算单+人设+已有因子 → 旁路 ctx.llm.stream 因子发现(JSON) → 写回 ds_factors/ds_reflections/ds_factor_registry。无 Python 桥。",
@@ -756,10 +853,10 @@ function apply(ctx, config = {}) {
         return { ok: false, error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_factor_review_js：纯 JS 因子退役评估（门控 + 旁路 LLM，无 Python 桥）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_factor_review_js",
     description:
       "纯 JS 因子退役评估：14天零触发休眠 + 低信息退役（确定性门控）+ 旁路 ctx.llm.stream 结构性评估(retire/dormant/active)。写回 ds_factors。无 Python 桥。",
@@ -779,10 +876,10 @@ function apply(ctx, config = {}) {
         return { ok: false, error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_factor_dedup：纯 JS 因子判重（旁路 LLM fast 模型 + 确定性兜底）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_factor_dedup",
     description:
       "纯 JS 因子判重：判断候选因子与某狗已有因子是否重复（create/merge/suppress）。旁路 ctx.llm.stream(fast 模型)+ 确定性兜底（retired 近亲 suppress）。",
@@ -805,10 +902,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── ds_factor_induction：因子归纳去重（对齐 factor_induction.py，每日 settle 后跑）──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "ds_factor_induction",
     description:
       "因子归纳去重（对齐 python factor_induction.py）：同清洗名确定性合并 + slugs bit距离/孤儿名字相似 LLM 判重合并，合并后重算统计、累计 aliases，写回 ds_factors。每日 settle 后跑。user='alpha' 或 alpha 狗名（alpha2狗/alpha狗/均注狗）→ alpha 跨狗统一归纳（1 次进全库）；其他狗名 → 单狗各自归纳。dry_run 只报告候选不写回。",
@@ -856,10 +953,10 @@ function apply(ctx, config = {}) {
         return { error: error.message };
       }
     }),
-  }));
+  });
 
   // ── lota_matches：某足球日比赛列表 ──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "lota_matches",
     description:
       "按 lottery_type 限定读取本地缓存中某足球日的比赛列表（matches/<date>.json）。⚠️ 必须带类型边界：jingcai=仅竞彩（默认，防北单/无号混入）、beidan=仅北单、all=全量（谨慎使用）。strip_scores=true 时剥离比分（分析用，防后视）。只读，不触网。",
@@ -891,10 +988,10 @@ function apply(ctx, config = {}) {
       }
       return { date: args.date, lottery_type: lotteryType, count: matches.length, matches };
     }),
-  }));
+  });
 
   // ── lota_match：单场全貌 ──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "lota_match",
     description: "读取单场比赛全貌：基础信息 + 比分 + 段落(sections) + 预测/订单计数。只读本地缓存。strip_scores=true 时剥离比分（分析用，防后视）。",
     parameters: {
@@ -931,10 +1028,10 @@ function apply(ctx, config = {}) {
         api_failed: feat?._api_failed === true,
       };
     }),
-  }));
+  });
 
   // ── lota_sections：按 slug 取 prompt 段落 ──
-  ctx.tools.register(defineTool({
+  registerTool({
     name: "lota_sections",
     description: "读取本地缓存的段落（tags/<id>.json），按 slug 列表取 prompt 片段。只读。",
     parameters: {
@@ -962,7 +1059,7 @@ function apply(ctx, config = {}) {
       }
       return { lota_id: args.lota_id, sections: picked, text: parts.join("\n\n") };
     }),
-  }));
+  });
 
 
 }
