@@ -225,6 +225,9 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
 
   // 0) 快照起点（供 restore + 轨迹对比）
   const snapshot = await snapshotDomains(handles, replayDir);
+  // 快照之后无论成败都必须还原起点：防止 reset / 回放中间态泄漏到线上
+  let restored = null;
+  try {
 
   // 0b) 可选：从 0 开始（初始资金 + 空记忆）
   if (reset === "zero") {
@@ -447,26 +450,32 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   writeJson(join(replayDir, "replay.log.json"), log);
   writeFileSync(join(replayDir, "report.md"), buildReportMarkdown(report, log), "utf8");
 
-  // 4) 还原起点（默认）
-  let restored = null;
-  if (restoreAfter) {
-    restored = await restoreDomains(handles, replayDir);
-  }
+    // 4) 还原起点（默认，成功路径）
+    if (restoreAfter) {
+      restored = await restoreDomains(handles, replayDir);
+    }
 
-  return {
-    ok: true,
-    run_id: runId,
-    replay_dir: replayDir,
-    days: days.length,
-    dogs,
-    model,
-    data_prep: rangePrep,
-    start_capital: startCapital,
-    end_capital: finalCapital,
-    restored,
-    report_path: join(replayDir, "report.md"),
-    log: log.slice(-40),
-  };
+    return {
+      ok: true,
+      run_id: runId,
+      replay_dir: replayDir,
+      days: days.length,
+      dogs,
+      model,
+      data_prep: rangePrep,
+      start_capital: startCapital,
+      end_capital: finalCapital,
+      restored,
+      report_path: join(replayDir, "report.md"),
+      log: log.slice(-40),
+    };
+  } catch (e) {
+    // 失败兜底：无论哪一步抛错都必须还原起点，绝不允许把 reset/中间态留在线上
+    if (restoreAfter && !restored) {
+      try { restored = await restoreDomains(handles, replayDir); } catch {}
+    }
+    throw e;
+  }
 }
 
 /** 生成人类可读的回放报告（轨迹表 + 对比 + 因子退役）。 */
