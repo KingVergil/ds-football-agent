@@ -65,6 +65,7 @@ ${persona || "(无 persona.md，按通用框架执行)"}
 严格按 ds-agents-analyze 工作流执行：
 1. refresh_orders("${dog}", "${day}")
 2. 从上面的比赛列表逐场读关键段落再选场：当日候选 <= 50 场时必须逐场读全，禁止只读少数几场；只有 > 50 场才允许先按联赛/时间粗筛。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"])。
+   ⚠️ 数据完整性护栏：若某场缺失 asian-handicap-* 段落（数据抓取失败/缓存缺失），禁止对该场下亚盘；缺失 over-under-* 段落禁止下大小球——盘口不可校验时只能 skip，禁止猜盘口（submit_orders 会拒绝缺权威盘口的亚盘单）。
 3. 读记忆：ds_memory_js("${dog}", "${day}")；判断时结合活跃因子与已证伪模式（例如「离散极低」这类信号历史上可能是诱杀而非看好）。
 4. 读角色数据：ds_persona_js("${dog}")（返回人设 + 日常比赛范围 + 资金现状 capital/full_capital/约束）；金额 = 信心比例 x full_capital。
 5. 独立判断后 submit_orders("${dog}", "${day}", orders) 结构化下单。该狗行为准则：平局狗无干净信号就 0 注；均注狗每场必下；梭哈2/3狗必下 2-4 注；alpha 系凯利负期望就 skip；以上方人设为准。

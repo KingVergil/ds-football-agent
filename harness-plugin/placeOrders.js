@@ -208,13 +208,24 @@ export async function submitOrders(handles, dog, day, orders, cacheDir) {
     candidates.push(o);
   }
 
-  // 3b. 对齐 Python _fill_order_odds_and_handicap：亚盘 handicap 用权威盘口纠正符号
-  // 注意：工具 schema 传入的 order 对象可能被冻结，不能原地赋值，需替换为新对象。
-  for (let i = 0; i < candidates.length; i++) {
-    const o = candidates[i];
+  // 3b. 亚盘 handicap 一律用权威盘口（features/extractOdds），禁止使用 agent 传入的盘口。
+  //     无权威盘口（特征缓存失败/负缓存桩/数据不全）→ 拒绝该单，禁止猜盘。
+  //     注意：工具 schema 传入的 order 对象可能被冻结，不能原地赋值，需替换为新对象。
+  const verifiedCandidates = [];
+  const rejectedUnverified = [];
+  for (const o of candidates) {
     if (o.bet_type === "亚盘" && o.lota_id) {
       const hc = readAuthoritativeHandicap(cacheDir, o.lota_id);
-      if (hc != null) candidates[i] = { ...o, handicap: hc };
+      if (hc == null) {
+        rejectedUnverified.push({
+          ...o,
+          reject_reason: "亚盘缺权威盘口（特征缓存失败/负缓存桩），已拒绝，不使用 agent 猜测盘口",
+        });
+        continue;
+      }
+      verifiedCandidates.push({ ...o, handicap: hc }); // 权威盘口覆盖 agent 值
+    } else {
+      verifiedCandidates.push(o);
     }
   }
 
@@ -225,18 +236,18 @@ export async function submitOrders(handles, dog, day, orders, cacheDir) {
   const limits = orderLimitsFor(dog);
   let toPlace;
   if (limits.enabled) {
-    toPlace = applyFundLimits(limits, candidates, capital).kept;
+    toPlace = applyFundLimits(limits, verifiedCandidates, capital).kept;
   } else {
     const fullAmount = capital + lockedExposure;
-    const newTotal = candidates.reduce((s, o) => s + Number(o.bet_size || 0), 0);
+    const newTotal = verifiedCandidates.reduce((s, o) => s + Number(o.bet_size || 0), 0);
     if (newTotal > 0 && fullAmount > 0) {
       const scale = capital / fullAmount;
-      toPlace = candidates.map((o) => ({
+      toPlace = verifiedCandidates.map((o) => ({
         ...o,
         bet_size: Math.trunc(Number(o.bet_size || 0) * scale),
       }));
     } else {
-      toPlace = candidates;
+      toPlace = verifiedCandidates;
     }
   }
 
@@ -276,11 +287,18 @@ export async function submitOrders(handles, dog, day, orders, cacheDir) {
     parsed: (orders || []).length,
     placed: placed.length,
     skipped: (orders || []).length - placed.length,
+    rejected_unverified: rejectedUnverified.map((o) => ({
+      lota_id: o.lota_id,
+      bet_type: o.bet_type,
+      pick: o.pick,
+      reason: o.reject_reason,
+    })),
     capital: Math.round(newCapital * 100) / 100,
     orders: placed.map((o) => ({
       lota_id: o.lota_id,
       bet_type: o.bet_type,
       pick: o.pick,
+      handicap: o.handicap,
       odds: o.odds,
       bet_size: o.bet_size,
       reason: (o.reason || "").slice(0, 40),

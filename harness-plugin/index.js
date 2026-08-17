@@ -136,6 +136,7 @@ const ANALYZE_FRAMEWORK_SECTION = {
 4. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ ds_prepare_day 已 strip_scores 防后视），按信心给「比例」（× ds_persona_js 返回的 full_capital）。
 5. 下单：submit_orders(user, day, orders) 结构化下单（去重/已开赛保护/资金折算/硬约束/扣资金）。
 5a. 逐场选场约束：当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
+5a1. 数据完整性护栏：若某场缺失 asian-handicap-* 段落，禁止对该场下亚盘；缺失 over-under-* 段落禁止下大小球——盘口不可校验只能 skip，禁止猜盘口（submit_orders 会拒绝缺权威盘口的亚盘单）。
 5b. 并行全狗：当用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，必须调 ds_analyze_all_parallel(day, parallel=7) fan-out 7 个独立 subagent（每狗一个会话并行跑），禁止自己顺序逐狗分析；等它返回汇总即可。
 
 ## 回放模式
