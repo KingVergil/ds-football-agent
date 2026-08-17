@@ -76,7 +76,7 @@ export function buildCandidates(factorPerf) {
   return out;
 }
 
-export function buildReviewPrompt({ persona, candidates, reflectionsText, windowDesc }) {
+export function buildReviewPrompt({ persona, candidates, reflectionsText, windowDesc, userNotes = "" }) {
   const candidatesText = candidates
     .sort((a, b) => b.total - a.total)
     .map(
@@ -92,6 +92,9 @@ ${persona || "(未设)"}
 
 ## 反思记录（评估窗口: ${windowDesc}）
 ${reflectionsText || "(窗口内无反思记录)"}
+
+## 用户调整意见（回放/人工干预时注入，优先参考）
+${userNotes || "(无)"}
 
 ## 待评估因子列表
 ${candidatesText}
@@ -121,8 +124,11 @@ export function cleanFactorName(raw, fpKeys) {
   return null;
 }
 
-/** 完整 factor_review：门控 + 旁路 LLM 评估 + set_status 写回。 */
-export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheDir) {
+/**
+ * 完整 factor_review：门控 + 旁路 LLM 评估 + set_status 写回。
+ * @param {object} opts { userNotes, persona } — 用户调整意见注入评估 prompt；persona 覆盖默认读取。
+ */
+export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheDir, opts = {}) {
   const [factorsDomain, reflectionsDomain] = await Promise.all([
     handles["ds_factors"], handles["ds_reflections"],
   ]);
@@ -152,8 +158,11 @@ export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheD
     ? recentRefs.map((r) => `  [${r.date || "?"}] ${sanitizeReflection((r.reflection || "").slice(0, 300))}`).join("\n")
     : "";
 
-  const persona = readPersona(cacheDir, dog);
-  const prompt = buildReviewPrompt({ persona, candidates, reflectionsText, windowDesc });
+  const persona = opts.persona || readPersona(cacheDir, dog);
+  const prompt = buildReviewPrompt({
+    persona, candidates, reflectionsText, windowDesc,
+    userNotes: opts.userNotes || "",
+  });
 
   // 4. 旁路 LLM 评估
   let data = null;

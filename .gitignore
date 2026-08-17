@@ -18,6 +18,9 @@ harness-sdk/
 .env.*
 !.env.example
 
+# ── Node（harness-plugin 本地测试依赖，指向 dsh profile 的 node_modules）──
+harness-plugin/node_modules
+
 # ── Python ──
 __pycache__/
 *.py[cod]

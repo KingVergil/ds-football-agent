@@ -22,6 +22,9 @@ import { memoryQuery } from "./memory.js";
 import { beijingNowIso } from "./settle.js";
 import { settleDog, fetchScoresFromCache } from "./settleEngine.js";
 import { submitOrders, refreshOrders } from "./placeOrders.js";
+import { analyzeDogsParallel } from "./fanout.js";
+import { prepareDay, prepareRange } from "./dataflow.js";
+import { runReplay } from "./replay.js";
 import {
   buildReflectPrompt, streamReflectJson, parseReflectJson, applyReflection,
   readPersona, getExistingFactorSummary, SLUG_WHITELIST, REFLECT_DEFAULT,
@@ -32,7 +35,7 @@ import { judgeFactorDedup, inductFactors, inductAlpha, ALPHA_DOGS } from "./fact
 const name = "lota-data";
 // webServer 不放进 inject：headless(定时分析)没有 web 服务，放进去会导致插件 pending。
 // dashboard 用 ctx.webServer 判空优雅跳过；web 下 cordis 的 ctx.get 仍能取到该服务。
-const inject = ["tools", "storageDomain", "llm", "systemPrompt"];
+const inject = ["tools", "storageDomain", "llm", "systemPrompt", "subagents"];
 
 /** 效果 A analyze 框架 section（主循环 LLM 的 prompt 段，见 harness_js_reconstruction.md §2.5）。 */
 const ANALYZE_FRAMEWORK_SECTION = {
@@ -42,13 +45,19 @@ const ANALYZE_FRAMEWORK_SECTION = {
 
 当用户要做足球投注分析/下单时，你（harness agent）是「大脑」，私有 Python 引擎只做确定性基础功能。
 
-0. 重跑前置（live 重跑当天才做）：refresh_orders(<狗名>, day) 退回窗口内未开赛订单金额，保留已开赛订单——对齐旧 LangGraph analyze(live=True) 的行为。
-1. 读数据：lota_matches(day, strip_scores=true) 列比赛。⚠️ 当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
-2. 读人设：read python-engine/data/roles/<狗名>/persona.md，拿该狗的投注风格与仓位档位。
+0. 数据获取（LLM 之前确定性完成，禁止模型自己拉全量）：先调 ds_prepare_day(day, mode="live")，一次性获取并过滤竞彩比赛，直接用返回的比赛列表。⚠️ 禁止再调 lota_matches 拉全量（会混入北单/无号场次）；lota_sections/lota_match 只用于按需读单场段落。
+1. 重跑前置（live 重跑当天才做）：refresh_orders(<狗名>, day) 退回窗口内未开赛订单金额，保留已开赛订单——对齐旧 LangGraph analyze(live=True) 的行为。
+2. 读人设：ds_persona_js(<狗名>) 确定性注入人设（禁止自己 read 文件），拿该狗的投注风格与仓位档位。
 3. 读记忆：ds_memory_js(<狗名>, day) 拿该狗的历史因子记忆——活跃因子/已证伪模式/历史反思/最近订单/昨日结算回顾。⚠️ 判断时必须结合活跃因子与已证伪模式（例如「离散极低」这类信号历史上可能是诱杀而非看好），不要只按直觉解读离散凝聚。
 4. 查资金：ds_capital_js(<狗名>) 拿 full_capital（全金额 = 余额 + 锁定敞口）与 limits 约束。
-5. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ 用 strip_scores=true 忽略比分，防后视），按信心给「比例」。
+5. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ ds_prepare_day 已 strip_scores 防后视），按信心给「比例」。
 6. 下单：submit_orders(user, day, orders) 结构化下单（去重/已开赛保护/资金折算/硬约束/扣资金）。
+6a. 逐场选场约束：当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
+6b. 并行全狗：当用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，必须调 ds_analyze_all_parallel(day, parallel=7) fan-out 7 个独立 subagent（每狗一个会话并行跑），禁止自己顺序逐狗分析；等它返回汇总即可。
+
+## 回放模式
+
+- ds_replay(start, end, ...)：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日跑一遍（历史数据缓存优先、缺了才拉 URL），记录每狗每日轨迹并出报告。周期性退役支持 user_notes（用户调整意见）与 persona_overrides（人设覆盖）注入评估方向。
 
 ## 资金管理（金额语义）
 
@@ -194,7 +203,7 @@ function startMatchRefresher(ctx, engineRoot) {
  */
 function startScheduledJobs(ctx, engineRoot, config) {
   const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
-    ? config.scheduledEmails : ["16:00", "18:00", "20:30"];
+    ? config.scheduledEmails : ["15:58", "18:15", "20:15"];
   const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
     ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
 
@@ -212,12 +221,13 @@ function startScheduledJobs(ctx, engineRoot, config) {
   const run = () => {
     if (running) return;
     running = true;
-    // 1) harness 侧分析：headless agent 跑「全部分析」→ ds_export_to_python 导出到 data/roles
-    const task = "全部分析（7 只单关狗分析下单），下单完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。";
+    // 1) harness 侧分析：headless agent 调 ds_analyze_all_parallel(parallel=7) 并行跑 7 狗 → ds_export_to_python 导出到 data/roles
+    const task = "全部分析：调用 ds_analyze_all_parallel(parallel=7) 并行分析 7 只单关狗（每狗一个独立 subagent），完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。";
     // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
     const agentsPy = JSON.stringify(agents);
     const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${agentsPy}]`;
-    const script = `dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
+    // headless 需要 DEEPSEEK_API_KEY；dsh web 进程环境可能没有（非交互式启动），从 ~/.zshrc 兜底读一次
+    const script = `export DEEPSEEK_API_KEY="$(grep -o 'sk-[a-zA-Z0-9]*' ~/.zshrc | head -1)" && dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
     const c = spawn("/bin/bash", ["-c", script], { stdio: "ignore" });
     c.on("exit", () => { running = false; });
     c.on("error", () => { running = false; });
@@ -234,6 +244,7 @@ function startScheduledJobs(ctx, engineRoot, config) {
     }
   };
 
+  tick(); // 注册即检查一次，避免重启后等 30 秒错过整分钟时间点
   const timer = setInterval(tick, 30 * 1000);
   ctx.effect(() => () => clearInterval(timer));
 }
@@ -241,6 +252,7 @@ function startScheduledJobs(ctx, engineRoot, config) {
 function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
   const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
+  const pythonBin = config.pythonBin ?? "python";
 
   // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
   const domainHandles = setupDomains(ctx);
@@ -451,6 +463,139 @@ function apply(ctx, config = {}) {
     },
   }));
 
+  // ── ds_analyze_all_parallel：subagent fan-out 并行分析（计划 D3，每狗独立 session）──
+  ctx.tools.register(defineTool({
+      name: "ds_analyze_all_parallel",
+      description:
+        "并行分析全部（默认 7 只单关狗）：每狗启动一个独立 subagent 会话，并发执行 refresh_orders→读数据→读人设/记忆/资金→独立判断→submit_orders。父 agent 只做 fan-out 与汇总，不亲自逐狗分析。适合「全部分析 / 分析全部狗 / 跑全部狗」。",
+      parameters: {
+        day: { type: "string", description: "足球日 YYYY-MM-DD（空=按北京时间自动推当日）" },
+        dogs: { type: "array", items: { type: "string" }, description: "要分析的狗名列表（空=默认 7 只真狗）" },
+        parallel: { type: "number", description: "最大并发数（默认 7）" },
+      },
+      output: {
+        schema: LOOSE_OBJECT,
+        render: jsonRender(),
+      },
+      async execute(args, exec) {
+        try {
+          if (!exec || !exec.agent) return { error: "exec.agent 不存在，无法启动 subagent" };
+          return await analyzeDogsParallel(ctx, {
+            day: args.day,
+            dogs: args.dogs,
+            parallel: args.parallel,
+            parent: exec.agent,
+            signal: exec.signal,
+            cacheDir,
+          });
+        } catch (error) {
+          return { error: error.message };
+        }
+      },
+    }));
+
+
+  // ── ds_prepare_day：LLM 前确定性数据边界（竞彩过滤 + 缓存优先/URL 兜底）──
+  ctx.tools.register(defineTool({
+    name: "ds_prepare_day",
+    description:
+      "LLM 之前的数据准备（数据获取边界）：一次性获取某足球日的比赛并过滤竞彩（jingcai_number 非空，北单/无号排除），返回 strip_scores 后的候选列表。mode=live 强制刷新（拒绝旧赔率）；mode=replay 缓存优先、缺了才拉 URL。分析/回放前必须先调它拿比赛列表，禁止用 lota_matches 拉全量。",
+    parameters: {
+      day: { type: "string", required: true, description: "足球日 YYYY-MM-DD（窗口 [D 12:01, D+1 12:00]）" },
+      mode: { type: "string", description: "live=强制刷新（默认）；replay=历史缓存优先、缺了拉 URL" },
+      jingcai_only: { type: "boolean", description: "默认 true：只保留竞彩场次" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(8000),
+    },
+    async execute(args) {
+      try {
+        const res = await prepareDay({
+          cacheDir, engineRoot,
+          day: args.day,
+          mode: args.mode || "live",
+          jingcaiOnly: args.jingcai_only !== false,
+          pythonBin,
+        });
+        return res;
+      } catch (error) {
+        return { error: error.message };
+      }
+    },
+  }));
+
+  // ── ds_persona_js：确定性人设注入（不再让模型 read 文件）──
+  ctx.tools.register(defineTool({
+    name: "ds_persona_js",
+    description:
+      "读某只狗的人设（roles/<狗名>/persona.md）并注入上下文：投注风格、仓位档位、行为准则。分析下单前必读。只读。",
+    parameters: {
+      user: { type: "string", required: true, description: "狗名（角色），如 梭哈2狗" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: (_args, value) => [
+        { type: "text", text: value && typeof value === "object" && !value.error ? value.text : ((value && value.error) || JSON.stringify(value)) },
+      ],
+    },
+    async execute(args) {
+      try {
+        const text = readPersona(cacheDir, args.user);
+        return { user: args.user, text: text || "(无 persona.md，按通用框架执行)" };
+      } catch (error) {
+        return { error: error.message };
+      }
+    },
+  }));
+
+  // ── ds_replay：回放模式（runall 日维度流程迁移）──
+  ctx.tools.register(defineTool({
+    name: "ds_replay",
+    description:
+      "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日并行分析（fan-out subagent）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估（可注入 user_notes 用户调整意见 / persona_overrides 人设覆盖）。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。reset=zero 从初始资金+空记忆开始；默认 restore_after 还原起点状态。旁路 LLM 默认 deepseek-v4-flash 省 token。",
+    parameters: {
+      start: { type: "string", required: true, description: "起始足球日 YYYY-MM-DD" },
+      end: { type: "string", required: true, description: "结束足球日 YYYY-MM-DD（含）" },
+      dogs: { type: "array", items: { type: "string" }, description: "回放的狗名列表（空=默认 7 只真狗）" },
+      parallel: { type: "number", description: "分析并发数（默认=狗数）" },
+      model: { type: "string", description: "旁路 LLM（反思/退役）模型，默认 deepseek-v4-flash" },
+      user_notes: { type: "string", description: "用户调整意见：注入周期性因子退役评估（可调人设/因子思考方向）" },
+      persona_overrides: { type: "object", additionalProperties: true, description: "狗名→人设文本覆盖（分析/反思/退役用），值是字符串" },
+      factor_review_every: { type: "number", description: "每隔多少天做一次因子退役（默认 7）" },
+      reset: { type: "string", description: "none=用当前状态（默认）；zero=从初始资金+空记忆开始" },
+      restore_after: { type: "boolean", description: "跑完后是否还原起点状态（默认 true）" },
+      run_id: { type: "string", description: "自定义运行标识（默认 replay_<start>_<end>_<ts>）" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(10000),
+    },
+    async execute(args, exec) {
+      try {
+        return await runReplay(ctx, domainHandles, cacheDir, engineRoot, {
+          start: args.start,
+          end: args.end,
+          dogs: args.dogs,
+          parallel: args.parallel,
+          model: args.model,
+          user_notes: args.user_notes,
+          persona_overrides: args.persona_overrides,
+          factor_review_every: args.factor_review_every,
+          reset: args.reset,
+          restore_after: args.restore_after,
+          run_id: args.run_id,
+          parent: exec && exec.agent,
+          signal: exec && exec.signal,
+          pythonBin,
+        });
+      } catch (error) {
+        return { ok: false, error: error.message };
+      }
+    },
+  }));
+
+
   // ── ds_reflect_js：纯 JS 结算后反思（旁路 LLM + 写回 storage，无 Python 桥）──
   ctx.tools.register(defineTool({
     name: "ds_reflect_js",
@@ -600,7 +745,12 @@ function apply(ctx, config = {}) {
     async execute(args) {
       let matches = readMatches(cacheDir, args.date);
       if (args.lottery_type && args.lottery_type !== "all") {
-        matches = matches.filter((m) => (m.lottery_type ?? "") === args.lottery_type);
+        // 缓存里没有 lottery_type 字段，按 jingcai_number / beidan_number 过滤
+        // （与 fanout.js readMatchesCache、Python 侧 --jingcai 过滤对齐）
+        matches = matches.filter((m) =>
+          args.lottery_type === "jingcai" ? Boolean(m && m.jingcai_number)
+          : args.lottery_type === "beidan" ? Boolean(m && m.beidan_number)
+          : false);
       }
       if (args.strip_scores) {
         matches = matches.map((m) => {
