@@ -26,6 +26,7 @@ import { submitOrders, refreshOrders } from "./placeOrders.js";
 import { analyzeDogsParallel } from "./fanout.js";
 import { prepareDay, prepareRange } from "./dataflow.js";
 import { runReplay } from "./replay.js";
+import { createTaskRegistry, withTask } from "./taskStatus.js";
 import {
   buildReflectPrompt, streamReflectJson, parseReflectJson, applyReflection,
   readPersona, getExistingFactorSummary, SLUG_WHITELIST, REFLECT_DEFAULT,
@@ -48,13 +49,12 @@ const ANALYZE_FRAMEWORK_SECTION = {
 
 0. 数据获取（LLM 之前确定性完成，禁止模型自己拉全量）：先调 ds_prepare_day(day, mode="live")，一次性获取并过滤竞彩比赛，直接用返回的比赛列表。⚠️ 禁止再调 lota_matches 拉全量（会混入北单/无号场次）；lota_sections/lota_match 只用于按需读单场段落。
 1. 重跑前置（live 重跑当天才做）：refresh_orders(<狗名>, day) 退回窗口内未开赛订单金额，保留已开赛订单——对齐旧 LangGraph analyze(live=True) 的行为。
-2. 读人设：ds_persona_js(<狗名>) 确定性注入人设（禁止自己 read 文件），拿该狗的投注风格与仓位档位。
+2. 读角色数据：ds_persona_js(<狗名>) 一次注入 人设（投注风格/仓位档位/行为准则）+ 日常比赛范围（默认 jc 竞彩）+ 资金现状（full_capital 与约束），禁止自己 read 文件、禁止单独调 ds_capital_js。
 3. 读记忆：ds_memory_js(<狗名>, day) 拿该狗的历史因子记忆——活跃因子/已证伪模式/历史反思/最近订单/昨日结算回顾。⚠️ 判断时必须结合活跃因子与已证伪模式（例如「离散极低」这类信号历史上可能是诱杀而非看好），不要只按直觉解读离散凝聚。
-4. 查资金：ds_capital_js(<狗名>) 拿 full_capital（全金额 = 余额 + 锁定敞口）与 limits 约束。
-5. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ ds_prepare_day 已 strip_scores 防后视），按信心给「比例」。
-6. 下单：submit_orders(user, day, orders) 结构化下单（去重/已开赛保护/资金折算/硬约束/扣资金）。
-6a. 逐场选场约束：当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
-6b. 并行全狗：当用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，必须调 ds_analyze_all_parallel(day, parallel=7) fan-out 7 个独立 subagent（每狗一个会话并行跑），禁止自己顺序逐狗分析；等它返回汇总即可。
+4. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ ds_prepare_day 已 strip_scores 防后视），按信心给「比例」（× ds_persona_js 返回的 full_capital）。
+5. 下单：submit_orders(user, day, orders) 结构化下单（去重/已开赛保护/资金折算/硬约束/扣资金）。
+5a. 逐场选场约束：当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
+5b. 并行全狗：当用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，必须调 ds_analyze_all_parallel(day, parallel=7) fan-out 7 个独立 subagent（每狗一个会话并行跑），禁止自己顺序逐狗分析；等它返回汇总即可。
 
 ## 回放模式
 
@@ -260,6 +260,7 @@ function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
   const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
   const pythonBin = config.pythonBin ?? "python";
+  const taskReg = createTaskRegistry(cacheDir);
 
   // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
   const domainHandles = setupDomains(ctx);
@@ -288,13 +289,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "role", title: "查资金" }, async (args) => {
       try {
         return await capitalQuery(domainHandles, args.user);
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_memory_js：纯 JS 读因子记忆 + 历史反思（对齐 Python format_for_prompt）──
@@ -315,7 +316,7 @@ function apply(ctx, config = {}) {
         return [{ type: "text", text: String(text || "") }];
       },
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "role", title: "读记忆" }, async (args) => {
       try {
         const getMatchName = (lid) => {
           const m = findMatch(cacheDir, lid);
@@ -325,7 +326,7 @@ function apply(ctx, config = {}) {
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_migrate_storage：Python 数据 → storage 域（一次性迁移）──
@@ -340,13 +341,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "role", title: "迁移存储" }, async (args) => {
       try {
         return await migrateFromPython(domainHandles, cacheDir, { dryRun: !!args.dry_run });
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_export_to_python：storage 域 → Python 文件（反向迁移，7 只真实狗）──
@@ -361,13 +362,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "role", title: "导出到 Python" }, async (args) => {
       try {
         return await exportToPython(domainHandles, cacheDir, { dryRun: !!args.dry_run });
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── fetch_scores：取比分（仅 state==6 完场权威，进行中/未开绝不返回）──
@@ -381,9 +382,9 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "match-read", title: "取比分" }, async (args) => {
       return { scores: fetchScoresFromCache(cacheDir, args.dates) };
-    },
+    }),
   }));
 
   // ── ds_settle_js：纯 JS 结算（settleOrder → 写 ds_roles 域，无 Python 桥）──
@@ -399,13 +400,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "settle", title: "结算" }, async (args) => {
       try {
         return await settleDog(domainHandles, args.user, args.day, cacheDir);
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── refresh_orders：live 重跑前置，退回未开赛订单金额（对齐 Agent.refresh_orders）──
@@ -421,13 +422,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "order", title: "回退订单" }, async (args) => {
       try {
         return await refreshOrders(domainHandles, args.user, args.day, cacheDir);
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── submit_orders：纯 JS 下单（结构化订单，业务规则全部 JS 化，无 Python 桥）──
@@ -461,13 +462,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "order", title: "下单" }, async (args) => {
       try {
         return await submitOrders(domainHandles, args.user, args.day, args.orders, cacheDir);
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_analyze_all_parallel：subagent fan-out 并行分析（计划 D3，每狗独立 session）──
@@ -484,7 +485,7 @@ function apply(ctx, config = {}) {
         schema: LOOSE_OBJECT,
         render: jsonRender(),
       },
-      async execute(args, exec) {
+      execute: withTask(taskReg, { type: "analyze", title: "并行分析全部" }, async (args, exec, progress) => {
         try {
           if (!exec || !exec.agent) return { error: "exec.agent 不存在，无法启动 subagent" };
           return await analyzeDogsParallel(ctx, {
@@ -494,11 +495,16 @@ function apply(ctx, config = {}) {
             parent: exec.agent,
             signal: exec.signal,
             cacheDir,
+            onProgress: (p) => progress({
+              phase: p.phase || `并行分析 ${p.idx}/${p.total}`,
+              done: p.idx, total: p.total,
+              detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail,
+            }),
           });
         } catch (error) {
           return { error: error.message };
         }
-      },
+      }),
     }));
 
 
@@ -516,7 +522,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(8000),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "data-prep", title: "数据准备" }, async (args, _exec, progress) => {
       try {
         const res = await prepareDay({
           cacheDir, engineRoot,
@@ -524,19 +530,25 @@ function apply(ctx, config = {}) {
           mode: args.mode || "live",
           jingcaiOnly: args.jingcai_only !== false,
           pythonBin,
+          onProgress: (p) => progress({
+            phase: p.phase || "准备中",
+            done: p.done ?? 0,
+            total: p.total ?? 0,
+            detail: p.detail || "",
+          }),
         });
         return res;
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
-  // ── ds_persona_js：确定性人设注入（不再让模型 read 文件）──
+  // ── ds_persona_js：角色数据助手（人设 + 日常比赛范围 + 资金现状，一次注入）──
   ctx.tools.register(defineTool({
     name: "ds_persona_js",
     description:
-      "读某只狗的人设（roles/<狗名>/persona.md）并注入上下文：投注风格、仓位档位、行为准则。分析下单前必读。只读。",
+      "读某只狗的角色数据并注入上下文：人设（persona.md，投注风格/仓位档位/行为准则）+ 日常比赛范围（默认 jc 竞彩，可 beidan/all）+ 资金现状（余额/锁定敞口/全金额/约束）。分析下单前必读，金额 = 信心比例 × full_capital。只读。",
     parameters: {
       user: { type: "string", required: true, description: "狗名（角色），如 梭哈2狗" },
     },
@@ -546,14 +558,20 @@ function apply(ctx, config = {}) {
         { type: "text", text: value && typeof value === "object" && !value.error ? value.text : ((value && value.error) || JSON.stringify(value)) },
       ],
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "role", title: "读角色数据" }, async (args) => {
       try {
         const text = readPersona(cacheDir, args.user);
-        return { user: args.user, text: text || "(无 persona.md，按通用框架执行)" };
+        const capital = await capitalQuery(domainHandles, args.user);
+        return {
+          user: args.user,
+          text: text || "(无 persona.md，按通用框架执行)",
+          scope: "jc", // 日常比赛范围：默认竞彩（人设里可约定 beidan/all）
+          capital,
+        };
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_replay：回放模式（runall 日维度流程迁移）──
@@ -578,7 +596,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(10000),
     },
-    async execute(args, exec) {
+    execute: withTask(taskReg, { type: "replay", title: "回放" }, async (args, exec, progress) => {
       try {
         return await runReplay(ctx, domainHandles, cacheDir, engineRoot, {
           start: args.start,
@@ -595,11 +613,17 @@ function apply(ctx, config = {}) {
           parent: exec && exec.agent,
           signal: exec && exec.signal,
           pythonBin,
+          onProgress: (p) => progress({
+            phase: p.phase || "回放中",
+            done: p.done ?? 0,
+            total: p.total ?? 0,
+            detail: p.detail || "",
+          }),
         });
       } catch (error) {
         return { ok: false, error: error.message };
       }
-    },
+    }),
   }));
 
 
@@ -617,7 +641,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "reflect", title: "反思" }, async (args) => {
       try {
         const settled = args.settled || [];
         if (!settled.length) return { ok: true, skipped: "无结算单，跳过反思" };
@@ -633,7 +657,7 @@ function apply(ctx, config = {}) {
       } catch (error) {
         return { ok: false, error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_factor_review_js：纯 JS 因子退役评估（门控 + 旁路 LLM，无 Python 桥）──
@@ -650,13 +674,13 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "factor-review", title: "因子退役评估" }, async (args) => {
       try {
         return await factorReview(domainHandles, ctx, args.user, args.end_date, args.start_date || "", cacheDir);
       } catch (error) {
         return { ok: false, error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_factor_dedup：纯 JS 因子判重（旁路 LLM fast 模型 + 确定性兜底）──
@@ -673,7 +697,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "factor-dedup", title: "因子判重" }, async (args) => {
       try {
         const domain = await domainHandles["ds_factors"];
         const rec = domain.table("factors").get(args.user);
@@ -682,7 +706,7 @@ function apply(ctx, config = {}) {
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── ds_factor_induction：因子归纳去重（对齐 factor_induction.py，每日 settle 后跑）──
@@ -699,7 +723,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(8000),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "factor-induction", title: "因子归纳" }, async (args) => {
       try {
         if (args.user === "alpha" || ALPHA_DOGS.includes(args.user)) {
           const res = await inductAlpha(ctx, domainHandles, {
@@ -733,30 +757,32 @@ function apply(ctx, config = {}) {
       } catch (error) {
         return { error: error.message };
       }
-    },
+    }),
   }));
 
   // ── lota_matches：某足球日比赛列表 ──
   ctx.tools.register(defineTool({
     name: "lota_matches",
-    description: "读取本地缓存中某足球日的比赛列表（matches/<date>.json）。只读，不触网。strip_scores=true 时剥离比分（分析用，防后视）。",
+    description:
+      "按 lottery_type 限定读取本地缓存中某足球日的比赛列表（matches/<date>.json）。⚠️ 必须带类型边界：jingcai=仅竞彩（默认，防北单/无号混入）、beidan=仅北单、all=全量（谨慎使用）。strip_scores=true 时剥离比分（分析用，防后视）。只读，不触网。",
     parameters: {
       date: { type: "string", required: true, description: "足球日 YYYY-MM-DD（窗口 [D 12:01, D+1 12:00]）" },
-      lottery_type: { type: "string", description: "可选过滤，如 jingcai / beidan / all" },
+      lottery_type: { type: "string", description: "类型边界：jingcai(默认) / beidan / all" },
       strip_scores: { type: "boolean", description: "true=剥离比分（分析用，防后视）；比分只在 settle 工具里出现" },
     },
     output: {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "match-read", title: "比赛列表" }, async (args) => {
       let matches = readMatches(cacheDir, args.date);
-      if (args.lottery_type && args.lottery_type !== "all") {
+      const lotteryType = args.lottery_type || "jingcai"; // 默认竞彩，杜绝无边界全量读取
+      if (lotteryType !== "all") {
         // 缓存里没有 lottery_type 字段，按 jingcai_number / beidan_number 过滤
         // （与 fanout.js readMatchesCache、Python 侧 --jingcai 过滤对齐）
         matches = matches.filter((m) =>
-          args.lottery_type === "jingcai" ? Boolean(m && m.jingcai_number)
-          : args.lottery_type === "beidan" ? Boolean(m && m.beidan_number)
+          lotteryType === "jingcai" ? Boolean(m && m.jingcai_number)
+          : lotteryType === "beidan" ? Boolean(m && m.beidan_number)
           : false);
       }
       if (args.strip_scores) {
@@ -765,8 +791,8 @@ function apply(ctx, config = {}) {
           return rest;
         });
       }
-      return { date: args.date, count: matches.length, matches };
-    },
+      return { date: args.date, lottery_type: lotteryType, count: matches.length, matches };
+    }),
   }));
 
   // ── lota_match：单场全貌 ──
@@ -781,7 +807,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "match-read", title: "单场全貌" }, async (args) => {
       const feat = normalizeFeature(readJson(join(cacheDir, KIND_DIR.features, `${args.lota_id}.json`)));
       const match = feat?.match ?? findMatch(cacheDir, args.lota_id);
       const sections = readSections(cacheDir, args.lota_id);
@@ -806,7 +832,7 @@ function apply(ctx, config = {}) {
         cached_at: feat?._cached_at ?? null,
         api_failed: feat?._api_failed === true,
       };
-    },
+    }),
   }));
 
   // ── lota_sections：按 slug 取 prompt 段落 ──
@@ -826,7 +852,7 @@ function apply(ctx, config = {}) {
       schema: LOOSE_OBJECT,
       render: jsonRender(6000),
     },
-    async execute(args) {
+    execute: withTask(taskReg, { type: "match-read", title: "比赛段落" }, async (args) => {
       const sections = readSections(cacheDir, args.lota_id);
       const picked = {};
       const parts = [];
@@ -837,7 +863,7 @@ function apply(ctx, config = {}) {
         }
       }
       return { lota_id: args.lota_id, sections: picked, text: parts.join("\n\n") };
-    },
+    }),
   }));
 
 

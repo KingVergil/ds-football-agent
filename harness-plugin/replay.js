@@ -192,6 +192,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   const restoreAfter = opts.restore_after !== false;
   const userNotes = String(opts.user_notes || "").trim();
   const personaOverrides = opts.persona_overrides || {};
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
 
   const runId = opts.run_id || `replay_${start}_${end}_${Date.now()}`;
   const replayDir = join(cacheDir, "replays", runId);
@@ -211,7 +212,10 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
 
   // 1) 范围数据一次性准备（历史缓存优先，缺了才拉 URL）
   log.push(`📦 准备回放数据 ${start} ~ ${end} ...`);
-  const rangePrep = await prepareRange({ cacheDir, engineRoot, start, end, pythonBin: opts.pythonBin });
+  const rangePrep = await prepareRange({
+    cacheDir, engineRoot, start, end, pythonBin: opts.pythonBin,
+    onProgress: (p) => onProgress({ ...p, phase: `数据准备：${p.phase}` }),
+  });
   log.push(
     `   matches 文件：新拉 ${rangePrep.matches_fetched.length ? rangePrep.matches_fetched.join(",") : "无（全缓存命中）"}` +
     (rangePrep.matches_failed.length ? ` | 失败 ${rangePrep.matches_failed.map((f) => f.date).join(",")}` : "") +
@@ -253,6 +257,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
     for (const w of data.warnings) warn(`[${d}] ${w}`);
 
     // 2.2 并行分析（fan-out；人设已注入）
+    onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 分析`, done: dayIdx, total: days.length, detail: d });
     const analysis = await analyzeDogsParallel(ctx, {
       day: d,
       dogs,
@@ -261,28 +266,33 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
       signal: opts.signal,
       cacheDir,
       personas: personaOverrides,
+      onProgress: (p) => onProgress({
+        phase: `第 ${dayIdx + 1}/${days.length} 天 ${p.phase || "分析"}`,
+        done: p.idx || dayIdx, total: days.length,
+        detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail || d,
+      }),
     });
     log.push(`   分析: ok=${analysis.ok_count} fail=${analysis.fail_count} matches=${analysis.matches_count}`);
+    const placedByDog = {};
+    for (const row of analysis.rows || []) {
+      const m = String(row.text || "").match(/\{\s*"dog".*?"placed"\s*:\s*(\d+)/);
+      placedByDog[row.dog] = m ? Number(m[1]) : 0;
+    }
     for (const row of analysis.rows || []) {
       log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} [${row.stopReason}] ${String(row.text || "").slice(0, 120).replace(/\n/g, " ")}`);
     }
 
-    // 2.3 结算 + 反思（旁路 LLM 用 model 覆盖）
+    // 2.3 结算（纯结算；反思移入因子流阶段 0）
     const dayTraj = { day: d, dogs: {} };
+    const settledByDog = {};
     for (const dog of dogs) {
-      let settledRes;
-      let reflectRes;
       try {
-        settledRes = await settleDog(handles, dog, d, cacheDir);
-        if (settledRes.settled > 0) {
-          reflectRes = await reflectDog(handles, ctx, dog, d, settledRes.orders, {
-            model,
-            persona: personaFor(cacheDir, dog, personaOverrides),
-          });
-        }
+        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 结算 ${dog}`, done: dayIdx, total: days.length });
+        settledByDog[dog] = await settleDog(handles, dog, d, cacheDir);
       } catch (e) {
-        reflectRes = { ok: false, error: String((e && e.message) || e) };
+        settledByDog[dog] = { error: String((e && e.message) || e), settled: 0, pnl: 0 };
       }
+      const settledRes = settledByDog[dog];
       const rolesDomain = await handles["ds_roles"];
       const role = rolesDomain.table("roles").get(dog) || {};
       const orders = role.orders || [];
@@ -293,19 +303,31 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
         pending: orders.filter((o) => !o.settled_at).length,
         settled: (settledRes && settledRes.settled) || 0,
         pnl: (settledRes && round2(settledRes.pnl)) || 0,
+        placed: placedByDog[dog] ?? 0,
         active_factors: Object.values(fp).filter((s) => s.status !== "retired").length,
-        reflect: reflectRes && reflectRes.ok ? "ok" : (reflectRes && (reflectRes.error || reflectRes.skipped)) || "skipped",
       };
       log.push(`   💰 ${dog}: 结算${dayTraj.dogs[dog].settled}单 PnL${dayTraj.dogs[dog].pnl} → 余额${dayTraj.dogs[dog].capital}`);
     }
 
-    // 2.4 因子归纳（alpha 跨狗 1 次 + 非 alpha 各自）
+    // 2.4 因子流（docs/workflow_tool_groups.md §2.3：阶段0 反思 → A 非alpha → B alpha barrier → C 退役）
     try {
-      if (dogs.some((x) => ALPHA_DOGS.includes(x))) {
-        await inductAlpha(ctx, handles, { limit: 30 });
+      // 阶段 0：反思（每狗，输入=当日已结算订单，产出新因子落库）
+      for (const dog of dogs) {
+        const settled = settledByDog[dog];
+        if (settled && settled.settled > 0 && !settled.error) {
+          onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·反思 ${dog}`, done: dayIdx, total: days.length });
+          const reflectRes = await reflectDog(handles, ctx, dog, d, settled.orders, {
+            model,
+            persona: personaFor(cacheDir, dog, personaOverrides),
+          });
+          if (reflectRes && reflectRes.ok === false) warn(`[${d}] ${dog} 反思失败: ${reflectRes.error}`);
+        }
       }
+
+      // 阶段 A：非 alpha 各自归纳（可并行，这里顺序执行；alpha 狗跳过留到阶段 B）
       for (const dog of dogs) {
         if (ALPHA_DOGS.includes(dog)) continue;
+        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段A ${dog}`, done: dayIdx, total: days.length });
         const factorsDomain = await handles["ds_factors"];
         const rec = factorsDomain.table("factors").get(dog) || { factor_perf: {} };
         const { result, factorPerf } = await inductFactors(ctx, rec.factor_perf || {}, { limit: 30, scope: dog });
@@ -318,13 +340,21 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
           log.push(`   🧬 因子归纳 ${dog}: 合并 ${result.merged.length} 个`);
         }
       }
+
+      // 阶段 B（barrier）：非 alpha 完成后，alpha 跨狗统一归纳一次进全库
+      if (dogs.some((x) => ALPHA_DOGS.includes(x))) {
+        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段B alpha barrier`, done: dayIdx, total: days.length });
+        await inductAlpha(ctx, handles, { limit: 30 });
+      }
     } catch (e) {
       warn(`[${d}] 因子归纳失败: ${(e && e.message) || e}`);
     }
 
-    // 2.5 周期性因子退役（带用户调整意见）
+    // 2.5 周期性因子退役（阶段 C：非 alpha 先行 → alpha 收尾；带用户调整意见）
     if ((dayIdx + 1) % factorReviewEvery === 0) {
-      for (const dog of dogs) {
+      onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段C 退役`, done: dayIdx, total: days.length });
+      const ordered = [...dogs.filter((x) => !ALPHA_DOGS.includes(x)), ...dogs.filter((x) => ALPHA_DOGS.includes(x))];
+      for (const dog of ordered) {
         try {
           const review = await factorReview(handles, ctx, dog, d, start, cacheDir, {
             userNotes,

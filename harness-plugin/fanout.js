@@ -66,10 +66,10 @@ ${persona || "(无 persona.md，按通用框架执行)"}
 1. refresh_orders("${dog}", "${day}")
 2. 从上面的比赛列表逐场读关键段落再选场：当日候选 <= 50 场时必须逐场读全，禁止只读少数几场；只有 > 50 场才允许先按联赛/时间粗筛。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"])。
 3. 读记忆：ds_memory_js("${dog}", "${day}")；判断时结合活跃因子与已证伪模式（例如「离散极低」这类信号历史上可能是诱杀而非看好）。
-4. 查资金：ds_capital_js("${dog}")；金额 = 信心比例 x full_capital。
+4. 读角色数据：ds_persona_js("${dog}")（返回人设 + 日常比赛范围 + 资金现状 capital/full_capital/约束）；金额 = 信心比例 x full_capital。
 5. 独立判断后 submit_orders("${dog}", "${day}", orders) 结构化下单。该狗行为准则：平局狗无干净信号就 0 注；均注狗每场必下；梭哈2/3狗必下 2-4 注；alpha 系凯利负期望就 skip；以上方人设为准。
 
-禁止调用 ds_analyze_all_parallel / ds_prepare_day / lota_matches 或 subagent 类工具（比赛列表已注入；递归委派被系统拒绝）。
+禁止调用 ds_analyze_all_parallel / ds_prepare_day / 结算 / 因子 / 回放 / ds_capital_js 或 subagent 类工具（比赛列表已注入、资金在人设工具里；递归委派被系统拒绝）。lota_matches 仅在确需按类型复核时可用（默认竞彩）。
 
 最后只输出一行 JSON（不要 markdown 代码块，不要多余文字）：
 {"dog":"${dog}","day":"${day}","placed":0,"skipped":0,"capital":0,"orders":0,"summary":"一句话"}`;
@@ -84,7 +84,15 @@ async function runOneDog(ctx, parent, signal, dog, day, matchesText, persona) {
     parent,
     signal,
     maxDepth: 1, // 只允许这一层子 agent，禁止孙级递归
-    toolFilter: { deny: ["subagent", "subagent_fork", "ds_analyze_all_parallel"] }, // 禁止子 agent 递归委派
+    toolFilter: { deny: [
+      // 工具组可见性（docs/workflow_tool_groups.md §2.1）：分析子流只留 分析组+角色组+只读数据
+      "subagent", "subagent_fork", "ds_analyze_all_parallel",
+      "ds_prepare_day", "ds_migrate_storage", "ds_export_to_python",
+      "ds_settle_js", "ds_reflect_js", "fetch_scores",
+      "ds_factor_induction", "ds_factor_dedup", "ds_factor_review_js",
+      "ds_replay",
+      "ds_capital_js", // 资金并入角色数据（ds_persona_js 返回）
+    ] },
   });
   try {
     const result = await run.result;
@@ -121,9 +129,11 @@ export async function analyzeDogsParallel(ctx, opts = {}) {
   const dogs = (opts.dogs && opts.dogs.length ? opts.dogs : DS_REAL_DOGS).slice();
   const parallel = Math.max(1, Math.min(Number(opts.parallel) || dogs.length, dogs.length || 1));
   const personas = opts.personas || {}; // dog → 人设文本覆盖（默认读 persona.md）
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
 
   // 1) 先获取比赛：只读一次本地缓存，strip_scores 后注入每个子 agent prompt（子 agent 不再各自 lota_matches）
   const matches = opts.cacheDir ? readMatchesCache(opts.cacheDir, day) : [];
+  onProgress({ phase: "读取比赛缓存", idx: 0, total: dogs.length, detail: `竞彩 ${matches.length} 场` });
   const matchesText = matchesToPrompt(matches);
   if (opts.cacheDir && matches.length === 0) {
     return { ok: true, skipped: `当日(${day})无比赛缓存，不启动子 agent`, day, matches_count: 0 };
@@ -140,8 +150,16 @@ export async function analyzeDogsParallel(ctx, opts = {}) {
       try {
         const persona = personas[dog] || (opts.cacheDir ? readPersona(opts.cacheDir, dog) : "");
         results[idx] = await runOneDog(ctx, opts.parent, signal, dog, day, matchesText, persona);
+        onProgress({
+          idx: idx + 1,
+          total: dogs.length,
+          dog,
+          status: results[idx] && results[idx].ok ? "ok" : "fail",
+          phase: `并行分析 ${idx + 1}/${dogs.length}`,
+        });
       } catch (error) {
         results[idx] = { dog, ok: false, stopReason: "start-failed", text: String(error && error.message || error) };
+        onProgress({ idx: idx + 1, total: dogs.length, dog, status: "fail", phase: `并行分析 ${idx + 1}/${dogs.length}` });
       }
     }
   };
