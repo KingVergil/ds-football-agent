@@ -126,6 +126,7 @@ const ANALYZE_FRAMEWORK_SECTION = {
 ## 回放模式
 
 - ds_replay(start, end, ...)：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日跑一遍（历史数据缓存优先、缺了才拉 URL），记录每狗每日轨迹并出报告。默认写穿：订单/因子直接落库（restore_after=false）；restore_after=true 才是模拟跑、结束还原起点。若 [start,end] 内目标狗已有订单，直接拒绝（diff/diff-report 未设计）。周期性退役支持 user_notes（用户调整意见）与 persona_overrides（人设覆盖）注入评估方向。
+⚠️ 回放纪律：你（主 agent）只调 ds_replay 一次——半交互暂停时把 direction_suggestion 转述给用户，用户确认后带 induction_notes 续跑；禁止用 bash / 手动逐日编排 / 读文件来跑回放（编排已在工具内确定性完成）。
 
 ## 资金管理（金额语义）
 
