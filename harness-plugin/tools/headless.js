@@ -23,7 +23,7 @@ import {
 import { factorReview } from "../factorReview.js";
 import { judgeFactorDedup, inductFactors, inductAlpha, ALPHA_DOGS } from "../factorInduction.js";
 import { withTask } from "../taskStatus.js";
-import { LOOSE_OBJECT, jsonRender } from "./shared.js";
+import { LOOSE_OBJECT, jsonRender, LLM_TEMPERATURES } from "./shared.js";
 
 /** 编排入口默认狗：显式传 args.dogs 优先，否则用外置角色列表 roles.dogs。 */
 function resolveDogs(argDogs, roles) {
@@ -269,7 +269,10 @@ export function registerHeadlessTools(deps) {
         const prompt = buildReflectPrompt({
           persona, settled, existingSummary, factorDescText: "", keySlugWhitelist: SLUG_WHITELIST,
         });
-        const text = await streamReflectJson(ctx, prompt, REFLECT_DEFAULT);
+        const text = await streamReflectJson(ctx, prompt, {
+          ...REFLECT_DEFAULT,
+          temperature: LLM_TEMPERATURES.reflect,
+        });
         const data = parseReflectJson(text);
         if (!data) return { ok: false, error: "reflect JSON 解析失败", raw: text.slice(0, 500) };
         return await applyReflection(domainHandles, args.user, args.day, data, settled);

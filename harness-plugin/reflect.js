@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { createUserMessage, BlockAssembler, deepFreeze } from "@deepseek-ai/dsh-llm";
 
 import { beijingNowIso } from "./settle.js";
+import { LLM_TEMPERATURES } from "./tools/shared.js";
 
 export const REFLECT_DEFAULT = { provider: "deepseek-official", model: "deepseek-v4-pro" };
 
@@ -125,7 +126,7 @@ ${factorDescText || ""}
 }
 
 /** 旁路 ctx.llm.stream → 文本 JSON。 */
-export async function streamReflectJson(ctx, prompt, { provider, model } = {}) {
+export async function streamReflectJson(ctx, prompt, { provider, model, temperature = LLM_TEMPERATURES.reflect } = {}) {
   const p = provider || REFLECT_DEFAULT.provider;
   const m = model || REFLECT_DEFAULT.model;
   const messages = [createUserMessage({
@@ -137,7 +138,7 @@ export async function streamReflectJson(ctx, prompt, { provider, model } = {}) {
     model: m,
     messages,
     system: prompt,
-    temperature: 0.3,
+    temperature,
     maxTokens: 20000,
   });
   const assembler = new BlockAssembler();
