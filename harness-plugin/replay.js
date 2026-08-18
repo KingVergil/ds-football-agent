@@ -11,7 +11,9 @@
  *
  * 轨迹对比：
  *   - 每狗每日快照（资金/待定/下单/结算 PnL/活跃因子数）→ replayDir/report.json + report.md
- *   - 起点快照（storage 域全量）→ replayDir/snapshot/，可 restore_after 还原（默认还原）
+ *   - 起点快照（storage 域全量）→ replayDir/snapshot/，restore_after=true 时才在结束后还原
+ *   - 默认写穿：回放期间的订单/因子直接留在 storage 域（restore_after 默认 false）
+ *   - 范围预检：目标狗在 [start,end] 内已有订单时直接拒绝（diff/diff-report 未设计，不支持合并）
  *   - reset="zero" 时从初始资金/空记忆开始（"从 0 开始"）
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
@@ -21,7 +23,7 @@ import { beijingNowIso } from "./settle.js";
 import { DS_REAL_DOGS } from "./storage.js";
 import { prepareRange, addDays, jingcaiWindowMatches, hasValidFeature, hasTags } from "./dataflow.js";
 import { LLM_TEMPERATURES } from "./tools/shared.js";
-import { analyzeDogsParallel } from "./fanout.js";
+import { analyzeDogDirect, footballDayLabel } from "./fanout.js";
 import { settleDog } from "./settleEngine.js";
 import {
   buildReflectPrompt, streamReflectJson, streamText, parseReflectJson, applyReflection,
@@ -53,6 +55,69 @@ function readJson(path) {
 function writeJson(path, value) {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, JSON.stringify(value, null, 2), "utf8");
+}
+
+/**
+ * 回放启动前的 subagent 能力检查。ds_replay 的逐日分析必须 fan-out 到子 agent；
+ * 这些条件不满足时在快照/reset/取数/任何写操作之前直接失败，避免「跑到一半才提示 subagent 不能启动」。
+ */
+export function validateReplaySpawn(ctx, parent) {
+  if (!ctx || !ctx.subagents) {
+    return { error: "ctx.subagents 不可用：host 未挂载 @deepseek-ai/dsh-subagent（或插件未注入 subagents），无法启动子分析代理" };
+  }
+  if (!parent) {
+    return { error: "缺少 parent agent，无法启动 subagent：回放必须在会话 agent 下触发（斗狗场按钮会写入会话输入框执行）" };
+  }
+  if (ctx.subagents.getProvider("spawn") === undefined) {
+    return { error: "subagent provider 'spawn' 未注册：host 需挂载 @deepseek-ai/dsh-subagent-spawn-in-process" };
+  }
+  return null;
+}
+
+/** 把订单 created_at（北京时间 ISO，可能不带时区）解析成 UTC epoch；解析失败返回 null。 */
+function orderCreatedEpoch(createdAt) {
+  if (!createdAt) return null;
+  let s = String(createdAt).trim();
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?$/.exec(s);
+  if (m) s = `${m[1]}T${m[2]}+08:00`; // 落库时写的是北京时间墙钟，不带时区
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** 订单属于哪个足球日（按 created_at 北京时间，12:00 前归前一天）。 */
+export function orderFootballDay(order) {
+  const t = orderCreatedEpoch(order && order.created_at);
+  return t == null ? "" : footballDayLabel(new Date(t));
+}
+
+/**
+ * 预检：回放范围 [start,end] 内目标狗是否已有订单。
+ * 现有回放是「整段写穿」，没有 diff/diff-report 能力；范围里已有订单时直接返回冲突列表，
+ * 由调用方提示「暂不支持」，不做任何快照/重置/取数。
+ */
+export async function findRangeOrderConflicts(handles, dogs, start, end) {
+  const days = new Set(dayListOf(start, end));
+  const rolesDomain = await handles["ds_roles"];
+  const rolesTable = rolesDomain.table("roles");
+  const conflicts = [];
+  for (const dog of dogs) {
+    const role = rolesTable.get(dog);
+    if (!role) continue;
+    for (const o of role.orders || []) {
+      const day = orderFootballDay(o);
+      if (day && days.has(day)) {
+        conflicts.push({
+          dog,
+          day,
+          lota_id: o.lota_id || "",
+          bet_type: o.bet_type || "",
+          created_at: o.created_at || "",
+          settled: Boolean(o.settled_at),
+        });
+      }
+    }
+  }
+  return { conflicts, days: [...days].sort() };
 }
 
 function round2(x) {
@@ -108,7 +173,7 @@ export async function writeDomainSnapshot(handles, destDir) {
   return out;
 }
 
-/** 从 srcDir 还原 storage 域（文件直接放 srcDir 下）。 */
+/** 从 srcDir 还原 storage 域（文件直接放 srcDir 下）——真替换：先删快照里没有的 key，再全量 put。 */
 export async function restoreDomainSnapshot(handles, srcDir) {
   const restored = {};
   for (const [domainName, tableName] of Object.entries(SNAPSHOT_TABLES)) {
@@ -116,6 +181,10 @@ export async function restoreDomainSnapshot(handles, srcDir) {
     if (!rec) continue;
     const domain = await handles[domainName];
     const table = domain.table(tableName);
+    // 回放期间新写入、但快照里不存在的 key（如新增因子注册表条目）要删除，保证「还原=替换」
+    for (const key of table.keys()) {
+      if (!(key in rec)) await table.delete(key);
+    }
     for (const [key, value] of Object.entries(rec)) await table.put(key, value);
     restored[domainName] = Object.keys(rec).length;
   }
@@ -203,6 +272,36 @@ function dayListOf(start, end) {
   return days;
 }
 
+/** 单段回放天数上限（防止误填超长范围把进程/资金链拖垮）。 */
+export const REPLAY_MAX_DAYS = 60;
+
+/** YYYY-MM-DD 且是真实日历日期。 */
+export function isValidFootballDay(str) {
+  if (typeof str !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const [y, m, d] = str.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * 回放范围正确性校验（先于快照/取数/任何变更执行，失败即返回 error 不落任何状态）：
+ *   1. start/end 必填且格式 YYYY-MM-DD；
+ *   2. start ≤ end；
+ *   3. 天数 ≤ REPLAY_MAX_DAYS。
+ */
+export function validateReplayRange(start, end) {
+  if (!start || !end) return { ok: false, error: `回放范围无效: start/end 必填（${start} ~ ${end}）` };
+  if (!isValidFootballDay(start) || !isValidFootballDay(end)) {
+    return { ok: false, error: `回放范围无效: 日期必须是 YYYY-MM-DD（${start} ~ ${end}）` };
+  }
+  if (start > end) return { ok: false, error: `回放范围无效: start 不能晚于 end（${start} ~ ${end}）` };
+  const days = dayListOf(start, end).length;
+  if (days > REPLAY_MAX_DAYS) {
+    return { ok: false, error: `回放范围过大: ${days} 天，单段上限 ${REPLAY_MAX_DAYS} 天` };
+  }
+  return { ok: true, days };
+}
+
 /** 交互式回放会话持久化（session.json 落在 replayDir 下，供跨工具调用续跑/回退）。 */
 function sessionPath(replayDir) { return join(replayDir, "session.json"); }
 function loadSession(replayDir) { return readJson(sessionPath(replayDir)); }
@@ -231,31 +330,47 @@ async function runReplayDay(ctx, handles, cacheDir, replayDir, d, dayIdx, cfg, a
   log.push(`   竞彩 ${data.jingcai_count}/${data.window_total} 场（排除北单/无号 ${data.excluded_count}）`);
   for (const w of data.warnings) warn(`[${d}] ${w}`);
 
-  // 2.2 并行分析（fan-out；人设已注入）
+  // 2.2 逐狗确定性分析（每狗一次 LLM 决策；数据/人设/记忆/资金/段落全部固有获取，无工具轮次）
   onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析`, done: dayIdx, total, detail: d });
-  const analysis = await analyzeDogsParallel(ctx, {
-    day: d,
-    dogs,
-    parallel,
-    parent,
-    signal,
-    cacheDir,
-    personas: personaOverrides,
-    personaDir,
-    onProgress: (p) => onProgress({
-      phase: `第 ${dayIdx + 1}/${total} 天 ${p.phase || "分析"}`,
-      done: p.idx || dayIdx, total,
-      detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail || d,
-    }),
-  });
+  const analysisRows = new Array(dogs.length);
+  let cursor = 0;
+  const analysisWorker = async () => {
+    while (cursor < dogs.length) {
+      if (signal && signal.aborted) return;
+      const idx = cursor++;
+      const dog = dogs[idx];
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog}`, done: dayIdx, total, detail: d });
+      try {
+        analysisRows[idx] = await analyzeDogDirect(ctx, handles, {
+          dog,
+          day: d,
+          cacheDir,
+          persona: (personaOverrides || {})[dog] || "",
+          personaDir,
+          onProgress: (p) => onProgress({
+            phase: `第 ${dayIdx + 1}/${total} 天 ${p.phase || "分析"}`,
+            done: dayIdx, total,
+            detail: p.detail || d,
+          }),
+        });
+      } catch (e) {
+        analysisRows[idx] = { ok: false, error: String((e && e.message) || e), dog };
+      }
+    }
+  };
+  const analysisWorkers = Math.max(1, Math.min(Number(parallel) || dogs.length, dogs.length || 1));
+  await Promise.all(Array.from({ length: analysisWorkers }, () => analysisWorker()));
+  const analysis = {
+    rows: analysisRows.map((r) => r || { ok: false, dog: "?" }),
+    ok_count: analysisRows.filter((r) => r && r.ok).length,
+    fail_count: analysisRows.filter((r) => r && !r.ok).length,
+    matches_count: analysisRows.reduce((s, r) => s + (r && r.matches_count || 0), 0),
+  };
   log.push(`   分析: ok=${analysis.ok_count} fail=${analysis.fail_count} matches=${analysis.matches_count}`);
   const placedByDog = {};
   for (const row of analysis.rows || []) {
-    const m = String(row.text || "").match(/\{\s*"dog".*?"placed"\s*:\s*(\d+)/);
-    placedByDog[row.dog] = m ? Number(m[1]) : 0;
-  }
-  for (const row of analysis.rows || []) {
-    log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} [${row.stopReason}] ${String(row.text || "").slice(0, 120).replace(/\n/g, " ")}`);
+    placedByDog[row.dog] = row.placed || 0;
+    log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} ${row.skipped ? `skip: ${row.skipped}` : (row.text || row.error || "")}`);
   }
 
   // 检查点：结算前（分析+下单后的状态）
@@ -552,20 +667,39 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
 
   const start = opts.start;
   const end = opts.end;
-  if (!start || !end || start > end) {
-    return { ok: false, error: `回放范围无效: ${start} ~ ${end}` };
-  }
+  // 范围正确性最先校验：任何快照/重置/取数都不允许在无效范围上发生
+  const rangeCheck = validateReplayRange(start, end);
+  if (!rangeCheck.ok) return rangeCheck;
   const interactive = opts.interactive === true || opts.mode === "interactive";
   const dogs = (opts.dogs && opts.dogs.length ? opts.dogs : DS_REAL_DOGS).slice();
   const parallel = Math.max(1, Math.min(Number(opts.parallel) || dogs.length, dogs.length || 1));
   const model = opts.model || REPLAY_MODEL;
   const factorReviewEvery = Math.max(1, Number(opts.factor_review_every) || 7);
   const reset = opts.reset === "zero" ? "zero" : "none";
-  const restoreAfter = opts.restore_after !== false;
+  // 默认写穿：订单/因子留在 storage 域；只有显式 restore_after=true 才在结束后还原（模拟跑）
+  const restoreAfter = opts.restore_after === true;
   const userNotes = String(opts.user_notes || "").trim();
   const personaOverrides = opts.persona_overrides || {};
   const personaDir = opts.personaDir || undefined; // 外置人设根目录（config.personaDir）
   const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
+
+  // ── 启动前预检（全部在快照/重置/取数/任何写操作之前，失败不落任何状态）──
+  // 1) subagent 能力：缺 parent/provider 时立刻给出明确错误，不要跑到一半才提示
+  const spawnCheck = validateReplaySpawn(ctx, opts.parent);
+  if (spawnCheck) return { ok: false, ...spawnCheck };
+  // 2) 范围订单冲突：回放会写穿订单/因子；范围里已有订单属于 diff 场景，暂不支持
+  const rangeOrders = await findRangeOrderConflicts(handles, dogs, start, end);
+  if (rangeOrders.conflicts.length) {
+    const dogsHit = [...new Set(rangeOrders.conflicts.map((c) => c.dog))].join("、");
+    const sample = rangeOrders.conflicts.slice(0, 3)
+      .map((c) => `${c.dog} ${c.day} ${c.lota_id || "?"}/${c.bet_type || "?"}`)
+      .join("；");
+    return {
+      ok: false,
+      error: `回放范围 ${start} ~ ${end} 内已有 ${rangeOrders.conflicts.length} 笔订单（涉及 ${dogsHit}），暂不支持：该场景需要 diff/diff-report 工具，尚未设计。请清空对应时段订单或更换回放范围。示例：${sample}`,
+      conflicts: rangeOrders.conflicts.slice(0, 20),
+    };
+  }
 
   const runId = opts.run_id || `replay_${start}_${end}_${Date.now()}`;
   const replayDir = join(cacheDir, "replays", runId);
@@ -574,7 +708,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   const log = [];
   const warn = (msg) => log.push(`⚠️ ${msg}`);
 
-  // 0) 快照起点（供 restore + 轨迹对比）
+  // 0) 快照起点（供轨迹对比 + restore_after=true 时还原）
   await snapshotDomains(handles, replayDir);
   try {
     // 0b) 可选：从 0 开始（初始资金 + 空记忆）
@@ -625,7 +759,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
     if (seg.paused) return await pauseReplay(ctx, handles, cacheDir, replayDir, s, seg);
     return await finalizeReplay(handles, cacheDir, replayDir, s, restoreAfter);
   } catch (e) {
-    // 失败兜底：无论哪一步抛错都还原起点，绝不允许把 reset/中间态留在线上
+    // 失败兜底：只有 restore_after=true（模拟跑）才还原起点；默认写穿时保留中间态供 rewind/手动恢复
     if (restoreAfter) { try { await restoreDomains(handles, replayDir); } catch {} }
     throw e;
   }
@@ -669,6 +803,10 @@ async function resumeReplay(ctx, handles, cacheDir, opts) {
       };
     }
   }
+
+  // 本次要继续跑（不是纯 rewind）：先确认 subagent 能力，失败不进入 running
+  const spawnCheck = validateReplaySpawn(ctx, s.parent);
+  if (spawnCheck) return { ok: false, ...spawnCheck };
 
   // 用户方向：作为下一周期退役评估的 user_notes
   if (typeof opts.induction_notes === "string" && opts.induction_notes.trim()) {
@@ -728,7 +866,7 @@ export function buildReportMarkdown(report, logLines = []) {
 - 范围：${report.range.start} ~ ${report.range.end}（${report.range.days} 天）
 - 狗：${report.dogs.join("、")}
 - 模型：${report.model}（旁路 LLM）｜并行：${report.parallel}
-- 起点：${report.reset === "zero" ? "从 0 重置" : "当前状态"}｜还原：${report.restore_after ? "是" : "否"}
+- 起点：${report.reset === "zero" ? "从 0 重置" : "当前状态"}｜结束处理：${report.restore_after ? "还原起点（模拟）" : "写穿保留（订单/因子已落库）"}
 - 因子退役周期：每 ${report.factor_review_every} 天${report.user_notes ? `｜用户意见：${report.user_notes}` : ""}
 
 ## 数据准备（竞彩边界）

@@ -213,7 +213,7 @@ export function registerHeadlessTools(deps) {
   registerTool({
     name: "ds_replay",
     description:
-      "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日并行分析（fan-out subagent）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。⚠️ 默认写穿：订单/因子直接落库保留（restore_after 默认 false）；restore_after=true 才是模拟跑、结束还原起点。⚠️ 预检：回放范围 [start,end] 内目标狗已有订单会直接拒绝（diff/diff-report 工具未设计）。reset=zero 从初始资金+空记忆开始。旁路 LLM 默认 deepseek-v4-flash 省 token。\n" +
+      "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日 分析（确定性引擎，每狗一次 LLM 决策）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。⚠️ 主 agent 职责：只调本工具一次——一路到底，或半交互暂停时向用户转述 direction_suggestion、用户确认后带 induction_notes 续跑；禁止用 bash/手动逐日编排或读文件（编排已在工具内确定性完成，agent 不介入）。⚠️ 默认写穿：订单/因子直接落库保留（restore_after 默认 false）；restore_after=true 才是模拟跑、结束还原起点。⚠️ 预检：回放范围 [start,end] 内目标狗已有订单会直接拒绝（diff/diff-report 工具未设计）。reset=zero 从初始资金+空记忆开始。旁路 LLM 默认 deepseek-v4-flash 省 token。\n" +
       "两种运行方式：\n" +
       "  • 一路到底（默认）：不传 mode/interactive，直接跑完整段并出报告。\n" +
       "  • 半交互：mode=\"interactive\"（或 interactive=true）→ 每个因子退役周期结束就暂停，返回 status=\"paused\"，附带「下一轮因子归纳/退役方向建议」(direction_suggestion) 与可回退检查点。之后用 resume_run_id 续跑：\n" +
