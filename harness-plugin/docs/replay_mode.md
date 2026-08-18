@@ -35,9 +35,40 @@ ds_replay(
   factor_review_every?: 7,          // 每隔 N 天做一次因子退役（默认 7）
   reset?: "none" | "zero",          // zero = 从初始资金 + 空记忆开始
   restore_after?: true,             // 跑完还原起点状态（默认 true，不污染线上角色）
-  run_id?: "replay_20260713_2"
+  run_id?: "replay_20260713_2",
+
+  // ── 半交互（可选）──
+  mode?: "auto" | "interactive",    // auto=一路到底（默认）；interactive=每个退役周期暂停
+  interactive?: false,              // 等价 mode="interactive"
+  // 续跑一个已暂停会话（给了此参数即续跑，忽略上面 start/end/dogs 等全新参数）
+  resume_run_id?: "replay_20260713_2",
+  induction_notes?: "下轮收紧退役…",  // 续跑：用户编辑后的下一轮因子归纳/退役方向 → 注入下一周期退役评估
+  rewind_to?: "YYYY-MM-DD",          // 续跑：回退到某天开始状态（恢复该天前的线上状态，截断其后轨迹）
+  to_end?: false                     // 续跑：本次一路跑到底，不再周期性暂停
 )
 ```
+
+## 运行方式：一路到底 / 半交互续跑
+
+- **一路到底（默认）**：不传 `mode`/`interactive`，跑完整段 `[start, end]` 出报告（行为与旧版一致）。
+- **半交互**：`mode="interactive"`（或 `interactive=true`）→ 每个因子退役周期（`factor_review_every` 天）结束就**暂停**，返回：
+  - `status: "paused"`、`run_id`、`next_day`、`remaining_days`；
+  - `direction_suggestion`：本周期退役/盈亏摘要生成的「**下一轮因子归纳/退役方向建议**」（启发式，若 LLM 可用则润色）——交给用户编辑；
+  - `factor_reviews`（本周期退役明细）、`trajectory_tail`、`checkpoints`（可回退点）。
+
+  暂停期间**不还原**线上状态（供续跑）。会话状态落 `<cacheDir>/replays/<run_id>/session.json`。
+
+  用户拿到暂停结果后，用 `resume_run_id` 续跑（三选一，可组合 rewind + 方向/续跑）：
+
+  | 意图 | 调用 |
+  |---|---|
+  | 采纳/编辑下一轮方向后继续 | `ds_replay(resume_run_id, induction_notes="<编辑后的方向>")` |
+  | 回到某天状态重跑 | `ds_replay(resume_run_id, rewind_to="YYYY-MM-DD")` |
+  | 剩余一路到底 | `ds_replay(resume_run_id, to_end=true)` |
+
+  - `induction_notes` 会成为**下一周期**因子退役评估的 `user_notes`（即"因子下一轮归纳方向"落在退役/评估这一步）。
+  - `rewind_to=D` 恢复到"D 当天开始"的线上状态（= D-1 的当日终态快照 `<D-1>__post-day`，首日则用起点快照），并截断 D 及其后的轨迹/检查点；纯 rewind（未同时给 `induction_notes`/`to_end`）只回退并把控制权交回用户，不自动续跑。
+  - 全程结束（跑到 `end` 或 `to_end`）才走终态检查点 + 报告 + 可选还原；`restore_after` 语义不变。
 
 ## 每日管线
 
@@ -57,7 +88,7 @@ ds_replay(
 - 范围 matches 文件在准备后**快照进** `<cacheDir>/replays/<run_id>/cache/matches/`，
   逐日只读快照——运行中的 web 刷新器（每 30 分钟重写当前足球日 matches）不会污染回放边界；
 - 起点 storage 域全量快照 → `<cacheDir>/replays/<run_id>/snapshot/`；
-- **阶段检查点**（目标4）：每天在 结算前（`<day>__pre-settle`，分析+下单后）与 因子流前（`<day>__pre-factor`，结算后）各存一份，结束后补 `<end>__post-factor`（终态）。
+- **阶段检查点**（目标4）：每天在 结算前（`<day>__pre-settle`，分析+下单后）、因子流前（`<day>__pre-factor`，结算后）与 当日终态（`<day>__post-day`，供半交互 `rewind_to` 回退）各存一份，结束后补 `<end>__post-factor`（终态）。
   回放报告的"检查点"列表列出全部恢复点；用 `ds_replay_restore(run_id, checkpoint)` 可把线上角色恢复到对应阶段（`start` 回起点）。
 - `reset="zero"`：指定狗重置为 `initial_capital`（默认 10000）+ 空订单/因子/反思；
 - `restore_after`（默认 true）：跑完自动还原起点，线上角色不被回放污染；

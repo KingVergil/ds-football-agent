@@ -23,7 +23,7 @@ import { prepareRange, addDays, jingcaiWindowMatches, hasValidFeature, hasTags }
 import { analyzeDogsParallel } from "./fanout.js";
 import { settleDog } from "./settleEngine.js";
 import {
-  buildReflectPrompt, streamReflectJson, parseReflectJson, applyReflection,
+  buildReflectPrompt, streamReflectJson, streamText, parseReflectJson, applyReflection,
   readPersona, getExistingFactorSummary, SLUG_WHITELIST, REFLECT_DEFAULT,
 } from "./reflect.js";
 import { factorReview } from "./factorReview.js";
@@ -173,11 +173,11 @@ export async function resetRolesToZero(handles, dogs) {
   return reset;
 }
 
-/** 读某狗回放人设：persona_overrides[dog] 优先，否则 persona.md。 */
-function personaFor(cacheDir, dog, personaOverrides) {
+/** 读某狗回放人设：persona_overrides[dog] 优先，否则从 personaDir(默认 cacheDir/roles) 读 persona.md。 */
+function personaFor(cacheDir, dog, personaOverrides, personaDir) {
   const over = personaOverrides && personaOverrides[dog];
   if (over) return over;
-  return readPersona(cacheDir, dog);
+  return readPersona(cacheDir, dog, personaDir);
 }
 
 /** 反思（等价 ds_reflect_js，模型/人设可覆盖）。 */
@@ -194,18 +194,367 @@ export async function reflectDog(handles, ctx, dog, day, settled, { model = REPL
   return applyReflection(handles, dog, day, data, settled);
 }
 
+/** 起止足球日 → 逐日列表。 */
+function dayListOf(start, end) {
+  const days = [];
+  let day = start;
+  while (day <= end) { days.push(day); day = addDays(day, 1); }
+  return days;
+}
+
+/** 交互式回放会话持久化（session.json 落在 replayDir 下，供跨工具调用续跑/回退）。 */
+function sessionPath(replayDir) { return join(replayDir, "session.json"); }
+function loadSession(replayDir) { return readJson(sessionPath(replayDir)); }
+function saveSession(replayDir, s) {
+  // parent/signal 不落盘（不可序列化）
+  const { parent, signal, onProgress, ...rest } = s;
+  writeJson(sessionPath(replayDir), { ...rest, updated_at: beijingNowIso() });
+}
+
 /**
- * 跑一轮回放。
+ * 跑回放的一天（2.1 数据 → 2.2 分析 → 结算前检查点 → 2.3 结算 → 因子前检查点
+ * → 2.4 因子流(反思/归纳/alpha barrier) → 2.5 周期退役 → 当日终态快照）。
+ * 结果 push 进 acc 的 trajectory/reviewLog/checkpointLog/log；返回 { reviewDone }。
+ */
+async function runReplayDay(ctx, handles, cacheDir, replayDir, d, dayIdx, cfg, acc) {
+  const { dogs, parallel, model, personaOverrides, personaDir, factorReviewEvery, userNotes, start, parent, signal, onProgress, days } = cfg;
+  const { trajectory, reviewLog, checkpointLog, log } = acc;
+  const warn = (msg) => log.push(`⚠️ ${msg}`);
+  const total = days.length;
+
+  const startedAt = beijingNowIso();
+  log.push(`\n📅 [${d}] 第 ${dayIdx + 1}/${total} 天（${startedAt}）`);
+
+  // 2.1 数据边界：只读回放快照（matches），features/tags 完整性查真实缓存
+  const data = readReplayDay(cacheDir, replayDir, d);
+  log.push(`   竞彩 ${data.jingcai_count}/${data.window_total} 场（排除北单/无号 ${data.excluded_count}）`);
+  for (const w of data.warnings) warn(`[${d}] ${w}`);
+
+  // 2.2 并行分析（fan-out；人设已注入）
+  onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析`, done: dayIdx, total, detail: d });
+  const analysis = await analyzeDogsParallel(ctx, {
+    day: d,
+    dogs,
+    parallel,
+    parent,
+    signal,
+    cacheDir,
+    personas: personaOverrides,
+    personaDir,
+    onProgress: (p) => onProgress({
+      phase: `第 ${dayIdx + 1}/${total} 天 ${p.phase || "分析"}`,
+      done: p.idx || dayIdx, total,
+      detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail || d,
+    }),
+  });
+  log.push(`   分析: ok=${analysis.ok_count} fail=${analysis.fail_count} matches=${analysis.matches_count}`);
+  const placedByDog = {};
+  for (const row of analysis.rows || []) {
+    const m = String(row.text || "").match(/\{\s*"dog".*?"placed"\s*:\s*(\d+)/);
+    placedByDog[row.dog] = m ? Number(m[1]) : 0;
+  }
+  for (const row of analysis.rows || []) {
+    log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} [${row.stopReason}] ${String(row.text || "").slice(0, 120).replace(/\n/g, " ")}`);
+  }
+
+  // 检查点：结算前（分析+下单后的状态）
+  const preSettle = `${d}__pre-settle`;
+  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preSettle));
+  checkpointLog.push({ name: preSettle, day: d, phase: "结算前" });
+  log.push(`   📍 检查点: ${preSettle}`);
+
+  // 2.3 结算（纯结算；反思移入因子流阶段 0）
+  const dayTraj = { day: d, dogs: {} };
+  const settledByDog = {};
+  for (const dog of dogs) {
+    try {
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 结算 ${dog}`, done: dayIdx, total });
+      settledByDog[dog] = await settleDog(handles, dog, d, cacheDir);
+    } catch (e) {
+      settledByDog[dog] = { error: String((e && e.message) || e), settled: 0, pnl: 0 };
+    }
+    const settledRes = settledByDog[dog];
+    const rolesDomain = await handles["ds_roles"];
+    const role = rolesDomain.table("roles").get(dog) || {};
+    const orders = role.orders || [];
+    const factorsDomain = await handles["ds_factors"];
+    const fp = ((factorsDomain.table("factors").get(dog) || {}).factor_perf) || {};
+    dayTraj.dogs[dog] = {
+      capital: round2(Number(role.capital || 0)),
+      pending: orders.filter((o) => !o.settled_at).length,
+      settled: (settledRes && settledRes.settled) || 0,
+      pnl: (settledRes && round2(settledRes.pnl)) || 0,
+      placed: placedByDog[dog] ?? 0,
+      active_factors: Object.values(fp).filter((s) => s.status !== "retired").length,
+    };
+    log.push(`   💰 ${dog}: 结算${dayTraj.dogs[dog].settled}单 PnL${dayTraj.dogs[dog].pnl} → 余额${dayTraj.dogs[dog].capital}`);
+  }
+
+  // 检查点：因子流前（结算后的状态）
+  const preFactor = `${d}__pre-factor`;
+  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preFactor));
+  checkpointLog.push({ name: preFactor, day: d, phase: "因子流前" });
+  log.push(`   📍 检查点: ${preFactor}`);
+
+  // 2.4 因子流（docs/workflow_tool_groups.md §2.3：阶段0 反思 → A 非alpha → B alpha barrier → C 退役）
+  try {
+    // 阶段 0：反思（每狗，输入=当日已结算订单，产出新因子落库）
+    for (const dog of dogs) {
+      const settled = settledByDog[dog];
+      if (settled && settled.settled > 0 && !settled.error) {
+        onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子流·反思 ${dog}`, done: dayIdx, total });
+        const reflectRes = await reflectDog(handles, ctx, dog, d, settled.orders, {
+          model,
+          persona: personaFor(cacheDir, dog, personaOverrides, personaDir),
+        });
+        if (reflectRes && reflectRes.ok === false) warn(`[${d}] ${dog} 反思失败: ${reflectRes.error}`);
+      }
+    }
+
+    // 阶段 A：非 alpha 各自归纳（可并行，这里顺序执行；alpha 狗跳过留到阶段 B）
+    for (const dog of dogs) {
+      if (ALPHA_DOGS.includes(dog)) continue;
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子流·阶段A ${dog}`, done: dayIdx, total });
+      const factorsDomain = await handles["ds_factors"];
+      const rec = factorsDomain.table("factors").get(dog) || { factor_perf: {} };
+      const { result, factorPerf } = await inductFactors(ctx, rec.factor_perf || {}, { limit: 30, scope: dog });
+      await factorsDomain.table("factors").put(dog, {
+        ...rec,
+        factor_perf: factorPerf,
+        updated_at: beijingNowIso(),
+      });
+      if (result && result.merged && result.merged.length) {
+        log.push(`   🧬 因子归纳 ${dog}: 合并 ${result.merged.length} 个`);
+      }
+    }
+
+    // 阶段 B（barrier）：非 alpha 完成后，alpha 跨狗统一归纳一次进全库
+    if (dogs.some((x) => ALPHA_DOGS.includes(x))) {
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子流·阶段B alpha barrier`, done: dayIdx, total });
+      await inductAlpha(ctx, handles, { limit: 30 });
+    }
+  } catch (e) {
+    warn(`[${d}] 因子归纳失败: ${(e && e.message) || e}`);
+  }
+
+  // 2.5 周期性因子退役（阶段 C：非 alpha 先行 → alpha 收尾；带用户调整意见/下一轮方向）
+  const reviewDone = ((dayIdx + 1) % factorReviewEvery === 0);
+  if (reviewDone) {
+    onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子流·阶段C 退役`, done: dayIdx, total });
+    const ordered = [...dogs.filter((x) => !ALPHA_DOGS.includes(x)), ...dogs.filter((x) => ALPHA_DOGS.includes(x))];
+    for (const dog of ordered) {
+      try {
+        const review = await factorReview(handles, ctx, dog, d, start, cacheDir, {
+          userNotes,
+          persona: personaFor(cacheDir, dog, personaOverrides, personaDir),
+        });
+        reviewLog.push({ day: d, dog, ...review });
+        const bits = [];
+        if (review.auto_dormant && review.auto_dormant.length) bits.push(`休眠${review.auto_dormant.length}`);
+        if (review.low_info_retired && review.low_info_retired.length) bits.push(`低信息退役${review.low_info_retired.length}`);
+        if (review.retired && review.retired.length) bits.push(`结构性退役: ${review.retired.join("、")}`);
+        log.push(`   🔬 因子退役 ${dog}: ${bits.length ? bits.join(" | ") : "无调整"}${userNotes ? "（已应用用户意见）" : ""}`);
+      } catch (e) {
+        warn(`[${d}] ${dog} 因子退役失败: ${(e && e.message) || e}`);
+      }
+    }
+  }
+
+  trajectory.push(dayTraj);
+
+  // 当日终态快照：供交互式 rewind（回到"某天开始"= 前一天终态）
+  const postDay = `${d}__post-day`;
+  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", postDay));
+  checkpointLog.push({ name: postDay, day: d, phase: "当日终态" });
+
+  return { reviewDone };
+}
+
+/**
+ * 生成「下一轮因子归纳/退役方向建议」：先启发式（基于本周期退役/休眠/PnL），
+ * 可选旁路 LLM 润色（失败回退启发式）。产物交给用户编辑后作为 induction_notes 回传。
+ */
+async function buildDirectionSuggestion(ctx, { dogs, cycleReviews, cycleTraj, model }) {
+  const lines = [];
+  for (const dog of dogs) {
+    const revs = cycleReviews.filter((r) => r.dog === dog);
+    const retired = revs.flatMap((r) => r.retired || []);
+    const dormant = revs.flatMap((r) => r.auto_dormant || []);
+    const lowInfo = revs.flatMap((r) => r.low_info_retired || []);
+    const pnl = cycleTraj.reduce((s, t) => s + Number(((t.dogs || {})[dog] || {}).pnl || 0), 0);
+    const bits = [];
+    if (retired.length) bits.push(`退役 ${retired.join("、")}`);
+    if (dormant.length) bits.push(`休眠 ${dormant.length} 个`);
+    if (lowInfo.length) bits.push(`低信息退役 ${lowInfo.length} 个`);
+    const trend = pnl > 0 ? `PnL +${round2(pnl)}（盈）` : pnl < 0 ? `PnL ${round2(pnl)}（亏）` : "PnL 0（平）";
+    const advice = pnl < 0
+      ? "下轮建议收紧退役标准、复核连亏因子，新因子取样更保守"
+      : "下轮建议维持现有因子，重点观察样本不足的新因子";
+    lines.push(`- ${dog}：${trend}${bits.length ? "；" + bits.join("；") : "；本周期无退役"}。${advice}`);
+  }
+  let text = `下一轮因子归纳/退役方向建议（可编辑后作为 induction_notes 回传，将注入下一周期退役评估）：\n${lines.join("\n")}`;
+
+  if (ctx && ctx.llm && typeof ctx.llm.stream === "function") {
+    try {
+      const prompt = `你是足球投注因子教练。基于下面本周期的因子退役与盈亏摘要，给出「下一轮因子归纳/退役方向」的简洁建议（中文，≤200字，每只狗一句，聚焦保留/收紧/观察方向，不要复述数字）：\n\n${text}`;
+      const refined = (await streamText(ctx, prompt, { model, maxTokens: 800 })).trim();
+      if (refined) text = refined;
+    } catch { /* 回退启发式 */ }
+  }
+  return text;
+}
+
+/** 从 s.next_idx 起逐日跑；interactive 模式在周期边界（做了退役且非最后一天）暂停。 */
+async function replaySegment(ctx, handles, cacheDir, replayDir, s) {
+  const cfg = {
+    dogs: s.dogs, parallel: s.parallel, model: s.model,
+    personaOverrides: s.persona_overrides, personaDir: s.personaDir,
+    factorReviewEvery: s.factor_review_every, userNotes: s.user_notes,
+    start: s.start, parent: s.parent, signal: s.signal,
+    onProgress: s.onProgress || (() => {}), days: s.days,
+  };
+  const acc = { trajectory: s.trajectory, reviewLog: s.reviewLog, checkpointLog: s.checkpointLog, log: s.log };
+  while (s.next_idx < s.days.length) {
+    const dayIdx = s.next_idx;
+    const d = s.days[dayIdx];
+    const { reviewDone } = await runReplayDay(ctx, handles, cacheDir, replayDir, d, dayIdx, cfg, acc);
+    s.next_idx = dayIdx + 1;
+    if (s.interactive && reviewDone && s.next_idx < s.days.length) {
+      return { paused: true, lastDay: d, cycleEndIdx: dayIdx };
+    }
+  }
+  return { paused: false };
+}
+
+/** 暂停：生成方向建议、落 session、返回 paused 结果（不还原状态，供续跑）。 */
+async function pauseReplay(ctx, handles, cacheDir, replayDir, s, seg) {
+  const d = seg.lastDay;
+  const cycleReviews = s.reviewLog.filter((r) => r.day === d);
+  const cycleStartIdx = Math.max(0, seg.cycleEndIdx - s.factor_review_every + 1);
+  const cycleTraj = s.trajectory.slice(cycleStartIdx, seg.cycleEndIdx + 1);
+  const suggestion = await buildDirectionSuggestion(ctx, { dogs: s.dogs, cycleReviews, cycleTraj, model: s.model });
+  s.status = "paused";
+  s.pending_direction = suggestion;
+  saveSession(replayDir, s);
+  const nextDay = s.days[s.next_idx];
+  return {
+    ok: true,
+    status: "paused",
+    run_id: s.run_id,
+    replay_dir: replayDir,
+    cycle: { end_day: d, days_done: s.next_idx, days_total: s.days.length },
+    next_day: nextDay,
+    remaining_days: s.days.length - s.next_idx,
+    direction_suggestion: suggestion,
+    factor_reviews: cycleReviews,
+    trajectory_tail: s.trajectory.slice(-s.factor_review_every),
+    checkpoints: listCheckpoints(replayDir),
+    how_to: {
+      continue: `ds_replay(resume_run_id="${s.run_id}", induction_notes="<编辑后的方向>")`,
+      rewind: `ds_replay(resume_run_id="${s.run_id}", rewind_to="${nextDay || d}")`,
+      run_to_end: `ds_replay(resume_run_id="${s.run_id}", to_end=true)`,
+    },
+    log: s.log.slice(-20),
+  };
+}
+
+/** 回退：把线上域恢复到"某天开始"状态（前一天终态/起点），截断该天及之后的轨迹与检查点。 */
+async function rewindSession(handles, replayDir, s, toDay) {
+  const idx = s.days.indexOf(toDay);
+  if (idx < 0) return { error: `rewind_to 不在回放范围: ${toDay}（范围 ${s.start}~${s.end}）` };
+  const src = idx === 0
+    ? join(replayDir, "snapshot")
+    : join(replayDir, "checkpoints", `${s.days[idx - 1]}__post-day`);
+  if (!existsSync(src)) {
+    return { error: `缺少可回退快照：${idx === 0 ? "snapshot" : s.days[idx - 1] + "__post-day"}` };
+  }
+  const restored = await restoreDomainSnapshot(handles, src);
+  s.trajectory = s.trajectory.filter((t) => t.day < toDay);
+  s.reviewLog = s.reviewLog.filter((r) => r.day < toDay);
+  s.checkpointLog = s.checkpointLog.filter((c) => c.day < toDay);
+  s.next_idx = idx;
+  s.log.push(`⏪ 回退到 ${toDay} 开始状态（恢复自 ${idx === 0 ? "起点快照" : s.days[idx - 1] + " 终态"}）`);
+  return { idx, restored };
+}
+
+/** 收尾：终态检查点 + 报告 + 可选还原起点，标记 session 完成。 */
+async function finalizeReplay(handles, cacheDir, replayDir, s, restoreAfter) {
+  const postFactor = `${s.end}__post-factor`;
+  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", postFactor));
+  s.checkpointLog.push({ name: postFactor, day: s.end, phase: "因子流后（终态）" });
+
+  const finalCapital = {};
+  for (const dog of s.dogs) {
+    const domain = await handles["ds_roles"];
+    const role = domain.table("roles").get(dog);
+    finalCapital[dog] = Number((role && role.capital) || 0);
+  }
+
+  const report = {
+    run_id: s.run_id,
+    created_at: beijingNowIso(),
+    range: { start: s.start, end: s.end, days: s.days.length },
+    dogs: s.dogs,
+    model: s.model,
+    parallel: s.parallel,
+    reset: s.reset,
+    restore_after: restoreAfter,
+    factor_review_every: s.factor_review_every,
+    user_notes: s.user_notes,
+    data_prep: s.data_prep,
+    start_capital: s.start_capital,
+    end_capital: finalCapital,
+    trajectory: s.trajectory,
+    factor_reviews: s.reviewLog,
+    checkpoints: listCheckpoints(replayDir),
+    checkpoint_log: s.checkpointLog,
+    warnings: s.log.filter((l) => l.startsWith("⚠️")),
+  };
+  writeJson(join(replayDir, "report.json"), report);
+  writeJson(join(replayDir, "replay.log.json"), s.log);
+  writeFileSync(join(replayDir, "report.md"), buildReportMarkdown(report, s.log), "utf8");
+
+  let restored = null;
+  if (restoreAfter) restored = await restoreDomains(handles, replayDir);
+  s.status = "finished";
+  saveSession(replayDir, s);
+
+  return {
+    ok: true,
+    status: "finished",
+    run_id: s.run_id,
+    replay_dir: replayDir,
+    days: s.days.length,
+    dogs: s.dogs,
+    model: s.model,
+    data_prep: s.data_prep,
+    start_capital: s.start_capital,
+    end_capital: finalCapital,
+    restored,
+    report_path: join(replayDir, "report.md"),
+    log: s.log.slice(-40),
+  };
+}
+
+/**
+ * 跑一轮回放（支持 auto 一路到底 / interactive 半交互 / resume 续跑 / rewind 回退）。
+ *
  * @param {object} opts
- *   start/end/dogs/parallel/model/jingcai_only/user_notes/persona_overrides/
- *   factor_review_every/reset("none"|"zero")/restore_after/run_id/replay_dir
+ *   全新：start/end/dogs/parallel/model/user_notes/persona_overrides/personaDir/
+ *         factor_review_every/reset("none"|"zero")/restore_after/run_id/pythonBin/
+ *         interactive(=true 或 mode="interactive" 每周期暂停)
+ *   续跑：resume_run_id（续上次暂停会话）+ induction_notes（用户编辑的下一轮方向，注入退役评估）
+ *         + to_end（本次一路跑到底，不再暂停）+ rewind_to（回退到某天开始状态）
  */
 export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
+  if (opts.resume_run_id) return resumeReplay(ctx, handles, cacheDir, opts);
+
   const start = opts.start;
   const end = opts.end;
   if (!start || !end || start > end) {
     return { ok: false, error: `回放范围无效: ${start} ~ ${end}` };
   }
+  const interactive = opts.interactive === true || opts.mode === "interactive";
   const dogs = (opts.dogs && opts.dogs.length ? opts.dogs : DS_REAL_DOGS).slice();
   const parallel = Math.max(1, Math.min(Number(opts.parallel) || dogs.length, dogs.length || 1));
   const model = opts.model || REPLAY_MODEL;
@@ -214,6 +563,7 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   const restoreAfter = opts.restore_after !== false;
   const userNotes = String(opts.user_notes || "").trim();
   const personaOverrides = opts.persona_overrides || {};
+  const personaDir = opts.personaDir || undefined; // 外置人设根目录（config.personaDir）
   const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
 
   const runId = opts.run_id || `replay_${start}_${end}_${Date.now()}`;
@@ -224,257 +574,120 @@ export async function runReplay(ctx, handles, cacheDir, engineRoot, opts = {}) {
   const warn = (msg) => log.push(`⚠️ ${msg}`);
 
   // 0) 快照起点（供 restore + 轨迹对比）
-  const snapshot = await snapshotDomains(handles, replayDir);
-  // 快照之后无论成败都必须还原起点：防止 reset / 回放中间态泄漏到线上
-  let restored = null;
+  await snapshotDomains(handles, replayDir);
   try {
+    // 0b) 可选：从 0 开始（初始资金 + 空记忆）
+    if (reset === "zero") {
+      const resetDogs = await resetRolesToZero(handles, dogs);
+      log.push(`🧹 reset=zero：${resetDogs.join("、")} 已重置为初始资金 + 空记忆`);
+    }
 
-  // 0b) 可选：从 0 开始（初始资金 + 空记忆）
-  if (reset === "zero") {
-    const resetDogs = await resetRolesToZero(handles, dogs);
-    log.push(`🧹 reset=zero：${resetDogs.join("、")} 已重置为初始资金 + 空记忆`);
-  }
-
-  // 1) 范围数据一次性准备（历史缓存优先，缺了才拉 URL）
-  log.push(`📦 准备回放数据 ${start} ~ ${end} ...`);
-  const rangePrep = await prepareRange({
-    cacheDir, engineRoot, start, end, pythonBin: opts.pythonBin,
-    onProgress: (p) => onProgress({ ...p, phase: `数据准备：${p.phase}` }),
-  });
-  log.push(
-    `   matches 文件：新拉 ${rangePrep.matches_fetched.length ? rangePrep.matches_fetched.join(",") : "无（全缓存命中）"}` +
-    (rangePrep.matches_failed.length ? ` | 失败 ${rangePrep.matches_failed.map((f) => f.date).join(",")}` : "") +
-    `；features/tags 补齐：${rangePrep.features_fetched.length ? rangePrep.features_fetched.join(",") : "无（全缓存命中）"}` +
-    (rangePrep.features_failed.length ? ` | 失败 ${rangePrep.features_failed.map((f) => f.date).join(",")}` : ""),
-  );
-  for (const f of rangePrep.matches_failed) warn(`refresh-date ${f.date}: ${f.stderr}`);
-  for (const f of rangePrep.features_failed) warn(`prefetch ${f.date}: ${f.stderr}`);
-  // 范围数据快照：逐日循环只读快照，避免 web 刷新器并发改写 matches 造成边界抖动
-  const snapDates = snapshotMatchesRange(cacheDir, replayDir, rangePrep.dates);
-  log.push(`   matches 快照：${snapDates.length ? snapDates.join("、") : "(无)"} → replays/${runId}/cache/matches`);
-
-  // 2) 逐日管线
-  const trajectory = []; // { day, dogs: { dog: {capital, placed, pnl, pending, factors} } }
-  const reviewLog = [];
-  const checkpointLog = [];
-  const startCapital = {};
-  for (const dog of dogs) {
-    const domain = await handles["ds_roles"];
-    const role = domain.table("roles").get(dog);
-    startCapital[dog] = Number((role && role.capital) || 0);
-  }
-
-  let day = start;
-  let dayIdx = 0;
-  const days = [];
-  while (day <= end) {
-    days.push(day);
-    day = addDays(day, 1);
-  }
-
-  for (dayIdx = 0; dayIdx < days.length; dayIdx++) {
-    const d = days[dayIdx];
-    const startedAt = beijingNowIso();
-    log.push(`\n📅 [${d}] 第 ${dayIdx + 1}/${days.length} 天（${startedAt}）`);
-
-    // 2.1 数据边界：只读回放快照（matches），features/tags 完整性查真实缓存
-    const data = readReplayDay(cacheDir, replayDir, d);
-    log.push(`   竞彩 ${data.jingcai_count}/${data.window_total} 场（排除北单/无号 ${data.excluded_count}）`);
-    for (const w of data.warnings) warn(`[${d}] ${w}`);
-
-    // 2.2 并行分析（fan-out；人设已注入）
-    onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 分析`, done: dayIdx, total: days.length, detail: d });
-    const analysis = await analyzeDogsParallel(ctx, {
-      day: d,
-      dogs,
-      parallel,
-      parent: opts.parent,
-      signal: opts.signal,
-      cacheDir,
-      personas: personaOverrides,
-      onProgress: (p) => onProgress({
-        phase: `第 ${dayIdx + 1}/${days.length} 天 ${p.phase || "分析"}`,
-        done: p.idx || dayIdx, total: days.length,
-        detail: p.dog ? `${p.dog} ${p.status || ""}` : p.detail || d,
-      }),
+    // 1) 范围数据一次性准备（历史缓存优先，缺了才拉 URL）
+    log.push(`📦 准备回放数据 ${start} ~ ${end} ...`);
+    const rangePrep = await prepareRange({
+      cacheDir, engineRoot, start, end, pythonBin: opts.pythonBin,
+      onProgress: (p) => onProgress({ ...p, phase: `数据准备：${p.phase}` }),
     });
-    log.push(`   分析: ok=${analysis.ok_count} fail=${analysis.fail_count} matches=${analysis.matches_count}`);
-    const placedByDog = {};
-    for (const row of analysis.rows || []) {
-      const m = String(row.text || "").match(/\{\s*"dog".*?"placed"\s*:\s*(\d+)/);
-      placedByDog[row.dog] = m ? Number(m[1]) : 0;
-    }
-    for (const row of analysis.rows || []) {
-      log.push(`     ${row.ok ? "✅" : "❌"} ${row.dog} [${row.stopReason}] ${String(row.text || "").slice(0, 120).replace(/\n/g, " ")}`);
-    }
+    log.push(
+      `   matches 文件：新拉 ${rangePrep.matches_fetched.length ? rangePrep.matches_fetched.join(",") : "无（全缓存命中）"}` +
+      (rangePrep.matches_failed.length ? ` | 失败 ${rangePrep.matches_failed.map((f) => f.date).join(",")}` : "") +
+      `；features/tags 补齐：${rangePrep.features_fetched.length ? rangePrep.features_fetched.join(",") : "无（全缓存命中）"}` +
+      (rangePrep.features_failed.length ? ` | 失败 ${rangePrep.features_failed.map((f) => f.date).join(",")}` : ""),
+    );
+    for (const f of rangePrep.matches_failed) warn(`refresh-date ${f.date}: ${f.stderr}`);
+    for (const f of rangePrep.features_failed) warn(`prefetch ${f.date}: ${f.stderr}`);
+    const snapDates = snapshotMatchesRange(cacheDir, replayDir, rangePrep.dates);
+    log.push(`   matches 快照：${snapDates.length ? snapDates.join("、") : "(无)"} → replays/${runId}/cache/matches`);
 
-    // 检查点：结算前（分析+下单后的状态）
-    const preSettle = `${d}__pre-settle`;
-    await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preSettle));
-    checkpointLog.push({ name: preSettle, day: d, phase: "结算前" });
-    log.push(`   📍 检查点: ${preSettle}`);
-
-    // 2.3 结算（纯结算；反思移入因子流阶段 0）
-    const dayTraj = { day: d, dogs: {} };
-    const settledByDog = {};
+    // 起点资金
+    const startCapital = {};
     for (const dog of dogs) {
-      try {
-        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 结算 ${dog}`, done: dayIdx, total: days.length });
-        settledByDog[dog] = await settleDog(handles, dog, d, cacheDir);
-      } catch (e) {
-        settledByDog[dog] = { error: String((e && e.message) || e), settled: 0, pnl: 0 };
-      }
-      const settledRes = settledByDog[dog];
-      const rolesDomain = await handles["ds_roles"];
-      const role = rolesDomain.table("roles").get(dog) || {};
-      const orders = role.orders || [];
-      const factorsDomain = await handles["ds_factors"];
-      const fp = ((factorsDomain.table("factors").get(dog) || {}).factor_perf) || {};
-      dayTraj.dogs[dog] = {
-        capital: round2(Number(role.capital || 0)),
-        pending: orders.filter((o) => !o.settled_at).length,
-        settled: (settledRes && settledRes.settled) || 0,
-        pnl: (settledRes && round2(settledRes.pnl)) || 0,
-        placed: placedByDog[dog] ?? 0,
-        active_factors: Object.values(fp).filter((s) => s.status !== "retired").length,
-      };
-      log.push(`   💰 ${dog}: 结算${dayTraj.dogs[dog].settled}单 PnL${dayTraj.dogs[dog].pnl} → 余额${dayTraj.dogs[dog].capital}`);
+      const role = (await handles["ds_roles"]).table("roles").get(dog);
+      startCapital[dog] = Number((role && role.capital) || 0);
     }
 
-    // 检查点：因子流前（结算后的状态）
-    const preFactor = `${d}__pre-factor`;
-    await writeDomainSnapshot(handles, join(replayDir, "checkpoints", preFactor));
-    checkpointLog.push({ name: preFactor, day: d, phase: "因子流前" });
-    log.push(`   📍 检查点: ${preFactor}`);
-
-    // 2.4 因子流（docs/workflow_tool_groups.md §2.3：阶段0 反思 → A 非alpha → B alpha barrier → C 退役）
-    try {
-      // 阶段 0：反思（每狗，输入=当日已结算订单，产出新因子落库）
-      for (const dog of dogs) {
-        const settled = settledByDog[dog];
-        if (settled && settled.settled > 0 && !settled.error) {
-          onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·反思 ${dog}`, done: dayIdx, total: days.length });
-          const reflectRes = await reflectDog(handles, ctx, dog, d, settled.orders, {
-            model,
-            persona: personaFor(cacheDir, dog, personaOverrides),
-          });
-          if (reflectRes && reflectRes.ok === false) warn(`[${d}] ${dog} 反思失败: ${reflectRes.error}`);
-        }
-      }
-
-      // 阶段 A：非 alpha 各自归纳（可并行，这里顺序执行；alpha 狗跳过留到阶段 B）
-      for (const dog of dogs) {
-        if (ALPHA_DOGS.includes(dog)) continue;
-        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段A ${dog}`, done: dayIdx, total: days.length });
-        const factorsDomain = await handles["ds_factors"];
-        const rec = factorsDomain.table("factors").get(dog) || { factor_perf: {} };
-        const { result, factorPerf } = await inductFactors(ctx, rec.factor_perf || {}, { limit: 30, scope: dog });
-        await factorsDomain.table("factors").put(dog, {
-          ...rec,
-          factor_perf: factorPerf,
-          updated_at: beijingNowIso(),
-        });
-        if (result && result.merged && result.merged.length) {
-          log.push(`   🧬 因子归纳 ${dog}: 合并 ${result.merged.length} 个`);
-        }
-      }
-
-      // 阶段 B（barrier）：非 alpha 完成后，alpha 跨狗统一归纳一次进全库
-      if (dogs.some((x) => ALPHA_DOGS.includes(x))) {
-        onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段B alpha barrier`, done: dayIdx, total: days.length });
-        await inductAlpha(ctx, handles, { limit: 30 });
-      }
-    } catch (e) {
-      warn(`[${d}] 因子归纳失败: ${(e && e.message) || e}`);
-    }
-
-    // 2.5 周期性因子退役（阶段 C：非 alpha 先行 → alpha 收尾；带用户调整意见）
-    if ((dayIdx + 1) % factorReviewEvery === 0) {
-      onProgress({ phase: `第 ${dayIdx + 1}/${days.length} 天 因子流·阶段C 退役`, done: dayIdx, total: days.length });
-      const ordered = [...dogs.filter((x) => !ALPHA_DOGS.includes(x)), ...dogs.filter((x) => ALPHA_DOGS.includes(x))];
-      for (const dog of ordered) {
-        try {
-          const review = await factorReview(handles, ctx, dog, d, start, cacheDir, {
-            userNotes,
-            persona: personaFor(cacheDir, dog, personaOverrides),
-          });
-          reviewLog.push({ day: d, dog, ...review });
-          const bits = [];
-          if (review.auto_dormant && review.auto_dormant.length) bits.push(`休眠${review.auto_dormant.length}`);
-          if (review.low_info_retired && review.low_info_retired.length) bits.push(`低信息退役${review.low_info_retired.length}`);
-          if (review.retired && review.retired.length) bits.push(`结构性退役: ${review.retired.join("、")}`);
-          log.push(`   🔬 因子退役 ${dog}: ${bits.length ? bits.join(" | ") : "无调整"}${userNotes ? "（已应用用户意见）" : ""}`);
-        } catch (e) {
-          warn(`[${d}] ${dog} 因子退役失败: ${(e && e.message) || e}`);
-        }
-      }
-    }
-
-    trajectory.push(dayTraj);
-  }
-
-  // 回放结束时补一个"因子流后"检查点（含全部阶段的最终状态）
-  const postFactor = `${end}__post-factor`;
-  await writeDomainSnapshot(handles, join(replayDir, "checkpoints", postFactor));
-  checkpointLog.push({ name: postFactor, day: end, phase: "因子流后（终态）" });
-
-  // 3) 报告
-  const finalCapital = {};
-  for (const dog of dogs) {
-    const domain = await handles["ds_roles"];
-    const role = domain.table("roles").get(dog);
-    finalCapital[dog] = Number((role && role.capital) || 0);
-  }
-
-  const report = {
-    run_id: runId,
-    created_at: beijingNowIso(),
-    range: { start, end, days: days.length },
-    dogs,
-    model,
-    parallel,
-    reset,
-    restore_after: restoreAfter,
-    factor_review_every: factorReviewEvery,
-    user_notes: userNotes,
-    data_prep: rangePrep,
-    start_capital: startCapital,
-    end_capital: finalCapital,
-    trajectory,
-    factor_reviews: reviewLog,
-    checkpoints: listCheckpoints(replayDir),
-    checkpoint_log: checkpointLog,
-    warnings: log.filter((l) => l.startsWith("⚠️")),
-  };
-  writeJson(join(replayDir, "report.json"), report);
-  writeJson(join(replayDir, "replay.log.json"), log);
-  writeFileSync(join(replayDir, "report.md"), buildReportMarkdown(report, log), "utf8");
-
-    // 4) 还原起点（默认，成功路径）
-    if (restoreAfter) {
-      restored = await restoreDomains(handles, replayDir);
-    }
-
-    return {
-      ok: true,
-      run_id: runId,
-      replay_dir: replayDir,
-      days: days.length,
-      dogs,
-      model,
-      data_prep: rangePrep,
-      start_capital: startCapital,
-      end_capital: finalCapital,
-      restored,
-      report_path: join(replayDir, "report.md"),
-      log: log.slice(-40),
+    // 会话状态（供 interactive 续跑/回退）
+    const s = {
+      run_id: runId, start, end, dogs, parallel, model,
+      factor_review_every: factorReviewEvery, reset, restore_after: restoreAfter,
+      persona_overrides: personaOverrides, personaDir,
+      interactive, days: dayListOf(start, end), next_idx: 0, status: "running",
+      user_notes: userNotes, start_capital: startCapital,
+      trajectory: [], reviewLog: [], checkpointLog: [], log,
+      data_prep: rangePrep, created_at: beijingNowIso(),
+      // 运行态（不落盘）
+      parent: opts.parent, signal: opts.signal, onProgress,
     };
+    saveSession(replayDir, s);
+
+    const seg = await replaySegment(ctx, handles, cacheDir, replayDir, s);
+    if (seg.paused) return await pauseReplay(ctx, handles, cacheDir, replayDir, s, seg);
+    return await finalizeReplay(handles, cacheDir, replayDir, s, restoreAfter);
   } catch (e) {
-    // 失败兜底：无论哪一步抛错都必须还原起点，绝不允许把 reset/中间态留在线上
-    if (restoreAfter && !restored) {
-      try { restored = await restoreDomains(handles, replayDir); } catch {}
-    }
+    // 失败兜底：无论哪一步抛错都还原起点，绝不允许把 reset/中间态留在线上
+    if (restoreAfter) { try { await restoreDomains(handles, replayDir); } catch {} }
     throw e;
+  }
+}
+
+/** 续跑一个已暂停的交互式回放会话（可选先 rewind、注入 induction_notes、或 to_end 一路到底）。 */
+async function resumeReplay(ctx, handles, cacheDir, opts) {
+  const runId = String(opts.resume_run_id);
+  const replayDir = join(cacheDir, "replays", runId);
+  const s = loadSession(replayDir);
+  if (!s) return { ok: false, error: `找不到回放会话: ${runId}（session.json 缺失）` };
+  if (s.status === "finished") {
+    return { ok: false, error: `回放 ${runId} 已结束；如需分叉可先 ds_replay_restore(run_id, checkpoint) 再另起新 run` };
+  }
+  // 恢复运行态（不落盘的字段）
+  s.parent = opts.parent;
+  s.signal = opts.signal;
+  s.onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
+
+  // 可选：回退到某天开始状态
+  let rewound = null;
+  if (opts.rewind_to) {
+    const r = await rewindSession(handles, replayDir, s, String(opts.rewind_to));
+    if (r.error) return { ok: false, error: r.error };
+    rewound = { to: String(opts.rewind_to), restored: r.restored };
+    saveSession(replayDir, s);
+    // 纯回退（未同时给方向/续跑指令）：把控制权交回用户，不自动续跑
+    if (!opts.to_end && !(typeof opts.induction_notes === "string" && opts.induction_notes.trim())) {
+      s.status = "paused";
+      saveSession(replayDir, s);
+      return {
+        ok: true, status: "rewound", run_id: runId, replay_dir: replayDir,
+        rewind: rewound, next_day: s.days[s.next_idx],
+        remaining_days: s.days.length - s.next_idx,
+        checkpoints: listCheckpoints(replayDir),
+        how_to: {
+          continue: `ds_replay(resume_run_id="${runId}", induction_notes="<方向>")`,
+          run_to_end: `ds_replay(resume_run_id="${runId}", to_end=true)`,
+        },
+        log: s.log.slice(-20),
+      };
+    }
+  }
+
+  // 用户方向：作为下一周期退役评估的 user_notes
+  if (typeof opts.induction_notes === "string" && opts.induction_notes.trim()) {
+    s.user_notes = opts.induction_notes.trim();
+    s.log.push(`📝 应用下一轮方向（induction_notes）：${s.user_notes.slice(0, 120)}`);
+  }
+  // to_end：本次一路跑到底（关闭暂停）
+  if (opts.to_end === true) s.interactive = false;
+  s.status = "running";
+
+  try {
+    const seg = await replaySegment(ctx, handles, cacheDir, replayDir, s);
+    if (seg.paused) return await pauseReplay(ctx, handles, cacheDir, replayDir, s, seg);
+    return await finalizeReplay(handles, cacheDir, replayDir, s, s.restore_after);
+  } catch (e) {
+    // 续跑失败：不还原（保留中间态，供用户 rewind / ds_replay_restore 手动处理）
+    s.status = "paused";
+    s.last_error = String((e && e.message) || e);
+    saveSession(replayDir, s);
+    return { ok: false, status: "paused", run_id: runId, error: `续跑失败: ${s.last_error}` };
   }
 }
 

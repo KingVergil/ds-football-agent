@@ -154,6 +154,36 @@ export async function streamReflectJson(ctx, prompt, { provider, model } = {}) {
     .join("");
 }
 
+/** 旁路 ctx.llm.stream → 纯文本（自由文本，不强制 JSON；用于因子方向建议等）。 */
+export async function streamText(ctx, prompt, { provider, model, maxTokens = 1200, temperature = 0.4 } = {}) {
+  const p = provider || REFLECT_DEFAULT.provider;
+  const m = model || REFLECT_DEFAULT.model;
+  const messages = [createUserMessage({
+    content: [{ type: "text", text: "请按要求输出。" }],
+    source: { kind: "plugin", plugin: "ds-agents-lota-data" },
+  })];
+  const options = deepFreeze({
+    provider: p,
+    model: m,
+    messages,
+    system: prompt,
+    temperature,
+    maxTokens,
+  });
+  const assembler = new BlockAssembler();
+  for await (const chunk of ctx.llm.stream(options)) {
+    assembler.push(chunk);
+  }
+  const finish = assembler.finish;
+  if (finish && (finish.kind === "error" || finish.kind === "aborted")) {
+    throw new Error(`text stream ${finish.kind}`);
+  }
+  return assembler.blocks()
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+}
+
 /** 解析 JSON（容错：剥 thinking / 提取花括号块）。 */
 export function parseReflectJson(text) {
   const clean = text.replace(/\[thinking\][\s\S]*?\[\/thinking\]/g, "");
@@ -260,9 +290,13 @@ export async function applyReflection(handles, dog, day, data, settled) {
   };
 }
 
-/** 读 persona 文本（对齐 role.persona_text）。 */
-export function readPersona(cacheDir, dog) {
-  const p = join(cacheDir, "roles", dog, "persona.md");
+/**
+ * 读 persona 文本（对齐 role.persona_text）。
+ * personaDir 可外置人设根目录（默认 cacheDir/roles），供 config.personaDir 覆盖。
+ */
+export function readPersona(cacheDir, dog, personaDir) {
+  const root = personaDir || join(cacheDir, "roles");
+  const p = join(root, dog, "persona.md");
   if (!existsSync(p)) return "";
   const text = readText(p).trim();
   return text ? `## 🎯 个人偏好\n\n${text}` : "";
