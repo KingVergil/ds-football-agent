@@ -6,6 +6,8 @@
  */
 import { createUserMessage, BlockAssembler, deepFreeze } from "@deepseek-ai/dsh-llm";
 
+import { LLM_TEMPERATURES } from "./tools/shared.js";
+
 const FAST_MODEL = "deepseek-v4-flash";
 
 /** 名称/描述相似度（LCS 版，≈ Python difflib.SequenceMatcher.ratio = 2*M/(len_a+len_b)）。
@@ -99,7 +101,7 @@ export async function judgeFactorDedup(ctx, factorId, desc, factorPerf, { provid
       source: { kind: "plugin", plugin: "ds-agents-lota-data" },
     })];
     const options = deepFreeze({
-      provider, model: FAST_MODEL, messages, system, temperature: 0.0, maxTokens: 500,
+      provider, model: FAST_MODEL, messages, system, temperature: LLM_TEMPERATURES.induction, maxTokens: 500,
     });
     const assembler = new BlockAssembler();
     for await (const chunk of ctx.llm.stream(options)) {
@@ -299,7 +301,7 @@ async function llmJudgePair(ctx, aName, aEntry, bName, bEntry) {
     })];
     const options = deepFreeze({
       provider: "deepseek-official", model: FAST_MODEL, messages,
-      system: INDUCTION_JUDGE_SYSTEM, temperature: 0.0, maxTokens: 500,
+      system: INDUCTION_JUDGE_SYSTEM, temperature: LLM_TEMPERATURES.induction, maxTokens: 500,
     });
     const assembler = new BlockAssembler();
     for await (const chunk of ctx.llm.stream(options)) {

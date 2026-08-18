@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { beijingNowIso } from "./settle.js";
 import { DS_REAL_DOGS } from "./storage.js";
 import { prepareRange, addDays, jingcaiWindowMatches, hasValidFeature, hasTags } from "./dataflow.js";
+import { LLM_TEMPERATURES } from "./tools/shared.js";
 import { analyzeDogsParallel } from "./fanout.js";
 import { settleDog } from "./settleEngine.js";
 import {
@@ -188,7 +189,7 @@ export async function reflectDog(handles, ctx, dog, day, settled, { model = REPL
     persona: persona || "",
     settled, existingSummary, factorDescText: "", keySlugWhitelist: SLUG_WHITELIST,
   });
-  const text = await streamReflectJson(ctx, prompt, { model });
+  const text = await streamReflectJson(ctx, prompt, { model, temperature: LLM_TEMPERATURES.reflect });
   const data = parseReflectJson(text);
   if (!data) return { ok: false, error: "reflect JSON 解析失败", raw: text.slice(0, 500) };
   return applyReflection(handles, dog, day, data, settled);

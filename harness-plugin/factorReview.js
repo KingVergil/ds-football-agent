@@ -7,6 +7,7 @@
  */
 import { beijingNowIso } from "./settle.js";
 import { streamReflectJson, parseReflectJson, readPersona } from "./reflect.js";
+import { LLM_TEMPERATURES } from "./tools/shared.js";
 
 const LOW_INFO_MIN_SAMPLES = 5;
 const LOW_INFO_AVG_RETURN = 0.15;
@@ -167,7 +168,10 @@ export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheD
   // 4. 旁路 LLM 评估
   let data = null;
   try {
-    data = parseReflectJson(await streamReflectJson(ctx, prompt, { model: opts.model }));
+    data = parseReflectJson(await streamReflectJson(ctx, prompt, {
+      model: opts.model,
+      temperature: LLM_TEMPERATURES.review,
+    }));
   } catch (e) {
     return { ok: false, error: `factor_review LLM 失败: ${e.message}` };
   }
