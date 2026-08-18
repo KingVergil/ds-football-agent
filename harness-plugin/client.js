@@ -101,10 +101,6 @@ window.__ModuleLoader__.load({
 .dsd-done td{color:var(--dsw-alias-state-error-primary)}
 .dsd-main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(380px,1.7fr);gap:14px;align-items:start}
 @media(max-width:900px){.dsd-main{grid-template-columns:1fr}}
-.dsq-root{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance));max-width:var(--dsh-composer-card-max-width);margin:0 auto;display:flex;align-items:center;gap:6px;flex-shrink:0;padding:2px 0}
-.dsq-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1;padding:7px 10px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:border-color .12s,background .12s,color .12s}
-.dsq-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
-.dsq-btn:disabled{opacity:.6;cursor:default}
 .dsts-badge-root{position:relative;display:inline-flex;align-items:center}
 .dsts-badge-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1;padding:6px 10px;border-radius:999px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
 .dsts-badge-btn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
@@ -447,21 +443,6 @@ window.__ModuleLoader__.load({
           rows.length ? rows : h("div", { className: "dsts-phase" }, "暂无任务（跑分析/结算/因子流时实时显示）")) : null);
     }
 
-    // 快捷输入按钮：分析全部 / 结算全部 / 因子归纳全部 / 因子退役全部（对齐 分析流/结算流/因子流）
-    function QuickActions(props) {
-      var inputActions = props && props.inputActions;
-      if (!inputActions) return null;
-      var fire = function (text) {
-        inputActions.setDraft(text);
-        inputActions.submit("queue");
-      };
-      return h("div", { className: "dsq-root" },
-        h("button", { className: "dsq-btn", onClick: function () { fire("分析全部：先调用一次 ds_prepare_day(mode=\"live\") 完成数据获取（单例），再对每只单关狗分别调用 ds_analyze_dog(dog=<狗名>)——每次一个独立 headless subagent；同一轮里并列发起多只狗以并行。不要在主循环里顺序逐场分析，也不要让单狗工具各自重复取数。"); } }, "⚡ 分析全部"),
-        h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
-          h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', reflect_day='auto', limit=30) 先对最近已结算日（如0816）的订单反思生成新因子，再 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
-        h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部"));
-    }
-
     function Dashboard() {
       var dataState = React.useState(null);
       var data = dataState[0], setData = dataState[1];
@@ -534,11 +515,6 @@ window.__ModuleLoader__.load({
         return slots.register(
           { name: "conversation.view", id: "ds-dashboard", order: 20, label: "斗狗场" },
           function () { return h(Dashboard, null); });
-      });
-      slots.inject("conversation.input.dock", function () {
-        return slots.register(
-          { name: "conversation.input.dock", id: "ds-quick-actions", order: 30 },
-          function (props) { return h(QuickActions, props || {}); });
       });
       slots.inject("conversation.session.header.utilities", function () {
         return slots.register(
