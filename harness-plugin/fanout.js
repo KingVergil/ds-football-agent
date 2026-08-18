@@ -8,9 +8,12 @@
  * providerName=spawn，capabilities 全开）。插件不注册自己的 provider。
  */
 import { beijingNowIso } from "./settle.js";
-import { DS_REAL_DOGS } from "./storage.js";
-import { readPersona } from "./reflect.js";
-import { jingcaiWindowMatches } from "./dataflow.js";
+import { DS_REAL_DOGS, capitalQuery } from "./storage.js";
+import { readPersona, readSections, streamReflectJson, parseReflectJson } from "./reflect.js";
+import { jingcaiWindowMatches, prepareDay } from "./dataflow.js";
+import { refreshOrders, submitOrders } from "./placeOrders.js";
+import { memoryQuery } from "./memory.js";
+import { LLM_TEMPERATURES } from "./tools/shared.js";
 
 /** 北京时间足球日标签：HHMM < 12:00 用昨天，>= 12:00 用今天（与 batch_agents.sh 一致）。 */
 export function footballDayLabel(now = new Date()) {
@@ -87,7 +90,7 @@ async function runOneDog(ctx, parent, signal, dog, day, matchesText, persona) {
     maxDepth: 1, // 只允许这一层子 agent，禁止孙级递归
     toolFilter: { deny: [
       // 工具组可见性（docs/workflow_tool_groups.md §2.1）：分析子流只留 分析组+角色组+只读数据
-      "subagent", "subagent_fork", "ds_analyze_dog",
+      "ds_analyze_dog",
       "ds_prepare_day", "ds_migrate_storage", "ds_export_to_python",
       "ds_settle_js", "ds_reflect_js", "fetch_scores",
       "ds_factor_induction", "ds_factor_dedup", "ds_factor_review_js",
@@ -114,6 +117,99 @@ async function runOneDog(ctx, parent, signal, dog, day, matchesText, persona) {
  * @param {object} ctx Cordis 上下文（已注入 subagents）
  * @param {object} opts { day, dogs, parallel, parent, signal }
  */
+/**
+ * 分析单狗（确定性编排 + 一次 LLM 决策）。
+ *
+ * 数据获取/人设/记忆/资金/逐场段落全部**固有获取**（不走 agent 工具调用），
+ * 只在构建好 prompt 后调一次 ctx.llm.stream（temperature 0.1），解析结构化订单后确定性下单。
+ * 等价 LangGraph 的 fetch → build_prompt → call_llm → parse → place。
+ */
+export async function analyzeDogDirect(ctx, handles, {
+  dog, day, cacheDir, engineRoot = "", pythonBin = "python",
+  persona = "", personaDir = "",
+  model = "deepseek-v4-flash", temperature = LLM_TEMPERATURES.analyze,
+  onProgress,
+} = {}) {
+  if (!dog) return { error: "缺少 dog（要分析的狗名）" };
+  const progress = typeof onProgress === "function" ? onProgress : () => {};
+  const d = day || footballDayLabel();
+  const log = [];
+
+  // 1) 数据准备（单例，live 强制刷新）——固有获取
+  if (engineRoot && cacheDir) {
+    progress({ phase: "数据准备（live）", done: 0, total: 1, detail: `${dog} ${d}` });
+    const prep = await prepareDay({ cacheDir, engineRoot, day: d, mode: "live", jingcaiOnly: true, pythonBin });
+    log.push(`数据准备: 竞彩 ${prep.jingcai_count}/${prep.window_total}`);
+    for (const w of prep.warnings || []) log.push(`⚠️ ${w}`);
+  }
+
+  // 2) 回退订单（固有）
+  await refreshOrders(handles, dog, d, cacheDir);
+
+  // 3) 比赛列表（已准备缓存，strip_scores）
+  const matches = cacheDir ? jingcaiWindowMatches(cacheDir, d, { strip: true, jingcaiOnly: true }) : [];
+  if (!matches.length) return { ok: true, skipped: `当日(${d})无竞彩比赛`, dog, day: d, matches_count: 0 };
+
+  // 4) 人设 / 记忆 / 资金（固有）
+  const personaText = persona || (cacheDir ? readPersona(cacheDir, dog, personaDir) : "");
+  const memory = await memoryQuery(handles, dog, { day: d });
+  const capital = await capitalQuery(handles, dog);
+  const memoryText = (memory && (memory.text || memory.error)) || "";
+  const capitalText = JSON.stringify(capital);
+
+  // 5) 逐场段落（固有，<=50 全读；缺段标注，供 LLM 判断可下类型）
+  const slugs = ["fair-odds", "asian-handicap-pinnacle", "over-under-crown", "betfair-buysell", "discrete-odds"];
+  const matchBlocks = [];
+  for (const m of matches) {
+    const sections = cacheDir ? readSections(cacheDir, m.lota_id, slugs) : {};
+    const secText = slugs.map((s) => `[${s}]\n${sections[s] || "(无数据)"}`).join("\n");
+    matchBlocks.push(
+      `### ${m.home_name} vs ${m.away_name} | ${m.league_name || ""} | ${m.match_time} | 竞彩=${m.jingcai_number || "-"}\n` +
+      `lota_id=${m.lota_id}\n${secText}`,
+    );
+  }
+  const matchesText = matchBlocks.join("\n\n---\n\n");
+
+  // 6) 一次 LLM 决策（temperature 0.1）
+  const prompt = `你是 ds_agents 的「${dog}」投注分析员，只分析这一只狗。
+
+## 人设
+${personaText || "(无)"}
+
+## 记忆 / 因子
+${memoryText || "(无)"}
+
+## 资金
+${capitalText}
+
+## 比赛与数据（已 strip_scores 防后视；缺 asian-handicap-* 段禁下亚盘、缺 over-under-* 段禁下大小球）
+${matchesText}
+
+只输出一个 JSON（不要 markdown 代码块，不要多余文字）：
+{"orders":[{"lota_id":"...","bet_type":"亚盘|大小球|胜平负|让球胜平负","pick":"H|A|D|over|under","handicap":0,"odds":1.0,"bet_size":0,"reason":"≤60字","skip":false}],"summary":"一句话"}`;
+
+  progress({ phase: "LLM 决策", done: 1, total: 1, detail: `${dog} ${matches.length} 场` });
+  const raw = await streamReflectJson(ctx, prompt, { model, temperature });
+  const data = parseReflectJson(raw);
+  const orders = Array.isArray(data && data.orders) ? data.orders : [];
+
+  // 7) 确定性下单（去重/已开赛保护/权威盘口/资金约束）
+  const placed = await submitOrders(handles, dog, d, orders, cacheDir);
+
+  return {
+    ok: !placed.error,
+    day: d,
+    dog,
+    matches_count: matches.length,
+    orders: orders.length,
+    placed: placed.placed,
+    skipped: placed.skipped,
+    rejected_unverified: placed.rejected_unverified || [],
+    capital: placed.capital,
+    log,
+    text: `分析 ${matches.length} 场 → 下单 ${placed.placed}${(placed.rejected_unverified || []).length ? `（拒绝 ${placed.rejected_unverified.length} 单缺盘口）` : ""}`,
+  };
+}
 export async function analyzeDogsParallel(ctx, opts = {}) {
   if (!ctx || !ctx.subagents) {
     return { error: "ctx.subagents 不可用：host 未挂载 @deepseek-ai/dsh-subagent（或插件未注入 subagents）" };

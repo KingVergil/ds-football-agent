@@ -2,7 +2,7 @@
  * @module tools/headless
  *
  * 【有 LLM 但 headless 工作流】编排 / 旁路 LLM 工具组：
- *   - 分析: ds_analyze_dog（单只狗 = 一个 headless subagent 过程；是否并行由父 agent 决定）
+ *   - 分析: ds_analyze_dog（单只狗 = 确定性编排 + 一次 LLM 决策；是否并行由父 agent 决定）
  *   - settles: ds_settle_all（过程纯 JS 无 LLM，启动需 LLM 编排）
  *   - induct: ds_factor_flow / ds_factor_induction
  *   - review: ds_factor_review_js
@@ -11,7 +11,7 @@
  *
  * 编排入口默认狗列表走 roles.dogs，人设走 roles.personaFor / roles.personaDir（可外置）。
  */
-import { analyzeOneDog, footballDayLabel } from "../fanout.js";
+import { analyzeDogDirect, footballDayLabel } from "../fanout.js";
 import { settleAll } from "../settleEngine.js";
 import { factorFlow } from "../flows.js";
 import { runReplay } from "../replay.js";
@@ -47,13 +47,12 @@ function personaMap(dogs, roles) {
 export function registerHeadlessTools(deps) {
   const { ctx, registerTool, taskReg, domainHandles, cacheDir, engineRoot, pythonBin, roles } = deps;
 
-  // ── ds_analyze_dog：分析单只狗（一个独立 headless subagent 过程；分析的最小单元）──
-  // data_fetch 由父 agent 先行单独完成（ds_prepare_day 单例），本工具只读已准备数据 + spawn 一个子 agent；
-  // 是否并行、并行多少由父 agent 自己决定（一轮里并列多次调用本工具）。
+  // ── ds_analyze_dog：分析单只狗（父入口）——起一个最小执行子任务保证 session 可查，
+  //    子任务唯一动作是调用 ds_analyze_dog_run 一次；重型 LLM 决策在引擎内只调一次。
   registerTool({
     name: "ds_analyze_dog",
     description:
-      "分析单只狗（一个独立 headless subagent 过程）：读已准备的当日比赛缓存 + 注入人设，spawn 一个子 agent 执行 refresh_orders→读数据→读人设/记忆/资金→独立判断→submit_orders。⚠️ 先由父 agent 调一次 ds_prepare_day(day, mode=\"live\") 完成数据获取（单例，已准备则复用），再对每只狗分别调用本工具；是否并行、并行多少由你决定（同一轮里并列发起多只狗即并行）。不内嵌数据准备、不做多狗编排。",
+      "分析单只狗（父入口）：起一个最小分析子任务（每个狗一个独立 session 可查），子任务唯一操作是调用 ds_analyze_dog_run(dog, day) 一次并原样汇报。数据准备/人设/记忆/资金/段落全部在 ds_analyze_dog_run 内部固有获取，LLM 只在判断时被调用一次（temperature 0.1），无工具轮次。父 agent 对每只狗调一次本工具；并列发起即并行。",
     parameters: {
       dog: { type: "string", required: true, description: "要分析的狗名（角色），如 梭哈2狗" },
       day: { type: "string", description: "足球日 YYYY-MM-DD（空=按北京时间自动推当日）" },
@@ -64,20 +63,71 @@ export function registerHeadlessTools(deps) {
     },
     execute: withTask(taskReg, { type: "analyze", title: "分析单狗" }, async (args, exec, progress) => {
       try {
-        if (!exec || !exec.agent) return { error: "exec.agent 不存在，无法启动 subagent" };
+        if (!ctx.subagents) return { error: "ctx.subagents 不可用，无法创建分析 session" };
+        if (!exec || !exec.agent) return { error: "缺少 parent agent" };
         const day = args.day || footballDayLabel();
-        progress({ phase: "分析", done: 0, total: 1, detail: `${args.dog} ${day}` });
-        const res = await analyzeOneDog(ctx, {
-          dog: args.dog,
-          day,
+        progress({ phase: "分析（执行子任务）", done: 0, total: 1, detail: `${args.dog} ${day}` });
+        const prompt = `你是 ds_agents 的分析执行子任务，处理狗「${args.dog}」，足球日 ${day}。
+
+唯一操作：调用 ds_analyze_dog_run(dog="${args.dog}", day="${day}") 一次。
+然后把它的返回内容原样汇报（JSON 即可，不要修改、不要总结重写、不要调用其他任何工具）。
+禁止调用其他工具（没有 bash/文件/结算/因子工具）。`;
+        const run = await ctx.subagents.start("spawn", {
+          label: `analyze ${args.dog}`,
+          prompt: [{ type: "text", text: prompt }],
           parent: exec.agent,
           signal: exec.signal,
+          maxDepth: 1,
+          toolFilter: {
+            allow: ["ds_analyze_dog_run"],
+            deny: ["subagent", "subagent_fork", "ds_analyze_dog"],
+          },
+        });
+        const result = await run.result;
+        const text = Array.isArray(result.output)
+          ? result.output.filter((b) => b && b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n")
+          : "";
+        try { await run.dispose(); } catch {}
+        progress({ phase: "分析完成", done: 1, total: 1, detail: `${args.dog} ${result.stopReason}` });
+        return {
+          ok: result.stopReason === "completed",
+          dog: args.dog,
+          day,
+          runId: String(run.id ?? ""),
+          text: text.slice(0, 2000),
+        };
+      } catch (error) {
+        return { error: error.message };
+      }
+    }),
+  });
+
+  // ── ds_analyze_dog_run：分析单狗确定性引擎（供分析子任务调用；数据获取全固有，一次 LLM 决策）──
+  registerTool({
+    name: "ds_analyze_dog_run",
+    description:
+      "分析单狗确定性引擎（由 ds_analyze_dog 的分析子任务调用，也可直接调用）：固有完成 数据准备(prepareDay live 单例)→回退订单→读人设/记忆/资金→逐场段落→构建一个 prompt→调一次 LLM（temperature 0.1）→解析结构化订单→确定性下单。",
+    parameters: {
+      dog: { type: "string", required: true, description: "要分析的狗名（角色），如 梭哈2狗" },
+      day: { type: "string", description: "足球日 YYYY-MM-DD（空=按北京时间自动推当日）" },
+    },
+    output: {
+      schema: LOOSE_OBJECT,
+      render: jsonRender(),
+    },
+    execute: withTask(taskReg, { type: "analyze", title: "分析执行" }, async (args, _exec, progress) => {
+      try {
+        const day = args.day || footballDayLabel();
+        return await analyzeDogDirect(ctx, domainHandles, {
+          dog: args.dog,
+          day,
           cacheDir,
+          engineRoot,
+          pythonBin,
           persona: roles.personaFor(args.dog),
           personaDir: roles.personaDir,
+          onProgress: (p) => progress({ phase: p.phase, done: p.done, total: p.total, detail: p.detail }),
         });
-        progress({ phase: "分析完成", done: 1, total: 1, detail: `${args.dog} ${res.ok ? "ok" : (res.skipped ? "skip" : "fail")}` });
-        return res;
       } catch (error) {
         return { error: error.message };
       }
@@ -163,7 +213,7 @@ export function registerHeadlessTools(deps) {
   registerTool({
     name: "ds_replay",
     description:
-      "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日并行分析（fan-out subagent）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。reset=zero 从初始资金+空记忆开始；默认 restore_after 还原起点状态。旁路 LLM 默认 deepseek-v4-flash 省 token。\n" +
+      "回放模式：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日维度跑 [start, end]。范围数据一次性准备（历史缓存优先、缺了拉 URL），逐日并行分析（fan-out subagent）+ 结算 + 反思 + 因子归纳，每 factor_review_every 天做因子退役评估。记录每狗每日轨迹到 cacheDir/replays/<run_id>/report.md。⚠️ 默认写穿：订单/因子直接落库保留（restore_after 默认 false）；restore_after=true 才是模拟跑、结束还原起点。⚠️ 预检：回放范围 [start,end] 内目标狗已有订单会直接拒绝（diff/diff-report 工具未设计）。reset=zero 从初始资金+空记忆开始。旁路 LLM 默认 deepseek-v4-flash 省 token。\n" +
       "两种运行方式：\n" +
       "  • 一路到底（默认）：不传 mode/interactive，直接跑完整段并出报告。\n" +
       "  • 半交互：mode=\"interactive\"（或 interactive=true）→ 每个因子退役周期结束就暂停，返回 status=\"paused\"，附带「下一轮因子归纳/退役方向建议」(direction_suggestion) 与可回退检查点。之后用 resume_run_id 续跑：\n" +
@@ -186,7 +236,7 @@ export function registerHeadlessTools(deps) {
       persona_overrides: { type: "object", additionalProperties: true, description: "狗名→人设文本覆盖（分析/反思/退役用），值是字符串" },
       factor_review_every: { type: "number", description: "每隔多少天做一次因子退役（默认 7）；半交互模式下即暂停周期" },
       reset: { type: "string", description: "none=用当前状态（默认）；zero=从初始资金+空记忆开始" },
-      restore_after: { type: "boolean", description: "跑完后是否还原起点状态（默认 true）；半交互暂停期间不还原，供续跑" },
+      restore_after: { type: "boolean", description: "true=模拟跑，跑完后还原起点；默认 false=写穿，订单/因子保留在线上" },
       run_id: { type: "string", description: "自定义运行标识（默认 replay_<start>_<end>_<ts>）" },
     },
     output: {

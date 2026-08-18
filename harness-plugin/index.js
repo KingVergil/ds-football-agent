@@ -22,7 +22,7 @@ import { setupDomains } from "./storage.js";
 import { setupDashboard } from "./dashboard.js";
 import { createTaskRegistry } from "./taskStatus.js";
 import { findMatch } from "./tools/shared.js";
-import { resolveRoles, registerRoleTools } from "./tools/roles.js";
+import { resolveRoles, ensureRoleRecords, registerRoleTools } from "./tools/roles.js";
 import { registerDeterministicTools } from "./tools/deterministic.js";
 import { registerHeadlessTools } from "./tools/headless.js";
 
@@ -119,19 +119,13 @@ const ANALYZE_FRAMEWORK_SECTION = {
 
 当用户要做足球投注分析/下单时，你（harness agent）是「大脑」，私有 Python 引擎只做确定性基础功能。
 
-0. 数据获取（LLM 之前确定性完成，禁止模型自己拉全量）：先调 ds_prepare_day(day, mode="live")，一次性获取并过滤竞彩比赛，直接用返回的比赛列表。⚠️ 禁止再调 lota_matches 拉全量（会混入北单/无号场次）；lota_sections/lota_match 只用于按需读单场段落。
-1. 重跑前置（live 重跑当天才做）：refresh_orders(<狗名>, day) 退回窗口内未开赛订单金额，保留已开赛订单——对齐旧 LangGraph analyze(live=True) 的行为。
-2. 读角色数据：ds_persona_js(<狗名>) 一次注入 人设（投注风格/仓位档位/行为准则）+ 日常比赛范围（默认 jc 竞彩）+ 资金现状（full_capital 与约束），禁止自己 read 文件、禁止单独调 ds_capital_js。
-3. 读记忆：ds_memory_js(<狗名>, day) 拿该狗的历史因子记忆——活跃因子/已证伪模式/历史反思/最近订单/昨日结算回顾。⚠️ 判断时必须结合活跃因子与已证伪模式（例如「离散极低」这类信号历史上可能是诱杀而非看好），不要只按直觉解读离散凝聚。
-4. 判断：基于赛前数据 + 因子记忆独立推理（⚠️ ds_prepare_day 已 strip_scores 防后视），按信心给「比例」（× ds_persona_js 返回的 full_capital）。
-5. 下单：submit_orders(user, day, orders) 结构化下单（去重/已开赛保护/资金折算/硬约束/扣资金）。
-5a. 逐场选场约束：当日候选比赛 ≤ 50 场时，必须逐场读全所有比赛的关键段落再选场，禁止只读少数几场（漏读=丢机会）；只有 >50 场才允许先按联赛/时间粗筛候选。逐场 lota_sections(id, slugs=["fair-odds","asian-handicap-pinnacle","over-under-crown","betfair-buysell","discrete-odds"]) 取关键段落。
-5a1. 数据完整性护栏：若某场缺失 asian-handicap-* 段落，禁止对该场下亚盘；缺失 over-under-* 段落禁止下大小球——盘口不可校验只能 skip，禁止猜盘口（submit_orders 会拒绝缺权威盘口的亚盘单）。
-5b. 全狗分析（数据先行 + 单狗 headless + 你决定并行）：当用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时——① 先调一次 ds_prepare_day(day, mode="live") 完成数据获取（单例，已准备则自动复用）；② 再对每只狗分别调用 ds_analyze_dog(dog, day)，每次是一个独立 headless subagent 分析该狗。是否并行、并行多少由你决定：同一轮里并列发起多只狗的 ds_analyze_dog 即并行。禁止在主循环里自己顺序逐场分析全部狗，也不要让单狗工具各自重复拉数据。
+0. 分析统一走 ds_analyze_dog(dog, day)：工具内部**确定性**完成 数据准备（prepareDay live 单例、竞彩过滤、strip_scores）→ 回退订单 → 读人设/记忆/资金 → 逐场段落 → 构建一个 prompt → **只调一次 LLM（temperature 0.1）** → 解析结构化订单 → 确定性下单。全程无工具轮次，LLM 只在判断时被调用一次（每次调用起一个最小分析子任务保证 session 可查）。
+1. 全狗分析（并行由你决定）：用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，对每只狗分别调 ds_analyze_dog(dog, day)，并列发起即并行；禁止在主循环里手动逐场读数据/下单（已内建在工具里）。
+2. 数据完整性护栏（工具内建）：缺 asian-handicap-* 段禁下亚盘、缺 over-under-* 段禁下大小球；submit_orders 会拒绝缺权威盘口的亚盘单。
 
 ## 回放模式
 
-- ds_replay(start, end, ...)：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日跑一遍（历史数据缓存优先、缺了才拉 URL），记录每狗每日轨迹并出报告。周期性退役支持 user_notes（用户调整意见）与 persona_overrides（人设覆盖）注入评估方向。
+- ds_replay(start, end, ...)：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日跑一遍（历史数据缓存优先、缺了才拉 URL），记录每狗每日轨迹并出报告。默认写穿：订单/因子直接落库（restore_after=false）；restore_after=true 才是模拟跑、结束还原起点。若 [start,end] 内目标狗已有订单，直接拒绝（diff/diff-report 未设计）。周期性退役支持 user_notes（用户调整意见）与 persona_overrides（人设覆盖）注入评估方向。
 
 ## 资金管理（金额语义）
 
@@ -204,9 +198,9 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
   const run = () => {
     if (running) return;
     running = true;
-    // 1) harness 侧分析：headless agent 先 ds_prepare_day 单例取数，再对每只单关狗调 ds_analyze_dog（可并列并行）→ ds_export_to_python 导出到 data/roles
+    // 1) harness 侧分析：对每只单关狗调 ds_analyze_dog（内部固有取数 + 一次 LLM 决策；可并列并行）→ ds_export_to_python 导出到 data/roles
     const dogList = (Array.isArray(dogs) && dogs.length ? dogs : ["梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "alpha狗", "alpha2狗"]);
-    const task = `全部分析：先调用 ds_prepare_day(mode="live") 完成当日数据获取（单例），然后对每只单关狗（${dogList.join("、")}）分别调用 ds_analyze_dog(dog=<狗名>)（同一轮里并列发起以并行），全部完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。`;
+    const task = `全部分析：对每只单关狗（${dogList.join("、")}）分别调用 ds_analyze_dog(dog=<狗名>)（同一轮里并列发起以并行；工具内部固有完成数据准备/人设/记忆/资金/段落与一次 LLM 决策），全部完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。`;
     // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
     const agentsPy = JSON.stringify(agents);
     const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${agentsPy}]`;
@@ -248,8 +242,15 @@ function apply(ctx, config = {}) {
   // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
   const domainHandles = setupDomains(ctx);
 
-  // ── 「斗狗场」仪表盘（/ds-dashboard JSON + /ds-avatars 图片，客户端 tab）──
-  if (once("dashboard-routes")) setupDashboard(ctx, domainHandles, cacheDir);
+  // ── config.roles / 运行时注册表（创建狗）新狗初始化：只建缺失角色，已有角色资金/订单不动 ──
+  if (roles.configured || roles.hasRegistry) ensureRoleRecords(domainHandles, roles);
+
+  // ── 「斗狗场」仪表盘（/ds-dashboard JSON + /ds-avatars 图片 + /ds-analyze 直启，客户端 tab）──
+  if (once("dashboard-routes")) setupDashboard(ctx, domainHandles, cacheDir, roles, config.avatarDir, {
+    engineRoot,
+    pythonBin,
+    taskReg,
+  });
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
   if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir);
