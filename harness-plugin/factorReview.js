@@ -158,7 +158,7 @@ export async function factorReview(handles, ctx, dog, weekEnd, startDate, cacheD
     ? recentRefs.map((r) => `  [${r.date || "?"}] ${sanitizeReflection((r.reflection || "").slice(0, 300))}`).join("\n")
     : "";
 
-  const persona = opts.persona || readPersona(cacheDir, dog);
+  const persona = opts.persona || readPersona(cacheDir, dog, opts.personaDir);
   const prompt = buildReviewPrompt({
     persona, candidates, reflectionsText, windowDesc,
     userNotes: opts.userNotes || "",

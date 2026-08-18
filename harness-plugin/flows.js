@@ -1,6 +1,6 @@
 /**
  * 业务流入口（docs/workflow_tool_groups.md §2）：
- *   - 分析流 → fanout.js analyzeDogsParallel（已注册 ds_analyze_all_parallel）
+ *   - 分析流 → fanout.js analyzeOneDog（已注册 ds_analyze_dog，单狗 headless；并行由父 agent 决定）
  *   - 结算流 → settleEngine.js settleAll（纯 JS，无 LLM，已注册 ds_settle_all）
  *   - 因子流 → 本文件 factorFlow（管理比赛数据 → 因子专员 xN subagent → alpha barrier → 退役）
  *
@@ -118,7 +118,7 @@ async function runFactorSubagent(ctx, parent, signal, label, prompt, allowTools)
     maxDepth: 1,
     toolFilter: {
       allow: allowTools, // 只给本流的业务工具，宿主工具（bash/fs/技能等）一律不可见
-      deny: ["subagent", "subagent_fork", "ds_analyze_all_parallel", "ds_factor_flow", "ds_replay", "ds_settle_all"],
+      deny: ["subagent", "subagent_fork", "ds_analyze_dog", "ds_factor_flow", "ds_replay", "ds_settle_all"],
     },
   });
   try {

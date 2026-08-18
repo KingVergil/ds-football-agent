@@ -194,11 +194,70 @@ export async function fillMissingFeatures(cacheDir, engineRoot, dates) {
   return { done, failed };
 }
 
+// ── data_fetch 单例：同 day+mode 幂等复用 + in-flight 去重 ──
+// live 幂等窗口：2 分钟内复用同一次准备结果（对齐未开赛 TTL；超窗重新强制刷新拒绝旧赔率）。
+const LIVE_TTL_MS = 120000;
+const __prepareCache = new Map();    // key -> { result, at }
+const __prepareInflight = new Map(); // key -> Promise<result>
+
+function prepareKey({ cacheDir, mode, day, jingcaiOnly }) {
+  return `${cacheDir}|${mode}|${day}|${jingcaiOnly ? 1 : 0}`;
+}
+
+function prepareTtl(mode) {
+  // 历史/回放缓存不可变 → 永久复用；live → 短 TTL
+  return mode === "live" ? LIVE_TTL_MS : Infinity;
+}
+
+/** 手动失效某足球日的准备缓存（供测试/强制重取）。 */
+export function invalidatePreparedDay({ cacheDir, day, mode = "replay", jingcaiOnly = true } = {}) {
+  __prepareCache.delete(prepareKey({ cacheDir, mode, day, jingcaiOnly }));
+}
+
 /**
- * 准备某足球日数据（LLM 前的确定性数据边界）。
- * @param {object} opts cacheDir / engineRoot / day / mode("live"|"replay") / jingcaiOnly / pythonBin
+ * 准备某足球日数据（LLM 前的确定性数据边界）——单例入口。
+ *
+ * 语义：
+ *   - 幂等缓存：同 cacheDir+day+mode+jingcaiOnly 在 TTL 内直接复用上次结果（live 2 分钟 / 历史永久），
+ *     返回值带 reused:true；
+ *   - in-flight 去重：同 key 正在准备时并发调用复用同一 Promise，不重复拉取；
+ *   - force:true 跳过缓存与去重，强制重取。
+ *
+ * @param {object} opts cacheDir / engineRoot / day / mode("live"|"replay") / jingcaiOnly / pythonBin / force / onProgress
  */
-export async function prepareDay({ cacheDir, engineRoot, day, mode = "replay", jingcaiOnly = true, pythonBin = "python", onProgress } = {}) {
+export async function prepareDay(opts = {}) {
+  const { cacheDir, day, mode = "replay", jingcaiOnly = true, force = false } = opts;
+  const progress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
+  const key = prepareKey({ cacheDir, mode, day, jingcaiOnly });
+
+  if (!force) {
+    const hit = __prepareCache.get(key);
+    if (hit && (Date.now() - hit.at) < prepareTtl(mode)) {
+      progress({ phase: "复用已准备数据（单例）", detail: `${day} ${mode}` });
+      return { ...hit.result, reused: true };
+    }
+    const inflight = __prepareInflight.get(key);
+    if (inflight) {
+      progress({ phase: "等待进行中的数据准备（单例）", detail: `${day} ${mode}` });
+      return inflight;
+    }
+  }
+
+  const run = (async () => {
+    const result = await prepareDayCore({ ...opts, mode, jingcaiOnly });
+    __prepareCache.set(key, { result, at: Date.now() });
+    return result;
+  })();
+  if (!force) __prepareInflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    __prepareInflight.delete(key);
+  }
+}
+
+/** 准备某足球日数据（核心实现，无单例语义）。 */
+async function prepareDayCore({ cacheDir, engineRoot, day, mode = "replay", jingcaiOnly = true, pythonBin = "python", onProgress } = {}) {
   const progress = typeof onProgress === "function" ? onProgress : () => {};
   const calDates = calendarDatesForDay(day);
   const warnings = [];

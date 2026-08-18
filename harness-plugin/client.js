@@ -456,7 +456,7 @@ window.__ModuleLoader__.load({
         inputActions.submit("queue");
       };
       return h("div", { className: "dsq-root" },
-        h("button", { className: "dsq-btn", onClick: function () { fire("分析流：调用 ds_analyze_all_parallel(parallel=7) 并行分析全部 7 只狗（每狗独立 subagent），不要顺序逐狗。"); } }, "⚡ 分析全部"),
+        h("button", { className: "dsq-btn", onClick: function () { fire("分析全部：先调用一次 ds_prepare_day(mode=\"live\") 完成数据获取（单例），再对每只单关狗分别调用 ds_analyze_dog(dog=<狗名>)——每次一个独立 headless subagent；同一轮里并列发起多只狗以并行。不要在主循环里顺序逐场分析，也不要让单狗工具各自重复取数。"); } }, "⚡ 分析全部"),
         h("button", { className: "dsq-btn", onClick: function () { fire("结算流：调用 ds_settle_all(parallel=7) 纯 JS 并行结算全部 7 只狗（只认完场比分，无 LLM），不要反思、不要因子归纳。"); } }, "🧾 结算全部"),
           h("button", { className: "dsq-btn", onClick: function () { fire("因子流·归纳：调用 ds_factor_flow(scope='induct', reflect_day='auto', limit=30) 先对最近已结算日（如0816）的订单反思生成新因子，再 阶段A 非alpha各自归纳 → 阶段B alpha barrier 跨狗统一归纳，不要做退役。"); } }, "🧬 因子归纳全部"),
         h("button", { className: "dsq-btn", onClick: function () { fire("因子流·退役：调用 ds_factor_flow(scope='review', user_notes='保守原则，只退役有明确结构性证伪证据的因子') 阶段C 非alpha先行→alpha收尾。"); } }, "🪦 因子退役全部"));

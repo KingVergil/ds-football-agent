@@ -70,7 +70,7 @@ ${persona || "(无 persona.md，按通用框架执行)"}
 4. 读角色数据：ds_persona_js("${dog}")（返回人设 + 日常比赛范围 + 资金现状 capital/full_capital/约束）；金额 = 信心比例 x full_capital。
 5. 独立判断后 submit_orders("${dog}", "${day}", orders) 结构化下单。该狗行为准则：平局狗无干净信号就 0 注；均注狗每场必下；梭哈2/3狗必下 2-4 注；alpha 系凯利负期望就 skip；以上方人设为准。
 
-禁止调用 ds_analyze_all_parallel / ds_prepare_day / 结算 / 因子 / 回放 / ds_capital_js 或 subagent 类工具（比赛列表已注入、资金在人设工具里；递归委派被系统拒绝）。lota_matches 仅在确需按类型复核时可用（默认竞彩）。
+禁止调用 ds_analyze_dog / ds_prepare_day / 结算 / 因子 / 回放 / ds_capital_js 或 subagent 类工具（比赛列表已注入、资金在人设工具里；递归委派被系统拒绝）。lota_matches 仅在确需按类型复核时可用（默认竞彩）。
 
 最后只输出一行 JSON（不要 markdown 代码块，不要多余文字）：
 {"dog":"${dog}","day":"${day}","placed":0,"skipped":0,"capital":0,"orders":0,"summary":"一句话"}`;
@@ -87,7 +87,7 @@ async function runOneDog(ctx, parent, signal, dog, day, matchesText, persona) {
     maxDepth: 1, // 只允许这一层子 agent，禁止孙级递归
     toolFilter: { deny: [
       // 工具组可见性（docs/workflow_tool_groups.md §2.1）：分析子流只留 分析组+角色组+只读数据
-      "subagent", "subagent_fork", "ds_analyze_all_parallel",
+      "subagent", "subagent_fork", "ds_analyze_dog",
       "ds_prepare_day", "ds_migrate_storage", "ds_export_to_python",
       "ds_settle_js", "ds_reflect_js", "fetch_scores",
       "ds_factor_induction", "ds_factor_dedup", "ds_factor_review_js",
@@ -149,7 +149,7 @@ export async function analyzeDogsParallel(ctx, opts = {}) {
       const idx = cursor++;
       const dog = dogs[idx];
       try {
-        const persona = personas[dog] || (opts.cacheDir ? readPersona(opts.cacheDir, dog) : "");
+        const persona = personas[dog] || (opts.cacheDir ? readPersona(opts.cacheDir, dog, opts.personaDir) : "");
         results[idx] = await runOneDog(ctx, opts.parent, signal, dog, day, matchesText, persona);
         onProgress({
           idx: idx + 1,
@@ -184,5 +184,54 @@ export async function analyzeDogsParallel(ctx, opts = {}) {
     fail_count: failCount,
     rows,
     text: rows.map((r) => `${r.ok ? "OK " : "FAIL "} ${r.dog} [${r.stopReason}] ${r.text.slice(0, 300).replace(/\n/g, " ")}`).join("\n"),
+  };
+}
+
+/**
+ * 分析单只狗 = 一个独立 headless subagent 过程（分析的最小单元）。
+ *
+ * 数据获取（data_fetch）由父 agent 先行单独完成（ds_prepare_day 单例），本函数只读已准备的
+ * 比赛缓存、注入人设、spawn 一个子 agent 跑该狗，不内嵌数据准备、不做多狗并行——
+ * 是否并行、并行多少由父 agent 自己决定（并列多次调用 ds_analyze_dog）。
+ *
+ * @param {object} ctx Cordis 上下文（已注入 subagents）
+ * @param {object} opts { dog, day, parent, signal, cacheDir, persona, personaDir }
+ */
+export async function analyzeOneDog(ctx, opts = {}) {
+  if (!ctx || !ctx.subagents) {
+    return { error: "ctx.subagents 不可用：host 未挂载 @deepseek-ai/dsh-subagent（或插件未注入 subagents）" };
+  }
+  if (!opts.parent) {
+    return { error: "缺少 parent agent，无法启动 subagent" };
+  }
+  if (ctx.subagents.getProvider("spawn") === undefined) {
+    return { error: "subagent provider 'spawn' 未注册：host 需挂载 @deepseek-ai/dsh-subagent-spawn-in-process" };
+  }
+  const dog = opts.dog;
+  if (!dog) return { error: "缺少 dog（要分析的狗名）" };
+
+  const signal = opts.signal ?? new AbortController().signal;
+  const day = opts.day || footballDayLabel();
+
+  // 只读已准备的比赛缓存（父 agent 应先调 ds_prepare_day 完成 data_fetch）；缺则提示先准备
+  const matches = opts.cacheDir ? readMatchesCache(opts.cacheDir, day) : [];
+  if (opts.cacheDir && matches.length === 0) {
+    return { ok: true, skipped: `当日(${day})无比赛缓存，请先调 ds_prepare_day(day, mode="live") 完成数据获取`, day, dog, matches_count: 0 };
+  }
+  const matchesText = matchesToPrompt(matches);
+  const persona = opts.persona || (opts.cacheDir ? readPersona(opts.cacheDir, dog, opts.personaDir) : "");
+
+  const startedAt = beijingNowIso();
+  const row = await runOneDog(ctx, opts.parent, signal, dog, day, matchesText, persona);
+  return {
+    ok: !!(row && row.ok),
+    started_at: startedAt,
+    finished_at: beijingNowIso(),
+    day,
+    dog,
+    matches_count: matches.length,
+    stopReason: row && row.stopReason,
+    runId: row && row.runId,
+    text: (row && row.text) || "",
   };
 }

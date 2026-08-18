@@ -5,7 +5,7 @@
 
 ## 1. 背景
 
-现状：`ds_analyze_all_parallel` / `ds_replay` / `ds_prepare_day` / `ds_factor_induction` 这类任务可能跑几分钟到几十分钟，但工具只在**结束**时返回结果，运行中没有任何中间状态；其他 UI（斗狗场 / 外部看板）拿不到"正在进行什么、第几步、x/y"。
+现状：`ds_analyze_dog` / `ds_replay` / `ds_prepare_day` / `ds_factor_induction` 这类任务可能跑几分钟到几十分钟，但工具只在**结束**时返回结果，运行中没有任何中间状态；其他 UI（斗狗场 / 外部看板）拿不到"正在进行什么、第几步、x/y"。
 
 ## 2. 状态模型
 
@@ -62,7 +62,7 @@ finish({ok, detail, result_summary})      → completed / failed
 | type | 工具 | 进度粒度 |
 |---|---|---|
 | `data-prep` | `ds_prepare_day` / `ds_prepare_range` | 阶段：拉比赛 → 补 features/tags → 过滤竞彩 |
-| `analyze` | `ds_analyze_all_parallel` | 每狗：`done=idx / total=dogs`，detail=狗名+ok/fail |
+| `analyze` | `ds_analyze_dog` | 单狗：`done=0→1`，detail=狗名+ok/fail（并行由父 agent 并列调用决定） |
 | `replay` | `ds_replay` | 每天 + 阶段：数据准备 → 第 x/y 天 分析/结算/反思/因子归纳/退役 |
 | `settle` | `ds_settle_js` | 粗粒度（短） |
 | `reflect` | `ds_reflect_js` | 粗粒度 |
