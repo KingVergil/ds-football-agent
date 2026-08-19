@@ -1,7 +1,7 @@
 # 任务状态设计（task status）
 
 > 状态：设计稿 v1。目标：让**每个工具调用**都有可查询的状态记录，长任务（并行分析 / 回放 / 数据准备 / 因子归纳）运行中持续更新阶段与进度，其他 UI 能实时展示"正在做什么、做到哪、成败"。
-> 与 [`workflow_tool_groups.md`](workflow_tool_groups.md) 正交：工具分组管**可见性**，任务状态管**可观测性**。
+> 与工具分组正交：工具分组管**可见性**，任务状态管**可观测性**。
 
 ## 1. 背景
 
@@ -86,7 +86,7 @@ finish({ok, detail, result_summary})      → completed / failed
 
 ## 7. 与回放 / runtime 改造的关系
 
-- 后续回放按 `workflow_tool_groups.md` 的 分析流 → 结算流 → 因子流（0 反思 → A→B→C barrier）重排时，进度上报随阶段同步（每阶段一个 phase）。
+- 后续回放按 分析流 → 结算流 → 因子流（0 反思 → A→B→C barrier）重排时，进度上报随阶段同步（每阶段一个 phase）。
 - 因子流 alpha barrier 期间，`factor-induction` 的 phase 明确标注 `阶段A 非alpha` / `阶段B alpha barrier`，UI 能看到"等待非 alpha 完成"。
 - 工具可见性（tool groups）与任务状态正交，互不影响。
 

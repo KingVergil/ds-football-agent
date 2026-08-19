@@ -251,7 +251,7 @@ dog.status ∈ { live, sandbox, archived }
 - `bridge.js` / `index.js`：role_root 透传
 - `dashboard.js` / `client.js`：沙箱管理 + diff 可视化 + 转正确认
 - `tools/replayTool.js`：`sandbox` / `promote_after` / `facts` 参数
-- `docs/bridge.md` / `docs/replay_mode.md` / `docs/handoff_2026-08-18.md`：同步新结论
+- `docs/bridge.md` / `docs/replay_mode.md`：同步新结论
 
 **验证**
 - 新狗：创建沙箱（空）→ skip_llm 回放 → 转正 → 进默认列表
