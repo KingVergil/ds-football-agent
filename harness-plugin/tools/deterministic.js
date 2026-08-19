@@ -18,10 +18,10 @@ import {
 
 /**
  * 注册只读数据工具组。
- * @param {object} deps { registerTool, taskReg, cacheDir, engineRoot, pythonBin }
+ * @param {object} deps { registerTool, taskReg, cacheDir, engineRoot, pythonBin, envFile }
  */
 export function registerDeterministicTools(deps) {
-  const { registerTool, taskReg, cacheDir, engineRoot, pythonBin } = deps;
+  const { registerTool, taskReg, cacheDir, engineRoot, pythonBin, envFile = "" } = deps;
 
   // ── lota_matches：某足球日比赛列表 ──
   registerTool({
@@ -141,7 +141,7 @@ export function registerDeterministicTools(deps) {
     },
     execute: withTask(taskReg, { type: "status", title: "狗状态" }, async (args) => {
       try {
-        const r = await runBridge({ pythonBin, engineRoot, req: { func: "status", dog: String(args.dog) } });
+        const r = await runBridge({ pythonBin, engineRoot, envFile, req: { func: "status", dog: String(args.dog) } });
         if (r.ok) return r.data;
         return { error: r.error };
       } catch (e) {

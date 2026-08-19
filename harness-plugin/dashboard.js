@@ -24,7 +24,7 @@ import { basename, join, resolve } from "node:path";
 import { DS_REAL_DOGS } from "./tools/roles.js";
 import { readTasks } from "./taskStatus.js";
 import {
-  runBridge, BRIDGE_FUNCS, MUTATING_FUNCS, isValidDateStr, bridgeResultSummary,
+  runBridge, BRIDGE_FUNCS, MUTATING_FUNCS, isValidDateStr, bridgeResultSummary, defaultPythonBin,
 } from "./bridge.js";
 import {
   runReplay, validateReplayRange, listSandboxes, promoteSandbox, abortSandbox, sandboxNameFor,
@@ -555,7 +555,12 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
   //   校验（func 白名单 / 狗名存在 / 日期格式与区间）→ 写操作在途去重（409）→
   //   后台 spawn python -m src.bridge，NDJSON progress → taskReg → /ds-tasks 轮询，
   //   结果摘要进任务记录（detail），前端渲染卡片。
-  const { engineRoot = join(cacheDir, ".."), pythonBin = "python", taskReg = null } = extras;
+  const {
+    engineRoot = join(cacheDir, ".."),
+    pythonBin = defaultPythonBin(),
+    envFile = "",
+    taskReg = null,
+  } = extras;
   const allowedDog = (name) =>
     dashboardDogsFor(roles).includes(name) || pythonRoleDirNames(cacheDir).includes(name);
   const FUNC_LABEL = {
@@ -644,6 +649,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             const r = await runBridge({
               pythonBin,
               engineRoot,
+              envFile,
               req: {
                 func,
                 ...(dog ? { dog } : {}),
@@ -728,7 +734,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             // 阶段 A：非 alpha 并行
             await Promise.all(nonAlpha.map(async (dog) => {
               const r = await runBridge({
-                pythonBin, engineRoot,
+                pythonBin, engineRoot, envFile,
                 req: { func: "factor-induction", dog, opts: {} },
                 onProgress: (p) => prog({ phase: `非 alpha 归纳 ${dog}·${p.phase || ""}`, done: 0, total: 1, detail: p.detail || dog }),
               });
@@ -740,7 +746,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             if (alpha.length) {
               prog({ phase: `alpha barrier（${alpha.join("、")}）跨狗统一归纳`, done: 0, total: 1 });
               const r = await runBridge({
-                pythonBin, engineRoot,
+                pythonBin, engineRoot, envFile,
                 req: { func: "factor-induction", opts: { roles: alpha } },
                 onProgress: (p) => prog({ phase: `alpha barrier·${p.phase || ""}`, done: 0, total: 1, detail: p.detail || "" }),
               });
@@ -838,6 +844,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
               restore_after: spec.restore_after === true,
               skip_llm: skipLlm,
               pythonBin,
+              envFile,
               onProgress: prog,
             });
             if (r && r.status === "paused") {
@@ -912,7 +919,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             });
           };
           try {
-            const opts = { sandbox, onProgress: prog, pythonBin };
+            const opts = { sandbox, onProgress: prog, pythonBin, envFile };
             if (action === "to_end") opts.to_end = true;
             if (action === "rewind") opts.rewind_to = String(body.rewind_to || "").trim();
             if (typeof body.induction_notes === "string" && body.induction_notes.trim()) {

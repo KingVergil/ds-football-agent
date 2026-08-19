@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { setupDashboard } from "./dashboard.js";
 import { createTaskRegistry } from "./taskStatus.js";
-import { runBridge } from "./bridge.js";
+import { runBridge, resolveChildEnv, defaultPythonBin } from "./bridge.js";
 import { resolveRoles } from "./tools/roles.js";
 import { registerDeterministicTools } from "./tools/deterministic.js";
 import { registerReplayTool } from "./tools/replayTool.js";
@@ -135,7 +135,7 @@ dsh 只做薄壳：数据准备/分析/结算/因子归纳/因子退役/状态/�
  * matches/features/tags 缓存（比分/状态/赔率，供斗狗场展示）。dsh 启动即生效；
  * 无 LOTA_API_KEY 的离线环境会失败并自动跳过。
  */
-function startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin = "python") {
+function startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin = defaultPythonBin(), envFile = "") {
   const footballDay = () => {
     const ts = Date.now() - (12 * 3600 + 60) * 1000;
     return new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -148,6 +148,7 @@ function startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin = "python") {
       const r = await runBridge({
         pythonBin,
         engineRoot,
+        envFile,
         req: { func: "prepare", day: footballDay(), opts: { mode: "live", jingcai_only: true } },
         timeoutMs: 10 * 60 * 1000,
       });
@@ -173,7 +174,8 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
     ? config.scheduledEmails : ["15:58", "18:15", "20:15"];
   const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
     ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
-  const pythonBin = config.pythonBin ?? "python";
+  const pythonBin = config.pythonBin ?? defaultPythonBin();
+  const envFile = config.envFile ?? "";
 
   const bj = (ts) => new Date(ts + 8 * 3600 * 1000);
   const dayOf = (ts) => bj(ts).toISOString().slice(0, 10);
@@ -187,7 +189,11 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
   let running = false;
 
   const runPythonCmd = (args) => new Promise((resolve2) => {
-    const c = spawn(pythonBin, args, { cwd: engineRoot, stdio: "ignore", env: { ...process.env } });
+    const c = spawn(pythonBin, args, {
+      cwd: engineRoot,
+      stdio: "ignore",
+      env: resolveChildEnv({ envFile, engineRoot }),
+    });
     c.on("exit", () => resolve2());
     c.on("error", () => resolve2());
   });
@@ -205,6 +211,7 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
         const r = await runBridge({
           pythonBin,
           engineRoot,
+          envFile,
           req: { func: "analyze", dog, day, opts: { live: true, prefetched: false, jingcai_only: true } },
         });
         if (!r.ok) console.warn(`[lota-data] 定时分析失败 ${dog} ${day}: ${r.error}`);
@@ -238,7 +245,8 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
 function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
   const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
-  const pythonBin = config.pythonBin ?? "python";
+  const pythonBin = config.pythonBin ?? defaultPythonBin();
+  const envFile = config.envFile ?? "";
   const toolAllowlist = Array.isArray(config.toolAllowlist) && config.toolAllowlist.length
     ? [...config.toolAllowlist]
     : null;
@@ -251,11 +259,12 @@ function apply(ctx, config = {}) {
   if (once("dashboard-routes")) setupDashboard(ctx, cacheDir, roles, config.avatarDir, {
     engineRoot,
     pythonBin,
+    envFile,
     taskReg,
   });
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
-  if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin);
+  if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin, envFile);
 
   // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
   if (once(`scheduler:${engineRoot}`)) startScheduledJobs(ctx, engineRoot, config, roles.dogs);
@@ -278,13 +287,13 @@ function apply(ctx, config = {}) {
   // ── 只读数据工具组（agent 面板唯一工具集；固定流执行入口= dashboard 表单）──
   registerDeterministicTools({
     registerTool, taskReg,
-    cacheDir, engineRoot, pythonBin,
+    cacheDir, engineRoot, pythonBin, envFile,
   });
 
   // ── ds_replay：harness 唯一保留的工作流入口（agent 驱动，插件侧拼装）──
   registerReplayTool({
     ctx, registerTool, taskReg,
-    cacheDir, engineRoot, pythonBin,
+    cacheDir, engineRoot, pythonBin, envFile,
   });
 }
 

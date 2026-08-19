@@ -58,7 +58,8 @@ Fetcher 抓完数据后，必须把下面三类文件写进 `cacheDir`（格式�
 - `/matches` 服务器有 limit（默认 500），范围拉取需 `limit`+`offset` 分页拉完。
 
 > ⚠️ 这节只是「参考实现」说明。**密钥不随仓库发布**：`LOTA_API_KEY` 由用户/维护者通过
-> 环境变量注入（插件 `bridge.js` 会直读 `~/.zshrc` 注入子进程 env）。
+> 环境变量或 `.env` 文件注入（插件 `bridge.js` 读取优先级：环境变量 >
+> `config.envFile` → `<engineRoot>/.env` → `~/.env` > `~/.zshrc`，后者仅非 Windows 兜底）。
 
 ## 4. 参考实现（python 引擎）接入位置
 
@@ -71,14 +72,15 @@ replay 缓存优先），也等价于 `dsfootball_cli.py dashboard` 的刷新逻
 1. **配 key**：
 
    ```bash
-   export LOTA_API_KEY=...                        # 数据源密钥（找维护者要）
+   # 二选一：写 <engineRoot>/.env（推荐，Windows 通用）或 export 到 ~/.zshrc
+   echo 'LOTA_API_KEY=...' >> python-engine/.env  # 数据源密钥（找维护者要）
    ```
 
 2. **触发**（二选一）：
 
    ```bash
    echo '{"func":"prepare","day":"2026-08-14","opts":{"mode":"live","jingcai_only":true}}' \
-     | python3 -m src.bridge                                  # 桥 prepare（在 python-engine/ 下）
+     | python3 -m src.bridge                                  # 桥 prepare（在 python-engine/ 下；Windows 用 python/py -3）
    python3 dsfootball_cli.py dashboard                        # CLI 刷新 + 看板
    ```
 
