@@ -1,140 +1,171 @@
-# ds-agents — 足球投注分析 agent（harness 版）
+# ds-agents — 足球投注分析 agent（DSH harness + Python 引擎）
 
-纯 JS 重构的足球投注分析系统。harness agent 当「大脑」独立推理下单，确定性业务（资金 / 下单 / 结算 / 因子）**全部纯 JS**，Python 只保留 Lota 数据获取层（私有，不入库）。
+多智能体足球投注分析系统：DSH harness 插件负责**只读数据工具 + 仪表盘 + 桥接**，
+Python 引擎负责**确定性业务（资金 / 订单 / 结算 / 因子）与分析执行**（随仓库发布）。
 
 ```
-LangGraph 状态机  ──重构──►  harness 插件（纯 JS 工具 + storage 域）
-Python 业务代码  ──重构──►  JS 确定性层（资金/订单/结算/因子门控）
-Python 数据获取  ──保留──►  lota_fetcher.js（私有，抓 Lota → 写缓存）
+harness 插件（只读工具 + 斗狗场） ──POST /ds-run──►  python -m src.bridge（引擎）
+                                                    │  数据准备 → 读人设 → 查资金
+                                                    │  → LLM 决策 → 下单 → 结算 → 因子
+                                                    └──► 写回 roles/<狗>/（本地唯一真源）
 ```
 
-## 原理
-
-### 架构分层
+## 架构分层
 
 | 层 | 是什么 | 提供什么 | 归属 |
 |---|---|---|---|
-| **插件** `ds-agents-lota-data` | 能力（工具） | 读数据 + 下单/结算/因子全套工具 | 开源（`harness-plugin/`） |
-| **预设** `ds-agents` | 大脑（人设 + 提示） | persona「足球分析 agent」+ 分析框架 section | 开源（预设目录） |
-| **数据获取层** `lota_fetcher.js` | 缓存生产者 | 抓 Lota API → 写本地缓存 | 私有（单独分发） |
+| **插件** `ds-agents-lota-data` | 能力（工具 + UI） | 只读数据工具 + 「斗狗场」仪表盘 + 创建狗 + 回放入口 | 开源（`harness-plugin/`） |
+| **Python 引擎** | 执行核心 | 数据准备 / 分析下单 / 结算 / 因子归纳 / 因子退役 / 状态 / 重置 | 开源（`python-engine/`） |
+| **数据获取层**（python 引擎） | 缓存生产者 | 抓 Lota API → 写本地缓存（`src/data_manager.py` / 桥 `prepare`） | 开源（需 `LOTA_API_KEY`） |
+| **运行时数据** `python-engine/data/` | 本地真源 | matches/features/tags 缓存 + `roles/<狗>/`（人设/资金/订单/因子） | 私有（不入库） |
 
-- **harness agent 是「大脑」**：主循环 LLM 自动驱动轮次，插件只注册 system-prompt section + 工具 + 读写 storage 域，不手拼 prompt、不自己调主循环 LLM。
-- **确定性业务纯 JS**：金额折算、去重、已开赛保护、结算数学（亚盘/大小球/赢半输半）、因子门控（14 天休眠 + 低信息退役）都是确定性代码，LLM 只给「方向 + 比例」。
-- **LLM 只收敛到两处**：主循环（分析/下单决策）+ 旁路 `ctx.llm.stream`（结算后反思、因子退役评估、因子判重）。
+- **固定流不走 LLM 工具面板**：数据准备 / 分析 / 结算 / 因子归纳 / 因子退役 的执行入口只有
+  斗狗场按钮（`POST /ds-run` → 插件直接 spawn `python -m src.bridge`）与回放（`/ds-replay`）。
+- **harness agent 只剩两个职责**：回答数据/状态类问题（只读工具）；回放暂停时起草
+  「下一轮方向建议」供用户编辑（`ds_replay` 半交互）。
+- **LLM 只在引擎内两处**：analyze 的一次决策 + factor 相关旁路调用；确定性业务全部在引擎代码里。
 
-### 数据流
+## 数据流
 
 ```
-Lota API ──(lota_fetcher.js 私有)──► 本地缓存 matches/features/tags
+Lota API ──(python 引擎数据层 + LOTA_API_KEY)──► 本地缓存 matches/features/tags
                                         │
                             ┌───────────┴───────────┐
                             ▼                       ▼
                      lota_* 只读工具          /ds-dashboard 仪表盘
-                            │
-                     harness agent 判断（读人设 + 读因子记忆）
-                            │
-                     submit_orders（纯 JS 下单）
-                            │
-                     storage 域（ds_roles/ds_factors/ds_reflections/ds_slugs）
+                            │                       │
+                            └──── POST /ds-run ─────┘
+                                        ▼
+                          python -m src.bridge（NDJSON 协议）
+                              ├─ analyze：读人设/记忆/资金 → LLM 决策 → 下单
+                              ├─ settle / factor-induction / factor-review
+                              └─ 写回 roles/<狗>/ + factors/
 ```
 
-### 记忆读写闭环
-
-因子记忆不是静态数据，是「每日 factor-induction」动态生产的：
-
-```
-analyze（读 ds_memory_js 注入活跃因子/负例护栏/历史反思）
-   │ 下单
-   ▼
-settle（ds_settle_js 纯 JS 结算）
-   │
-   ▼
-reflect（ds_reflect_js 旁路 LLM 因子发现 → 写回 factor_perf + 反思）
-   │
-   ▼
-factor-induction（ds_factor_induction 去重合并；alpha 狗跨狗 1 次）
-   │
-   └──► 次日 analyze 再读回 ──► 闭环
-```
+桥协议（stdin 单行 JSON 请求 / stdout NDJSON 事件）见 [`harness-plugin/docs/bridge.md`](harness-plugin/docs/bridge.md)。
 
 ## 部署使用
 
 ### 1. 前置
 
 - DSH harness（Cordis 运行环境）
-- Node ≥ 18（仅私有 `lota_fetcher.js` 需要全局 `fetch`）
+- Python 3.10+（引擎，`pip install -r` 依赖见 `python-engine/`）
+- Python 引擎自带数据获取（`src/data_manager.py`，需 `LOTA_API_KEY`，见 [`fetcher_protocol.md`](harness-plugin/docs/fetcher_protocol.md)）
 
-### 2. 装插件
+### 2. 装插件 + 配引擎
 
-把 `harness-plugin/` 作为 npm 包（`ds-agents-lota-data`）或本地路径，插件行并入你的 composition（host 层全局挂载，或 preset 的 `agent.cordis.yml`）：
+把 `harness-plugin/` 作为 npm 包（`ds-agents-lota-data`）或本地路径，插件行并入 composition：
 
 ```yaml
 - id: lota-data
   name: 'ds-agents-lota-data'
   config:
     cacheDir: ./python-engine/data   # 缓存根目录（matches/features/tags/roles）
+    engineRoot: ./python-engine      # Python 引擎根目录（桥 spawn python -m src.bridge）
 ```
 
-### 3. 配预设
+引擎需要环境变量（可放 `~/.zshrc`，插件 `bridge.js` 会直读注入子进程）：
 
-复制 `ds-agents` 预设（persona「足球分析 agent」+ 分析框架 section）到你的 `.agent-presets/`。预设里的 persona 告诉模型「分析某狗 = refresh → 读数据 → 读人设 → 读记忆 → 查资金 → 判断 → 下单」的完整工作流。
+```bash
+export DEEPSEEK_API_KEY=...   # 引擎内 LLM 决策
+export LOTA_API_KEY=...       # 数据获取层（python 引擎，key 找维护者要）
+# 邮件（可选）：QQ_EMAIL_ADDR / QQ_EMAIL_AUTH_CODE 或 EMAIL_163_ADDR / EMAIL_163_AUTH_CODE
+```
 
-### 4. 准备数据
+### 3. 准备数据
 
 两种方式，二选一：
 
-- **种子数据包**（给只想先跑起来的人）：解压后 `cacheDir` 指向它，跑一次 `ds_migrate_storage` 把 7 只狗的初始状态迁入 storage 域。
-- **真实数据**（给有数据源的人）：拿私有 `lota_fetcher.js` + API key，跑：
+- **公开数据包**（开箱即玩）：解压 `fixtures/testdata-14d.tar.gz`（或
+  `fixtures/testdata-30d.tar.gz`，过去一个月），把 `cacheDir` 指向解压目录。
+- **真实数据**：配好 `LOTA_API_KEY` 后由引擎自己拉——桥 `prepare`（live 强制刷新 / replay 缓存优先）
+  会抓比赛 + compact-fet + 切 sections；命令行可用 `dsfootball_cli.py dashboard` 触发。
 
-  ```bash
-  export LOTA_API_KEY=...
-  node lota_fetcher.js refresh-range 2026-08-01 2026-08-14   # 拉比赛 + 足球日切分写盘
-  node lota_fetcher.js prefetch 2026-08-14                   # 抓 compact-fet + 切 sections
-  ```
+### 4. 初始化一只狗（角色）
+
+一只狗 = `roles/<狗>/persona.md`（人设，唯一源）+ `roles/<狗>/<狗>.json`
+（资金/订单/limits/status）+ 可选注册表条目（`data/dogs.json`，结构化配置），
+外加引擎按需生成的 `memory/`、`factors/`。初始化方式：
+
+1. **斗狗场「创建狗」**（推荐）：仪表盘表单 → `POST /ds-dogs`，插件幂等补建
+   `persona.md`（默认保守模板）与 `<狗>.json`（初始资金默认 10000），并写入 `dogs.json` 注册表。
+   新建狗默认 `status=sandbox`（观察期，不进全量默认列表）。
+2. **插件 config.roles 内联**：`config.roles: [{ name, scope, initial_capital, alpha_mode, limits, enabled, emoji, c1, c2 }]`。
+   只影响展示/默认列表，角色文件仍需在本地存在。
+3. **手动建目录**：`mkdir -p roles/<狗>/`，写 `persona.md` 与 `<狗>.json`
+   （字段见 `python-engine/src/role_registry.py::sync_from_registry`），
+   然后 `python -m src.role_registry sync` 幂等补缺/迁移。
+
+初始化完成后：
+
+- `status=live` 的狗进入全量默认列表（`python -m src.role_registry live`），
+  斗狗场逐狗按钮与 `./batch_agents.sh` 群体操作都会带上它；
+- 人设/limits/scope 后续可在斗狗场编辑狗（`PATCH /ds-dogs/<name>`），资金与订单不受影响；
+- 删除狗只移注册表（`DELETE /ds-dogs/<name>`），历史订单/因子/资金保留；
+- 公开仓库**不携带任何狗数据**：本地没有 `roles/<狗>/` 就不会出现在任何列表/群体操作里。
+
+> 狗列表完全由本地角色派生（`python-engine/src/role_registry.py`），与仓库里提交了什么无关。
 
 ### 5. 日常使用
 
-在 `ds-agents` 预设下开一个 session，用自然语言下指令：
+在挂载插件的 preset 下开 session：
 
 | 你要干的 | 直接说 |
 |---|---|
-| 分析下单 | 「分析梭哈2狗」/「分析梭哈2狗 2026-08-14」 |
-| 结算 | 「结算梭哈2狗 2026-08-14」 |
-| 结算后反思 | 「反思梭哈2狗」 |
-| 因子退役 | 「因子审查梭哈2狗」 |
-| 因子归纳 | 「因子归纳 梭哈2狗」/「因子归纳 alpha」 |
+| 分析下单 | 斗狗场逐狗点「⚡ 分析」（或「分析 <狗>」） |
+| 结算 | 斗狗场「🧾 结算」 |
+| 因子归纳 / 退役 | 斗狗场「🧬 归纳」「🪦 Review」 |
+| 回放 | 「跑回放」/ `ds_replay` 工具 |
+| 数据/状态问答 | 「<狗> 余额多少」「今天有哪些竞彩比赛」 |
 
-7 只狗：`alpha2狗` `alpha狗` `均注狗` `梭哈2狗` `梭哈3狗` `平局狗` `跟风狗`。
+命令行批量（`python-engine/`）：
+
+```bash
+./batch_agents.sh analyze live        # 全部 live 狗分析（足球当日）
+./batch_agents.sh settle live         # 全部 live 狗结算
+./batch_agents.sh status              # 全部状态
+./batch_agents.sh dashboard           # 刷新数据并打开看板
+./batch_agents.sh factor-induction    # 因子归纳
+```
+
+> 群体操作（analyze/settle/factor）只作用于本地 `status=live` 的角色；
+> 公开仓库零狗时它们自然为空操作，创建狗后自动生效。
 
 ## 目录结构
 
 ```
-harness-plugin/            # 开源（入库）
-├─ index.js                # 插件本体：工具注册 + 分析框架 section
-├─ dashboard.js / client.js  # 「斗狗场」仪表盘（Host /docs + Client tab）
-├─ domains.js / storage.js  # storage 域定义 + 数据迁移
-├─ memory.js               # 因子记忆 + 反思注入（读）
-├─ settle.js / settleEngine.js / placeOrders.js  # 结算数学 + 下单
-├─ reflect.js / factorReview.js / factorInduction.js  # 反思 + 退役 + 归纳（写）
-├─ odds.js / fundLimits.js # 盘口解析 + 资金约束
-├─ docs/
-│  ├─ cache_format_spec.md # 缓存文件格式规范（盘上格式）
-│  └─ fetcher_protocol.md  # 数据获取层接入协议（网络侧）
+harness-plugin/            # 开源插件（入库）
+├─ index.js                # 插件本体：只读工具注册 + 斗狗场 + 定时器 + prompt section
+├─ bridge.js               # dsh ↔ python-engine 统一桥（NDJSON，func 白名单）
+├─ dashboard.js / client.js  # 「斗狗场」仪表盘（/ds-dashboard + /ds-dogs + /ds-run + /ds-replay）
+├─ dogRegistry.js          # 运行时狗注册表（创建/编辑/删除狗，幂等补建 Python 角色）
+├─ replay.js / tools/replayTool.js  # 回放（沙箱目录模型，半交互）
+├─ tools/deterministic.js  # 只读数据工具（lota_matches / lota_match / lota_sections / lota_status）
+├─ tools/roles.js          # 角色解析（狗列表按本地角色派生）
+├─ docs/                   # 桥协议 / 缓存格式 / 回放设计
 └─ SKILL.md / cordis.yml / package.json
 
-python-engine/             # 私有（不入库）
-├─ lota_fetcher.js         # Lota 数据获取层（单独分发）
-└─ data/                   # 缓存 + 角色数据（本地保留）
+python-engine/             # Python 引擎（入库）
+├─ src/bridge.py           # 统一桥入口（8 个 func 白名单）
+├─ src/agent.py            # 角色 Agent（人设/资金/订单/记忆）
+├─ src/data_manager.py     # 数据获取层（Lota API，需 LOTA_API_KEY）
+├─ src/place_orders.py / settle.py / factor_*.py  # 下单/结算/因子
+├─ src/role_registry.py    # 角色注册表（live/all/alpha/sync）
+├─ dsfootball_cli.py / batch_agents.sh   # CLI 批量操作
+├─ data/                   # 运行时数据（私有，不入库）
+└─ docs/                   # 架构/格式文档
+
+fixtures/                  # 公开测试数据包（matches + features）
 ```
 
 ## 数据协议
 
-开源仓库不绑定数据源。缓存格式 + Fetcher 接入见两份文档：
+开源仓库不绑定数据源。缓存格式 + Fetcher 接入见：
 
-- [`harness-plugin/docs/cache_format_spec.md`](harness-plugin/docs/cache_format_spec.md) — 缓存 JSON 长什么样
-- [`harness-plugin/docs/fetcher_protocol.md`](harness-plugin/docs/fetcher_protocol.md) — 数据怎么进缓存、`lota_fetcher.js` 放哪怎么用
+- [`harness-plugin/docs/cache_format_spec.md`](harness-plugin/docs/cache_format_spec.md) — 缓存 JSON 格式
+- [`harness-plugin/docs/fetcher_protocol.md`](harness-plugin/docs/fetcher_protocol.md) — 数据怎么进缓存
 
-自建数据源只要按 `cache_format_spec.md` 产出缓存文件，插件就能跑；唯一数据专有点是 `odds.js` 的盘口排版解析。
+自建数据源按 `cache_format_spec.md` 产出缓存即可；唯一数据专有点是 `odds.js` 的盘口排版解析。
 
 ## License
 

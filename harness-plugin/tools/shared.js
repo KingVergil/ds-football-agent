@@ -27,6 +27,12 @@ export const LLM_TEMPERATURES = {
   review: 0.1,    // 因子退役（结构性评估）
 };
 
+/** 北京时间 ISO（与 Python datetime.now() 同口径，不依赖宿主机时区）。 */
+export function beijingNowIso() {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  return d.toISOString().slice(0, 19); // "YYYY-MM-DDTHH:mm:ss"
+}
+
 export function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));

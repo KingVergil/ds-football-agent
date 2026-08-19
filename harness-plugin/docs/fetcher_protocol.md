@@ -14,10 +14,13 @@
   │ Fetcher │             │ cacheDir │             │ 插件 lota_* 工具 │
   │（网络） │             │ (JSON)   │             │（只读、不触网）   │
   └─────────┘             └──────────┘             └────────────────┘
-   私有/自建                开源规范                 开源（harness-plugin）
+   开源参考实现             开源规范                 开源（harness-plugin）
+   （python 引擎）
 ```
 
-- **Fetcher**：负责抓数据（Lota API 或任何自建源），按 `cache_format_spec.md` 的格式写进 `cacheDir`。含网络与密钥，**不入开源仓库**。
+- **Fetcher**：负责抓数据（Lota API 或任何自建源），按 `cache_format_spec.md` 的格式写进 `cacheDir`。
+  参考实现 = python 引擎 `python-engine/src/data_manager.py`（随仓库发布），
+  密钥一律走环境变量 `LOTA_API_KEY`，不写进代码。
 - **插件**：`lota_matches` / `lota_match` / `lota_sections` 只读 `cacheDir`，永远不触网、不含密钥。
 - **cacheDir**：唯一契约点。插件通过 `config.cacheDir` 指向它；Fetcher 通过自己的 `DATA_ROOT` 指向同一个目录。
 
@@ -44,7 +47,7 @@ Fetcher 抓完数据后，必须把下面三类文件写进 `cacheDir`（格式�
 
 ## 3. Lota API（参考实现）
 
-私有 Fetcher 的参考实现接的是 Lota，端点如下（本协议只描述形状，不保证长期稳定）：
+参考实现（python 引擎 `src/data_manager.py`）接的是 Lota，端点如下（本协议只描述形状，不保证长期稳定）：
 
 | 端点 | 参数 | 返回 |
 |---|---|---|
@@ -54,31 +57,32 @@ Fetcher 抓完数据后，必须把下面三类文件写进 `cacheDir`（格式�
 - 鉴权：请求头 `X-API-Key`。
 - `/matches` 服务器有 limit（默认 500），范围拉取需 `limit`+`offset` 分页拉完。
 
-> ⚠️ 这节只是「参考实现」说明，让拿到私有 Fetcher 的人知道它抓什么。**开源仓库不含
-> Lota API 地址、密钥或任何抓取代码。**
+> ⚠️ 这节只是「参考实现」说明。**密钥不随仓库发布**：`LOTA_API_KEY` 由用户/维护者通过
+> 环境变量注入（插件 `bridge.js` 会直读 `~/.zshrc` 注入子进程 env）。
 
-## 4. 私有 Fetcher（`lota_fetcher.js`）接入位置
+## 4. 参考实现（python 引擎）接入位置
 
-参考实现是单文件 `lota_fetcher.js`（Node ≥ 18，全局 `fetch`），**单独分发给有数据源的用户**，不随开源仓库发布。
+参考实现随仓库发布：`python-engine/src/data_manager.py`（DataManager）+ `src/tools.py`。
+数据获取入口是引擎的桥 `prepare`（`POST /ds-run {func:"prepare"}`，live 强制刷新 /
+replay 缓存优先），也等价于 `dsfootball_cli.py dashboard` 的刷新逻辑。
 
-拿到它之后：
+接入方式：
 
-1. **放哪**：插件会自动找 `harness-plugin/lota_fetcher.js`（或 dsh 安装目录同文件），找不到再回退 `cacheDir` 的父目录。推荐直接放插件目录；也可放别处，用环境变量指回：
-
-   ```bash
-   export LOTA_DATA_ROOT=/path/to/cacheDir        # 默认 ./data
-   export LOTA_API_KEY=...                        # 或写在 ~/.claude/settings.json
-   ```
-
-2. **怎么用**：
+1. **配 key**：
 
    ```bash
-   node lota_fetcher.js refresh-range 2026-08-01 2026-08-14   # 范围拉比赛 + 切分写盘
-   node lota_fetcher.js prefetch 2026-08-14                   # 抓 compact-fet + 切 sections
-   node lota_fetcher.js match Lota4579740                     # 单场调试
+   export LOTA_API_KEY=...                        # 数据源密钥（找维护者要）
    ```
 
-3. **效果**：`refresh-range` + `prefetch` 跑完，`cacheDir` 里就有了 `matches/`、`features/`、`tags/`，插件的 `lota_*` 工具即可读。
+2. **触发**（二选一）：
+
+   ```bash
+   echo '{"func":"prepare","day":"2026-08-14","opts":{"mode":"live","jingcai_only":true}}' \
+     | python3 -m src.bridge                                  # 桥 prepare（在 python-engine/ 下）
+   python3 dsfootball_cli.py dashboard                        # CLI 刷新 + 看板
+   ```
+
+3. **效果**：`prepare` 跑完，`cacheDir` 里就有了 `matches/`、`features/`、`tags/`，插件的 `lota_*` 工具即可读。
 
 ## 5. 自建数据源（不用 Lota 也行）
 
@@ -95,5 +99,5 @@ Fetcher 协议不绑定 Lota。只要你能产出 `cache_format_spec.md` 定义�
 | 你是什么角色 | 需要什么 | 怎么接 |
 |---|---|---|
 | 只想跑分析 | 缓存数据 | 拿 seed 数据包，`config.cacheDir` 指向它 |
-| 要抓真实数据 | 私有 `lota_fetcher.js` + API key | 按 §4 放好、跑 refresh + prefetch |
+| 要抓真实数据 | python 引擎数据层 + `LOTA_API_KEY` | 按 §4 配好 key，跑桥 prepare / CLI dashboard |
 | 自有数据源 | 无 | 按 `cache_format_spec.md` 自己写缓存 |
