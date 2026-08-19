@@ -13,5 +13,7 @@
   config:
     # 本地缓存根目录（含 matches/ features/ tags/ predicts/ orders/）
     cacheDir: ./python-engine/data
-    # Python 引擎根目录（桥会 python3 -m src.bridge）
+    # Python 引擎根目录（桥解释器按平台自动选 python3/python；可加 pythonBin 显式指定）
     engineRoot: ./python-engine
+    # pythonBin: <解释器绝对路径>   # 可选：Windows 常见 C:/Python312/python.exe；conda 亦可
+    # envFile: <密钥文件路径>       # 可选：缺省自动读 <engineRoot>/.env 与 ~/.env

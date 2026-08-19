@@ -89,16 +89,39 @@ Lota API ──(python 引擎数据层 + LOTA_API_KEY)──► 本地缓存 mat
   name: 'ds-agents-lota-data'
   config:
     cacheDir: ./python-engine/data   # 缓存根目录（matches/features/tags/roles）
-    engineRoot: ./python-engine      # Python 引擎根目录（桥 spawn python -m src.bridge）
+    engineRoot: ./python-engine      # Python 引擎根目录
+    # pythonBin: <解释器绝对路径>     # 可选；缺省按平台自动选（Windows=python，macOS/Linux=python3）
+    # envFile: <路径>                # 可选密钥文件；缺省自动读 <engineRoot>/.env 与 ~/.env
 ```
 
-引擎需要环境变量（可放 `~/.zshrc`，插件 `bridge.js` 会直读注入子进程）：
+引擎需要环境变量（`DEEPSEEK_API_KEY` 做 LLM 决策、`LOTA_API_KEY` 拉数据）：
 
 ```bash
-export DEEPSEEK_API_KEY=...   # 引擎内 LLM 决策
-export LOTA_API_KEY=...       # 数据获取层（python 引擎，key 找维护者要）
-# 邮件（可选）：QQ_EMAIL_ADDR / QQ_EMAIL_AUTH_CODE 或 EMAIL_163_ADDR / EMAIL_163_AUTH_CODE
+# 方式 A（推荐，Windows/macOS/Linux 通用）：写 .env（默认读 <engineRoot>/.env）
+cp python-engine/.env.example python-engine/.env
+# 编辑 python-engine/.env，填 DEEPSEEK_API_KEY / LOTA_API_KEY
+
+# 方式 B（macOS/Linux）：放 ~/.zshrc，插件 bridge.js 会读它注入子进程（历史兜底）
+export DEEPSEEK_API_KEY=...
+export LOTA_API_KEY=...
 ```
+
+读取优先级：**环境变量 > `.env`（`config.envFile` → `<engineRoot>/.env` → `~/.env`）>
+`~/.zshrc` / `~/.bashrc`（仅非 Windows）**。
+
+#### 一键安装（macOS / Linux / Windows 通用）
+
+```bash
+node harness-plugin/scripts/install.mjs \
+  --profile-dir <dsh profile 目录，如 ~/.dsh/profiles/web> \
+  --set-keys DEEPSEEK_API_KEY=... LOTA_API_KEY=...
+```
+
+幂等完成「装进 profile node_modules + 写 cordis.patch.yml 挂载条目 + 写密钥文件
+（Windows 写 `.env`，macOS/Linux 再追加 `~/.zshrc`）」，全程不需要管理员权限。
+
+> **Windows 用户**：没有 `~/.zshrc` 也没关系——密钥放 `python-engine/.env` 即可；
+> `python3` 是商店别名，插件自动改用 `python`（或 `config.pythonBin` 配绝对路径）。
 
 ### 3. 准备数据
 
@@ -156,6 +179,9 @@ export LOTA_API_KEY=...       # 数据获取层（python 引擎，key 找维护�
 ./batch_agents.sh factor-induction    # 因子归纳
 ```
 
+> `batch_agents.sh` 是 macOS/Linux 脚本；Windows 用户用等价命令
+> （`python dsfootball_cli.py dashboard` 等）或直接在斗狗场点按钮，无需 shell。
+
 > 群体操作（analyze/settle/factor）只作用于本地 `status=live` 的角色；
 > 公开仓库零狗时它们自然为空操作，创建狗后自动生效。
 
@@ -170,6 +196,7 @@ harness-plugin/            # 开源插件（入库）
 ├─ replay.js / tools/replayTool.js  # 回放（沙箱目录模型，半交互）
 ├─ tools/deterministic.js  # 只读数据工具（lota_matches / lota_match / lota_sections / lota_status）
 ├─ tools/roles.js          # 角色解析（狗列表按本地角色派生）
+├─ scripts/install.mjs     # 跨平台一键安装器（macOS / Linux / Windows）
 ├─ docs/                   # 桥协议 / 缓存格式 / 回放设计
 └─ SKILL.md / cordis.yml / package.json
 

@@ -27,7 +27,7 @@
 - Host 路由（`dashboard.js`）：
   - `POST /ds-analyze`：标准单狗分析直启（prefetch 进程内 + 会话挂载子代理 + headless 回退），
     `__inflightAnalyze` 在途去重、`taskReg` 记进度、`spawnHeadless` 复用定时任务通道
-    （DEEPSEEK_API_KEY 从 ~/.zshrc 兜底）；会话挂载失败自动回退 headless，保证分析仍能跑；
+    （DEEPSEEK_API_KEY 从环境变量 / .env 兜底）；会话挂载失败自动回退 headless，保证分析仍能跑；
   - `POST /ds-dogs`：校验（狗名合法性/重名）→ `createDog` → 200/400 JSON；
   - `GET /ds-persona/<name>`：按需返回完整人设文本（创建表单「复制自」用）；
   - `/ds-dashboard` 的 `replays[]` 增补 `interactive/reset/restoreAfter/logTail/reportExists`。

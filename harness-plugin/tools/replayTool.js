@@ -11,10 +11,10 @@ import { LOOSE_OBJECT, jsonRender } from "./shared.js";
 
 /**
  * 注册 ds_replay 工具。
- * @param {object} deps { ctx, registerTool, taskReg, cacheDir, engineRoot, pythonBin }
+ * @param {object} deps { ctx, registerTool, taskReg, cacheDir, engineRoot, pythonBin, envFile }
  */
 export function registerReplayTool(deps) {
-  const { ctx, registerTool, taskReg, cacheDir, engineRoot, pythonBin } = deps;
+  const { ctx, registerTool, taskReg, cacheDir, engineRoot, pythonBin, envFile = "" } = deps;
 
   registerTool({
     name: "ds_replay",
@@ -64,6 +64,7 @@ export function registerReplayTool(deps) {
           to_end: args.to_end,
           rewind_to: args.rewind_to,
           pythonBin,
+          envFile,
           onProgress,
         });
       } catch (e) {

@@ -43,19 +43,101 @@ export function isValidDateStr(s) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
-/** 从 ~/.zshrc 直读密钥（DEEPSEEK_API_KEY / LOTA_API_KEY），不经过 shell。 */
-function keysFromZshrc() {
+/**
+ * 平台默认 Python 解释器：
+ *   - Windows：`python`（`python3` 通常是 MS Store 别名，不可靠）
+ *   - macOS / Linux：`python3`（Homebrew / apt 一般没有裸 `python`）
+ * 挂载时可用 `config.pythonBin` 显式覆盖（如 conda 的绝对路径）。
+ */
+export function defaultPythonBin() {
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+/**
+ * 解析 KEY=VALUE 文本（兼容 `export ` 前缀与单/双引号；不执行 shell）。
+ * 用于 .env 文件与 ~/.zshrc / ~/.bashrc 兜底读取。
+ */
+export function parseEnvText(text) {
   const env = {};
-  try {
-    const text = readFileSync(join(homedir(), ".zshrc"), "utf8");
-    const deepseek = text.match(/DEEPSEEK_API_KEY=["']?([A-Za-z0-9_-]+)/);
-    if (deepseek) env.DEEPSEEK_API_KEY = deepseek[1];
-    const lota = text.match(/LOTA_API_KEY=["']?([A-Za-z0-9_-]+)/);
-    if (lota) env.LOTA_API_KEY = lota[1];
-  } catch {
-    // 读不到就算了：调用方进程 env 里可能已有
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    let val = m[2].trim();
+    if (!val || val.includes("$") || val.includes("`")) continue; // 不解析 shell 展开
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (val) env[m[1]] = val;
   }
   return env;
+}
+
+function readEnvFile(file) {
+  try {
+    return parseEnvText(readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/** 引擎会用到的密钥/配置键（.env / shell rc 兜底只挑这些，避免误读无关行）。 */
+const KNOWN_KEYS = new Set([
+  "DEEPSEEK_API_KEY",
+  "LOTA_API_KEY",
+  "QQ_EMAIL_ADDR",
+  "QQ_EMAIL_AUTH_CODE",
+  "EMAIL_163_ADDR",
+  "EMAIL_163_AUTH_CODE",
+  "QQ_EMAIL_RECIPIENTS_FILE",
+  "QQ_EMAIL_TO",
+  "DS_ROLES_ROOT",
+  "DS_SESSIONS_ROOT",
+  "DS_FACTORS_ROOT",
+  "DSF_DATA_DIR",
+]);
+
+/**
+ * 从 ~/.zshrc / ~/.bashrc / ~/.profile 兜底读密钥（仅非 Windows；老用户迁移用）。
+ * 新装一律写 .env，bridge 优先读 .env，这里只是兼容历史配置。
+ */
+function keysFromShellRc() {
+  if (process.platform === "win32") return {};
+  const env = {};
+  for (const rc of [".zshrc", ".bashrc", ".profile"]) {
+    for (const [k, v] of Object.entries(readEnvFile(join(homedir(), rc)))) {
+      if (KNOWN_KEYS.has(k) && !(k in env)) env[k] = v;
+    }
+  }
+  return env;
+}
+
+/**
+ * 组装桥子进程 env，优先级（高 → 低）：
+ *   1. 宿主进程已有环境变量（process.env）
+ *   2. 显式 envFile（config.envFile）→ <engineRoot>/.env → ~/.env（Windows 友好）
+ *   3. ~/.zshrc / ~/.bashrc（仅非 Windows 的历史兜底）
+ * 低优先级只填空缺，不覆盖已有值（修复旧实现里 zshrc 覆盖进程 env 的问题）。
+ */
+export function resolveChildEnv({ envFile = "", engineRoot = "" } = {}) {
+  const merged = { ...process.env };
+  const files = [];
+  if (envFile) files.push(envFile);
+  if (engineRoot) files.push(join(engineRoot, ".env"));
+  files.push(join(homedir(), ".env"));
+  for (const file of files) {
+    for (const [k, v] of Object.entries(readEnvFile(file))) {
+      if (!(k in merged)) merged[k] = v;
+    }
+  }
+  for (const [k, v] of Object.entries(keysFromShellRc())) {
+    if (!(k in merged)) merged[k] = v;
+  }
+  return merged;
 }
 
 /**
@@ -63,13 +145,15 @@ function keysFromZshrc() {
  *
  * @param {object} opts
  *   pythonBin / engineRoot / req({func,dog,day,start,end,opts})
+ *   envFile（可选，密钥文件；缺省自动找 <engineRoot>/.env 与 ~/.env）
  *   timeoutMs（默认 30 分钟）/ onProgress({phase,done,total,detail})
  * @returns {Promise<{ok:boolean, data?:object, error?:string, code:number, stderr:string, timedOut?:boolean}>}
  */
 export function runBridge({
-  pythonBin = "python",
+  pythonBin = defaultPythonBin(),
   engineRoot = "",
   req = {},
+  envFile = "",
   timeoutMs = 30 * 60 * 1000,
   onProgress,
 } = {}) {
@@ -80,10 +164,7 @@ export function runBridge({
       resolve({ ok: false, code: "role-root", error: `role_root 必须是沙箱 workspace 路径（replays/sandboxes/<沙箱>/workspace）: ${roleRoot}`, stderr: "" });
       return;
     }
-    const childEnv = {
-      ...process.env,
-      ...keysFromZshrc(),
-    };
+    const childEnv = resolveChildEnv({ envFile, engineRoot });
     let child;
     try {
       child = spawn(pythonBin, ["-m", "src.bridge"], {

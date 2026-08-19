@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { LLM_TEMPERATURES } from "./tools/shared.js";
 import { beijingNowIso } from "./tools/shared.js";
 import { streamText } from "./tools/llmText.js";
-import { runBridge } from "./bridge.js";
+import { runBridge, defaultPythonBin } from "./bridge.js";
 
 /** 回放旁路 LLM 默认模型（deepseek-flash 省 token）。 */
 export const REPLAY_MODEL = "deepseek-v4-flash";
@@ -162,13 +162,13 @@ export function orderFootballDay(order) {
 }
 
 /** 桥调用封装（带 role_root）。 */
-async function bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot) {
+async function bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot, envFile = "") {
   const full = {
     ...req,
     opts: { ...(req.opts || {}), ...(roleRoot ? { role_root: roleRoot } : {}) },
   };
   try {
-    const r = await runBridge({ pythonBin, engineRoot, req: full, onProgress });
+    const r = await runBridge({ pythonBin, engineRoot, envFile, req: full, onProgress });
     if (r.ok) return { ok: true, data: r.data, func: req.func, dog: req.dog };
     const stderrTail = String(r.stderr || "").trim().slice(-600);
     return {
@@ -183,13 +183,13 @@ async function bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, role
 }
 
 /** 桥调用 + 心跳（LLM 决策期间任务进度不死）。 */
-async function bridgeCallTick(cacheDir, engineRoot, pythonBin, req, onProgress, label, roleRoot) {
+async function bridgeCallTick(cacheDir, engineRoot, pythonBin, req, onProgress, label, roleRoot, envFile = "") {
   const t0 = Date.now();
   const hb = setInterval(() => {
     onProgress({ phase: `${label}（${Math.round((Date.now() - t0) / 1000)}s）` });
   }, 10000);
   try {
-    return await bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot);
+    return await bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot, envFile);
   } finally {
     clearInterval(hb);
   }
@@ -349,7 +349,7 @@ function writeFacts(cacheDir, sandboxDir, s) {
 // ── 每日管线（沙箱内）────────────────────────────
 
 /** 跑沙箱的一天。partialFirstDay=true 且 dayIdx===0：D 的分析/结算已随复制带过来，只从因子归纳继续。 */
-async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d, dayIdx, cfg, acc) {
+async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, d, dayIdx, cfg, acc) {
   const { dog, factorReviewEvery, userNotes, onProgress, days, skipLlm, roleRoot } = cfg;
   const { trajectory, reviewLog, checkpointLog, log, prepLog } = acc;
   const warn = (msg) => log.push(`⚠️ ${msg}`);
@@ -365,7 +365,7 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d,
     onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备`, done: dayIdx, total, detail: d });
     const prep = await bridgeCall(cacheDir, engineRoot, pythonBin, {
       func: "prepare", day: d, opts: { mode: "replay", jingcai_only: true },
-    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), roleRoot);
+    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), roleRoot, envFile);
     const prepMeta = prep.ok ? {
       day: d, candidates: prep.data.candidates, prefetched_ok: prep.data.prefetched_ok,
       warnings: prep.data.warnings || [],
@@ -385,13 +385,13 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d,
       opts: { prefetched: true, live: false, jingcai_only: true, ...(skipLlm ? { skip_llm: true } : {}) },
     }, (p) => onProgress({
       phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d,
-    }), `第 ${dayIdx + 1}/${total} 天 分析 ${dog}`, roleRoot);
+    }), `第 ${dayIdx + 1}/${total} 天 分析 ${dog}`, roleRoot, envFile);
     placed = r.ok ? (r.data.placed || 0) : 0;
     log.push(`     ${r.ok ? "✅" : "❌"} ${dog} 下单 ${placed} 单${r.error ? " " + r.error : ""}`);
 
     // 3) 结算（写沙箱；live 侧由桥自动落 pre-factor 检查点，沙箱内由本层管）
     onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 结算 ${dog}`, done: dayIdx, total, detail: d });
-    const settle = await bridgeCall(cacheDir, engineRoot, pythonBin, { func: "settle", dog, day: d, opts: {} }, undefined, roleRoot);
+    const settle = await bridgeCall(cacheDir, engineRoot, pythonBin, { func: "settle", dog, day: d, opts: {} }, undefined, roleRoot, envFile);
     const settleRes = settle.ok ? (settle.data.settlement || {}) : { settled: 0, pnl: 0 };
     settled = settleRes.settled || 0;
     pnl = settleRes.pnl || 0;
@@ -407,7 +407,7 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d,
   onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, done: dayIdx, total, detail: d });
   const ind = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
     func: "factor-induction", dog, day: d, opts: {},
-  }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, roleRoot);
+  }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, roleRoot, envFile);
   const sum = ind.ok ? (ind.data.summary || {}) : {};
   if (ind.ok) log.push(`   🧬 因子归纳 ${dog}: 合并 ${sum.merged || 0}，补定义 ${sum.fac_created || 0}`);
   else warn(`[${d}] 因子归纳失败: ${ind.error}`);
@@ -421,7 +421,7 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d,
     const rev = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
       func: "factor-review", dog, end: d, start: startDate,
       opts: { user_notes: userNotes, ...(skipLlm ? { skip_llm: true } : {}) },
-    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}`, roleRoot);
+    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}`, roleRoot, envFile);
     const entry = { day: d, dog, ...(rev.ok ? rev.data : { error: rev.error }) };
     reviewLog.push(entry);
     if (rev.ok) {
@@ -493,7 +493,7 @@ async function buildDirection(ctx, { dogs, cycleReviews, cycleTraj, model, skipL
 }
 
 /** 从 s.next_idx 起逐日跑；interactive 在周期边界（做了退役且非最后一天）暂停。 */
-async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, s) {
+async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, s) {
   const cfg = {
     dog: s.dog, factorReviewEvery: s.factor_review_every, userNotes: s.user_notes,
     onProgress: s.onProgress || (() => {}), days: s.days,
@@ -507,7 +507,7 @@ async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, s
   while (s.next_idx < s.days.length) {
     const dayIdx = s.next_idx;
     const d = s.days[dayIdx];
-    const { reviewDone } = await runReplayDay(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, d, dayIdx, cfg, acc);
+    const { reviewDone } = await runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, d, dayIdx, cfg, acc);
     s.next_idx = dayIdx + 1;
     saveSession(sandboxDir, s); // 每日即时落盘：dashboard 逐日刷新
     if (s.interactive && reviewDone && s.next_idx < s.days.length) {
@@ -664,7 +664,8 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
   const restoreAfter = opts.restore_after === true;
   const userNotes = String(opts.user_notes || "").trim();
   const skipLlm = opts.skip_llm === true;
-  const pythonBin = opts.pythonBin || "python";
+  const pythonBin = opts.pythonBin || defaultPythonBin();
+  const envFile = opts.envFile || "";
   const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
   const runId = opts.run_id || `replay_${sandbox}_${Date.now()}`;
 
@@ -677,7 +678,7 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
     if (reset === "zero") {
       const r = await bridgeCall(cacheDir, engineRoot, pythonBin, {
         func: "reset", dog, opts: { reset_mode: "full" },
-      }, undefined, roleRoot);
+      }, undefined, roleRoot, envFile);
       if (r.ok) log.push(`🧹 reset=zero：${dog} 已重置为初始资金 + 空记忆`);
       else warn(`${dog} reset 失败: ${r.error}`);
     }
@@ -696,7 +697,7 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
     };
     saveSession(sandboxDir, s);
 
-    const seg = await replaySegment(ctx, cacheDir, engineRoot, pythonBin, sandboxDir, s);
+    const seg = await replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, s);
     if (seg.paused) return await pauseReplay(ctx, sandboxDir, s, seg);
     return await finalizeReplay(cacheDir, sandboxDir, s, restoreAfter);
   } catch (e) {
@@ -744,7 +745,7 @@ async function resumeReplay(ctx, cacheDir, engineRoot, opts) {
   s.status = "running";
 
   try {
-    const seg = await replaySegment(ctx, cacheDir, engineRoot, opts.pythonBin || "python", sandboxDir, s);
+    const seg = await replaySegment(ctx, cacheDir, engineRoot, opts.pythonBin || defaultPythonBin(), opts.envFile || "", sandboxDir, s);
     if (seg.paused) return await pauseReplay(ctx, sandboxDir, s, seg);
     return await finalizeReplay(cacheDir, sandboxDir, s, s.restore_after);
   } catch (e) {

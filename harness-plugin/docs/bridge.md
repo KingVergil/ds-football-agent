@@ -13,7 +13,8 @@ factorReview / fanout / flows / reflect / memory 的 domain 部分）退役，�
 
 ## 协议（仿 place_orders 桥）
 
-入口：`python3 -m src.bridge`（`python-engine/src/bridge.py`）。
+入口：`python -m src.bridge`（`python-engine/src/bridge.py`；解释器按平台自动选
+`python3`/`python`，挂载时可用 `config.pythonBin` 覆盖）。
 
 - stdin：单行 JSON 请求
   `{func, dog?, day?, start?, end?, opts?}`
@@ -24,8 +25,10 @@ factorReview / fanout / flows / reflect / memory 的 domain 部分）退役，�
 - stderr：诊断/内部 print（一律重定向，stdout 只出 NDJSON）
 
 dsh 侧固定 argv 直接 spawn（`spawn(pythonBin, ["-m","src.bridge"], {cwd: engineRoot})`），
-不拼 shell、无 bash -c。API key（DEEPSEEK_API_KEY / LOTA_API_KEY）由
-`harness-plugin/bridge.js` 直读 `~/.zshrc` 注入子进程 env。
+不拼 shell、无 bash -c。API key（`DEEPSEEK_API_KEY` / `LOTA_API_KEY`）由
+`harness-plugin/bridge.js` 按 **环境变量 > `.env`（`config.envFile` →
+`<engineRoot>/.env` → `~/.env`）> `~/.zshrc` / `~/.bashrc`（仅非 Windows 兜底）**
+注入子进程 env（低优先级只填空缺，不覆盖已有环境变量）。
 
 ## func 白名单（8 个）
 

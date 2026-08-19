@@ -8,7 +8,8 @@ description: 使用 ds-agents-lota-data 插件的只读工具回答比赛/缓存
 本插件暴露**只读数据工具 + 斗狗场仪表盘 + 回放入口**。只读工具读本地缓存
 （`config.cacheDir`，不触网、不含密钥）；固定流（数据准备/分析/结算/因子归纳/
 因子退役/状态/刷新/重置）**没有 LLM 工具**——执行入口只有斗狗场表单
-（`POST /ds-run` → 插件直接 spawn `python3 -m src.bridge`，本地 Python 引擎执行）。
+（`POST /ds-run` → 插件直接 spawn python 桥 `-m src.bridge`，本地 Python 引擎执行；
+解释器按平台自动选 `python3`/`python`，可用 `config.pythonBin` 覆盖）。
 
 ## 你（harness agent）的职责
 
@@ -57,9 +58,11 @@ description: 使用 ds-agents-lota-data 插件的只读工具回答比赛/缓存
 
 ## 引擎桥（本地 Python 引擎，随仓库发布）
 
-`bridge.js` spawn `python3 -m src.bridge`（cwd=`engineRoot`），stdin 单行 JSON 请求、
+`bridge.js` spawn python 桥（cwd=`engineRoot`），stdin 单行 JSON 请求、
 stdout NDJSON 事件（progress/result/error），8 个 func 白名单双端校验；
-API key（`DEEPSEEK_API_KEY` / `LOTA_API_KEY`）由插件直读 `~/.zshrc` 注入子进程 env。
+API key（`DEEPSEEK_API_KEY` / `LOTA_API_KEY`）按 **环境变量 > `.env`
+（`config.envFile` → `<engineRoot>/.env` → `~/.env`）> `~/.zshrc`（仅非 Windows 兜底）**
+注入子进程 env。
 协议细节见 `docs/bridge.md`。
 
 ## 注意
