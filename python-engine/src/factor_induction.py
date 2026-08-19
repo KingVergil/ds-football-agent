@@ -3,7 +3,7 @@
 每日 settle 后运行：把各角色每日生产的因子做统一清洗/合并/补定义，
 形成干净的因子库供注册表与 analyze 消费。
 
-调度（已定，见 docs/workflow_tool_groups.md §2.3）：
+调度（已定）：
   - 阶段 A（非 alpha，可并行）：各非 alpha 狗各自归纳（只在角色内部合并）
   - 阶段 B（barrier，串行）：等非 alpha 全部完成后再做 alpha 跨狗统一归纳
     （alpha2狗/alpha狗/均注狗：跨角色合并同模式因子，1 次进全库）
