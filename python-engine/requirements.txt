@@ -1,0 +1,9 @@
+# ds_agents python-engine 运行时依赖（数据获取 + LLM 决策编排）
+#
+# 安装：python -m pip install -r requirements.txt
+# 开发环境实测：requests 2.32.3 / langgraph 1.2.5
+requests>=2.31
+langgraph>=0.2
+
+# 可选（仅 docs/render_diagrams.py 画架构图用，核心流不需要）：
+# playwright

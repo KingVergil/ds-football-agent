@@ -14,18 +14,17 @@
  *       固定流（分析/结算/因子）执行入口 = dashboard 表单 → python 桥（tools/roles.js 只做角色解析）。
  */
 import { writeFileSync, mkdirSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { setupDashboard } from "./dashboard.js";
 import { createTaskRegistry } from "./taskStatus.js";
-import { runBridge, resolveChildEnv, defaultPythonBin } from "./bridge.js";
+import { runBridge, defaultPythonBin } from "./bridge.js";
 import { resolveRoles } from "./tools/roles.js";
 import { registerDeterministicTools } from "./tools/deterministic.js";
 import { registerReplayTool } from "./tools/replayTool.js";
 
 const name = "lota-data";
-// webServer 不放进 inject：headless(定时分析)没有 web 服务，放进去会导致插件 pending。
+// webServer 不放进 inject：headless 没有 web 服务，放进去会导致插件 pending。
 // dashboard 用 ctx.webServer 判空优雅跳过；web 下 cordis 的 ctx.get 仍能取到该服务。
 const inject = ["tools", "storageDomain", "llm", "systemPrompt", "subagents"];
 
@@ -164,84 +163,6 @@ function startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin = defaultPytho
   ctx.effect(() => () => clearInterval(timer));
 }
 
-/**
- * 定时任务：每天在 config.scheduledEmails 指定的时间点（HH:MM，北京时间），
- * 逐狗调 python 桥 analyze（live）→ 按 email_recipients.txt 名单发邮件。
- * 全部直接 spawn python（无 bash -c、无 headless agent）。
- */
-function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
-  const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
-    ? config.scheduledEmails : ["15:58", "18:15", "20:15"];
-  const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
-    ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
-  const pythonBin = config.pythonBin ?? defaultPythonBin();
-  const envFile = config.envFile ?? "";
-
-  const bj = (ts) => new Date(ts + 8 * 3600 * 1000);
-  const dayOf = (ts) => bj(ts).toISOString().slice(0, 10);
-  const hhmm = (ts) => {
-    const d = bj(ts);
-    return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
-  };
-
-  const fired = new Set();
-  let lastDay = "";
-  let running = false;
-
-  const runPythonCmd = (args) => new Promise((resolve2) => {
-    const c = spawn(pythonBin, args, {
-      cwd: engineRoot,
-      stdio: "ignore",
-      env: resolveChildEnv({ envFile, engineRoot }),
-    });
-    c.on("exit", () => resolve2());
-    c.on("error", () => resolve2());
-  });
-
-  const run = async () => {
-    if (running) return;
-    running = true;
-    try {
-      // 1) 逐狗 analyze（python 桥，live 语义：内部 refresh + 取数 + LLM 决策 + 下单）
-      const dogList = (Array.isArray(dogs) && dogs.length
-        ? dogs : ["梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "alpha狗", "alpha2狗"]);
-      const bj = (ts) => new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
-      const day = bj(Date.now() - (12 * 3600 + 60) * 1000);
-      for (const dog of dogList) {
-        const r = await runBridge({
-          pythonBin,
-          engineRoot,
-          envFile,
-          req: { func: "analyze", dog, day, opts: { live: true, prefetched: false, jingcai_only: true } },
-        });
-        if (!r.ok) console.warn(`[lota-data] 定时分析失败 ${dog} ${day}: ${r.error}`);
-      }
-      // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
-      const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${JSON.stringify(agents)}]`;
-      await runPythonCmd(["-c", emailPy]);
-    } catch (e) {
-      console.warn(`[lota-data] 定时任务失败: ${(e && e.message) || e}`);
-    } finally {
-      running = false;
-    }
-  };
-
-  const tick = () => {
-    const now = Date.now();
-    const day = dayOf(now);
-    if (day !== lastDay) { fired.clear(); lastDay = day; }
-    const t = hhmm(now);
-    if (times.includes(t) && !fired.has(t)) {
-      fired.add(t);
-      run();
-    }
-  };
-
-  tick(); // 注册即检查一次，避免重启后等 30 秒错过整分钟时间点
-  const timer = setInterval(tick, 30 * 1000);
-  ctx.effect(() => () => clearInterval(timer));
-}
-
 function apply(ctx, config = {}) {
   const cacheDir = resolve(config.cacheDir ?? "data");
   const engineRoot = resolve(config.engineRoot ?? join(cacheDir, ".."));
@@ -265,9 +186,6 @@ function apply(ctx, config = {}) {
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
   if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin, envFile);
-
-  // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
-  if (once(`scheduler:${engineRoot}`)) startScheduledJobs(ctx, engineRoot, config, roles.dogs);
 
   // ── 主循环 LLM 的 prompt section（analyze 框架 + 资金管理 + 结构化下单）──
   if (once("section:ds-agents-analyze")) ctx.systemPrompt.section(ANALYZE_FRAMEWORK_SECTION);
