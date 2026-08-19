@@ -4,14 +4,18 @@
 DSH harness：**数据准备先行 → 逐日（分析 → 结算 → 反思 → 因子归纳 → 周期性因子退役）**，
 记录每狗每日轨迹，出一份可对比的报告。
 
+> 2026-08-19（薄壳落地）：执行入口改为斗狗场表单（`POST /ds-replay` / `POST /ds-replay/<run_id>`），
+> 由插件侧逐日逐 func 调 python 桥（见 `docs/bridge.md`）。下方 `ds_replay(...)` 命令示例仅说明语义，
+> 实际不再写入会话输入框。
+
 ## 数据获取边界（所有流程共同的前置）
 
 无论分析 / 结算 / 因子 / 回放，都先走 `ds_prepare_day` / `prepareRange`，角色只消费结果：
 
 | 模式 | 行为 |
 |---|---|
-| `live` | 强制刷新（私有 Python prefetch 的 live-strict 语义：未开赛场次刷新失败拒绝旧缓存，旧赔率不进 prompt） |
-| `replay`（历史） | **缓存优先**：matches 有缓存直接读；缺了才调私有 fetcher 从 URL 拉一次；features/tags 同理，只按竞彩场次补齐（`prefetch --jingcai`，已有有效缓存跳过） |
+| `live` | 强制刷新（python 引擎 prepare 的 live-strict 语义：未开赛场次刷新失败拒绝旧缓存，旧赔率不进 prompt） |
+| `replay`（历史） | **缓存优先**：matches 有缓存直接读；缺了才由 python 引擎数据层从 URL 拉一次；features/tags 同理，只按竞彩场次补齐（已有有效缓存跳过） |
 
 竞彩边界在 LLM 之前确定：
 - 足球日窗口 `[D 12:01, D+1 12:00]`（跨两个日历日期）；
@@ -73,13 +77,28 @@ ds_replay(
 ## 每日管线
 
 ```
-0. 范围数据一次性准备（prepareRange：缓存优先，缺了拉 URL）
+0. 范围数据一次性准备（prepareRange：单例 + 缓存优先，缺了拉 URL）
 1. 并行分析：fan-out 每狗独立 subagent（比赛列表已注入 + 人设已注入上下文）
 2. 结算：settleDog（纯 JS，只认 state==6 比分）
 3. 反思：旁路 LLM（模型可覆盖，默认 flash）
 4. 因子归纳：alpha 跨狗 1 次 + 非 alpha 各自（flash 判重）
 5. 每 factor_review_every 天：因子退役评估（代码门控 + 旁路 LLM；user_notes 注入评估 prompt）
 ```
+
+## 启动次序（单例取数 → 范围正确性 → 替换/还原）
+
+全新回放（`ds_replay(start, end, ...)`）严格按以下次序执行：
+
+1. **范围正确性**（最先，任何副作用之前）：`validateReplayRange(start, end)`
+   —— start/end 必填、`YYYY-MM-DD` 且为真实日历日、`start ≤ end`、单段 ≤ `REPLAY_MAX_DAYS`（60 天）；
+   不合法直接返回 `{ok:false,error}`，不落快照、不重置、不取数。
+2. **快照起点**：`snapshotDomains` 把 5 个 storage 域全量落到 `replays/<run_id>/snapshot/`。
+3. **单例取数**：`prepareRange`（dataflow.js）——同 `cacheDir+start+end` 幂等复用 + in-flight 去重
+   （与 `prepareDay` 同构）；底层 cache-first，已有缓存永不重拉。
+4. **逐日跑**（分析→结算→反思→归纳→周期退役，每日三检查点）。
+5. **替换/还原**：终态检查点 + 报告；`restore_after=true`（默认）时 `restoreDomainSnapshot`
+   为**真替换**——先删回放期间新增、快照里没有的 key（如跨狗因子注册表新条目），再全量 put 快照值；
+   异常路径同样兜底还原起点，绝不留中间态。
 
 ## 轨迹对比与隔离
 

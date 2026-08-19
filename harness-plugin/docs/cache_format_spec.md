@@ -123,4 +123,5 @@ class CacheFormat(Protocol):
 本文只定义**盘上格式**。数据从哪来（Lota API / 自建源）由 `Fetcher` 负责，
 不在本规范范围内。Fetcher 的职责、接入位置、缓存产出见
 [`fetcher_protocol.md`](fetcher_protocol.md)（数据获取层接入协议）。
-开源仓库只发布读缓存工具 + 本规范 + Fetcher 协议；网络实现（`lota_fetcher.js`）单独分发。
+开源仓库发布读缓存工具 + 本规范 + Fetcher 协议；网络实现 = python 引擎
+`src/data_manager.py`（需 `LOTA_API_KEY`）。

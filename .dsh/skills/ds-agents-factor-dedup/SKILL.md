@@ -1,20 +1,18 @@
 ---
 name: factor-dedup
-description: 一键因子归纳去重 + 判重 + 退役评估。适用于用户说「因子去重」「因子归纳」「因子退役」「因子判重」时。
+description: 因子归纳/退役的执行入口是斗狗场（dashboard）的「🧬 归纳」「🪦 Review」按钮（POST /ds-run → python 桥）。适用于用户说「因子去重」「因子归纳」「因子退役」「因子判重」时——引导用户去斗狗场点按钮。
 ---
 
 # 全部因子去重（归纳 + 判重 + 退役）
 
-对 7 只单关狗做因子归纳去重与退役。串关2狗归 Python 侧，跳过。
+薄壳架构下，因子流**没有 LLM 工具**：执行入口只有斗狗场表单
+（「🧬 归纳」→ `POST /ds-run {dog, func:"factor-induction"}`；「🪦 Review」→
+`POST /ds-run {dog, func:"factor-review", end, start}`；回放内周期退役由 /ds-replay 编排）。
+判重/合并已并入 python 的 `factor-induction`（确定性清洗合并 + LLM 判重 + 补定义）。
 
-## 步骤
+## 你该做什么
 
-1. **因子归纳去重**：`ds_factor_induction(user="alpha")`（alpha 跨狗 1 次进全库）+ 非 alpha 4 狗（梭哈2狗/梭哈3狗/平局狗/跟风狗）各自 `ds_factor_induction(user=狗名)`。
-2. **因子判重**（可选）：对候选新因子调 `ds_factor_dedup(user, factor_id, desc)` → 返回 create/merge/suppress。
-3. **因子退役**（可选）：`ds_factor_review_js(user, end_date, start_date?)` —— 门控 14 天零触发休眠 + 低信息退役，旁路 LLM 结构性评估(retire/dormant/active)。
-
-## 说明
-
-- 归纳把「同模式重复」合并，方向相反一律保留（不硬并，避免把顺向/反打因子误并）。
-- 退役 end_date 用评估窗口结束日（如今天），start_date 空 = 近 7 天。
-- 若新因子与已有因子方向相反（如「离散冰点顺向」vs「离散冰点背离反打」），`ds_factor_dedup` 应判不重复并 create，而非 merge。
+1. 用户要「因子归纳/去重/退役」时，引导他在斗狗场点对应按钮（或在回放暂停卡片上编辑方向）。
+2. 归纳结果看任务记录：合并数 / 补定义数 / LLM 判重次数；退役结果含 活跃/退役/休眠 计数与
+   本周期变化（cycle_changes）。
+3. 半交互回放暂停时，你的职责是起草「下一轮方向建议」供用户编辑（这是唯一 LLM 触达点）。

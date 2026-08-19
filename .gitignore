@@ -1,5 +1,34 @@
-# ── 私有：Python 引擎 + 数据（不公开，见 docs/harness_migration_plan.md D7）──
-python-engine/
+# ── 私有：Python 引擎运行时数据 / 角色（7 狗、订单、邮箱名单不入库）──
+python-engine/data/
+python-engine/seed/
+python-engine/seed.tar.gz
+python-engine/backups/
+
+# ── 私有：绑定个人狗的批量脚本 / 飞书聊天接入 ──
+python-engine/run_base_dogs.py
+python-engine/settle_all.py
+python-engine/review_all_factors.py
+python-engine/render_feishu_orders_card.py
+python-engine/scripts/patch_chat_codex.py
+python-engine/scripts/*.jsonl
+python-engine/docs/chat-codex-group-guide.md
+
+# ── 私有：个人狗策略手册（人设/因子经验，不入库）──
+python-engine/docs/alpha2dog_factor_guide.md
+python-engine/docs/junzhugou_factor_guide.md
+python-engine/docs/factor_manual_梭哈2狗.md
+python-engine/docs/recipe-suohagou.md
+
+# ── 历史迁移/私有计划文档（与「引擎已发布」的现状矛盾，不入库）──
+python-engine/docs/harness_migration_plan.md
+python-engine/docs/harness_js_reconstruction.md
+python-engine/docs/harness_js_verification_runbook.md
+python-engine/docs/settlement_system_migration.md
+python-engine/docs/retest_runbook.md
+
+# ── 私有：工作笔记 / 7 狗头像 ──
+prompt.txt
+头像/
 
 # ── 私有工作区指令（含 open_id 等，不入库）──
 AGENTS.md
@@ -20,9 +49,6 @@ harness-sdk/
 
 # ── Node（harness-plugin 本地测试依赖，指向 dsh profile 的 node_modules）──
 harness-plugin/node_modules
-
-# ── 私有：Lota 数据获取层（单独分发，不入库）──
-harness-plugin/lota_fetcher.js
 
 # ── Python ──
 __pycache__/

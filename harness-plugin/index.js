@@ -3,28 +3,26 @@
  *
  * 开源 harness 插件：本地缓存读取工具（data 缓存目录）。
  *
- * 只做「读」，不做网络。数据来源由用户按 Fetcher 协议自行提供；
- * 盘上格式见 docs/cache_format_spec.md（本插件按该规范直接读 JSON）。
+ * dsh 薄壳：数据唯一真源 = python-engine/data 文件。固定流全部走 python 桥
+ * （POST /ds-run、/ds-replay 直连 python -m src.bridge）；agent 面板只剩只读数据工具。
  *
  * 插件形状对齐 DSH 真实工具插件（参见 @deepseek-ai/dsh-tool-bash）：
  *   - 导出 { name, inject, apply }
- *   - apply(ctx, config) 内装配 storage/dashboard/定时器/systemPrompt，再按语义分组注册工具：
- *       · 角色（User Role）           → tools/roles.js
- *       · 固定无 LLM 工作流            → tools/deterministic.js
- *       · 有 LLM 但 headless 工作流    → tools/headless.js
+ *   - apply(ctx, config) 内装配 dashboard/定时器/systemPrompt，再注册工具：
+ *       · 只读数据工具（agent 面板）    → tools/deterministic.js
+ *       · 回放（harness 唯一工作流入口）→ tools/replayTool.js
+ *       固定流（分析/结算/因子）执行入口 = dashboard 表单 → python 桥（tools/roles.js 只做角色解析）。
  */
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { setupDomains } from "./storage.js";
 import { setupDashboard } from "./dashboard.js";
 import { createTaskRegistry } from "./taskStatus.js";
-import { findMatch } from "./tools/shared.js";
-import { resolveRoles, ensureRoleRecords, registerRoleTools } from "./tools/roles.js";
+import { runBridge } from "./bridge.js";
+import { resolveRoles } from "./tools/roles.js";
 import { registerDeterministicTools } from "./tools/deterministic.js";
-import { registerHeadlessTools } from "./tools/headless.js";
+import { registerReplayTool } from "./tools/replayTool.js";
 
 const name = "lota-data";
 // webServer 不放进 inject：headless(定时分析)没有 web 服务，放进去会导致插件 pending。
@@ -115,56 +113,50 @@ function setupAgentModeRestrict(ctx, cacheDir, config) {
 const ANALYZE_FRAMEWORK_SECTION = {
   name: "ds-agents-analyze",
   order: 150,
-  text: `## ds-agents 效果 A：足球投注分析工作流
+  text: `## ds-agents 薄壳说明
 
-当用户要做足球投注分析/下单时，你（harness agent）是「大脑」，私有 Python 引擎只做确定性基础功能。
+dsh 只做薄壳：数据准备/分析/结算/因子归纳/因子退役/状态/刷新/重置全部由 python-engine
+执行（入口是斗狗场表单 → POST /ds-run 直连 python 桥；回放由 /ds-replay 插件侧编排，逐日逐 func 调桥）。
 
-0. 分析统一走 ds_analyze_dog(dog, day)：工具内部**确定性**完成 数据准备（prepareDay live 单例、竞彩过滤、strip_scores）→ 回退订单 → 读人设/记忆/资金 → 逐场段落 → 构建一个 prompt → **只调一次 LLM（temperature 0.1）** → 解析结构化订单 → 确定性下单。全程无工具轮次，LLM 只在判断时被调用一次（每次调用起一个最小分析子任务保证 session 可查）。
-1. 全狗分析（并行由你决定）：用户说「分析7狗 / 全部分析 / 分析全部狗 / 跑全部狗」时，对每只狗分别调 ds_analyze_dog(dog, day)，并列发起即并行；禁止在主循环里手动逐场读数据/下单（已内建在工具里）。
-2. 数据完整性护栏（工具内建）：缺 asian-handicap-* 段禁下亚盘、缺 over-under-* 段禁下大小球；submit_orders 会拒绝缺权威盘口的亚盘单。
+你（harness agent）的工具面板只有只读数据工具（lota_matches / lota_match / lota_sections / lota_status），
+用于回答用户关于比赛/缓存/角色状态的查询。**不要尝试用 bash / 文件操作 / 手工编排去执行固定流**——
+执行入口只有 dashboard，固定流工具已从面板移除。
 
-## 回放模式
+## 回放模式的唯一 LLM 职责
 
-- ds_replay(start, end, ...)：把「获取比赛→分析→结算→因子归纳→周期性因子退役」按日跑一遍（历史数据缓存优先、缺了才拉 URL），记录每狗每日轨迹并出报告。默认写穿：订单/因子直接落库（restore_after=false）；restore_after=true 才是模拟跑、结束还原起点。若 [start,end] 内目标狗已有订单，直接拒绝（diff/diff-report 未设计）。周期性退役支持 user_notes（用户调整意见）与 persona_overrides（人设覆盖）注入评估方向。
-⚠️ 回放纪律：你（主 agent）只调 ds_replay 一次——半交互暂停时把 direction_suggestion 转述给用户，用户确认后带 induction_notes 续跑；禁止用 bash / 手动逐日编排 / 读文件来跑回放（编排已在工具内确定性完成）。
-
-## 资金管理（金额语义）
-
-- 金额 = 信心比例 × 全金额（先 ds_capital_js 拿 full_capital）。
-- 比例档位：最有信心 30–40% / 次之 15–20% / 试探 5–10%（连输 3 场后最大仓位降到 10%），以 persona.md 为准。
-- 确定性层二次处理：去重 / 已开赛跳过 / 资金折算(scale=余额/全金额) / 硬约束 / 破产检查。你只需给方向 + 比例。
-- submit_orders 每单字段：lota_id / bet_type(亚盘|大小球|胜平负|让球胜平负) / pick(H|A|D|over|under) / odds / handicap(亚盘盘口主队视觉) / bet_size / reason。不下注则不放该场，或 skip:true。
-
-## 结算 + 反思
-
-- 结算：ds_settle_js(user, day) → 返回 settled orders（含 hit/profit/reason）。
-- 反思：ds_reflect_js(user, day, settled) → 旁路 LLM 因子发现 + 写回因子/反思记忆。
-- 因子退役：ds_factor_review_js(user, end_date, start_date?) → 门控 + 旁路 LLM 结构性评估。
-- 因子判重：ds_factor_dedup(user, factor_id, desc) → create/merge/suppress。`,
+- 回放（/ds-replay）由插件侧编排：每周期因子退役结束会暂停，卡片预填「下一轮方向建议」。
+- 你的职责：暂停后基于 factor-review 结果（退役/休眠因子、周期 PnL、用户意见）起草方向建议；
+  用户编辑确认后，插件把它作为下一周期 user_notes 注入退役评估。
+- 只做这一件事：不要主动编排回放、不要调用固定流。`,
 };
 
 /**
- * 比赛信息定时刷新：每 30 分钟跑一次私有 lota_fetcher 的 refresh-date，刷新 matches
- * 缓存里的比分/状态（供斗狗场展示）。dsh 启动即生效；无私有 fetcher（开源环境）自动跳过。
+ * 比赛信息定时刷新：每 30 分钟调一次 python 桥 prepare（live 模式），刷新
+ * matches/features/tags 缓存（比分/状态/赔率，供斗狗场展示）。dsh 启动即生效；
+ * 无 LOTA_API_KEY 的离线环境会失败并自动跳过。
  */
-function startMatchRefresher(ctx, engineRoot, cacheDir) {
-  // 私有 fetcher 优先插件目录（单独分发），缺了回退 engineRoot（老位置兼容）
-  const local = join(fileURLToPath(new URL(".", import.meta.url)), "lota_fetcher.js");
-  const fetcher = existsSync(local) ? local : join(engineRoot, "lota_fetcher.js");
-  if (!existsSync(fetcher)) return;
-  const bj = (ts) => new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const footballDay = () => bj(Date.now() - (12 * 3600 + 60) * 1000);
+function startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin = "python") {
+  const footballDay = () => {
+    const ts = Date.now() - (12 * 3600 + 60) * 1000;
+    return new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  };
   let running = false;
-  const refresh = () => {
+  const refresh = async () => {
     if (running) return;
     running = true;
-    const c = spawn(process.execPath, [fetcher, "refresh-date", footballDay()], {
-      stdio: "ignore",
-      cwd: engineRoot,
-      env: { ...process.env, LOTA_DATA_ROOT: cacheDir },
-    });
-    c.on("exit", () => { running = false; });
-    c.on("error", () => { running = false; });
+    try {
+      const r = await runBridge({
+        pythonBin,
+        engineRoot,
+        req: { func: "prepare", day: footballDay(), opts: { mode: "live", jingcai_only: true } },
+        timeoutMs: 10 * 60 * 1000,
+      });
+      if (!r.ok) console.warn(`[lota-data] 定时刷新失败: ${r.error}`);
+    } catch (e) {
+      console.warn(`[lota-data] 定时刷新失败: ${(e && e.message) || e}`);
+    } finally {
+      running = false;
+    }
   };
   refresh(); // 启动即刷一次
   const timer = setInterval(refresh, 30 * 60 * 1000);
@@ -172,18 +164,16 @@ function startMatchRefresher(ctx, engineRoot, cacheDir) {
 }
 
 /**
- * 定时邮件任务：每天在 config.scheduledEmails 指定的时间点（HH:MM，北京时间），
- * 自动触发 harness 侧全部分析（headless agent 跑「全部分析」+ ds_export_to_python）
- * + 按 email_recipients.txt 名单发邮件。dsh 启动期间生效。
+ * 定时任务：每天在 config.scheduledEmails 指定的时间点（HH:MM，北京时间），
+ * 逐狗调 python 桥 analyze（live）→ 按 email_recipients.txt 名单发邮件。
+ * 全部直接 spawn python（无 bash -c、无 headless agent）。
  */
 function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
-  // 防递归：本插件拉起的 headless 子进程带 DSH_SCHEDULED_RUN=1，不再注册定时器
-  // （否则子进程 tick() 注册即检查，同一分钟又触发拉起孙进程 → 无限递归）
-  if (process.env.DSH_SCHEDULED_RUN === "1") return;
   const times = Array.isArray(config.scheduledEmails) && config.scheduledEmails.length
     ? config.scheduledEmails : ["15:58", "18:15", "20:15"];
   const agents = Array.isArray(config.scheduledEmailAgents) && config.scheduledEmailAgents.length
     ? config.scheduledEmailAgents : ["梭哈2狗", "均注狗", "跟风狗", "alpha2狗"];
+  const pythonBin = config.pythonBin ?? "python";
 
   const bj = (ts) => new Date(ts + 8 * 3600 * 1000);
   const dayOf = (ts) => bj(ts).toISOString().slice(0, 10);
@@ -196,20 +186,37 @@ function startScheduledJobs(ctx, engineRoot, config, dogs = []) {
   let lastDay = "";
   let running = false;
 
-  const run = () => {
+  const runPythonCmd = (args) => new Promise((resolve2) => {
+    const c = spawn(pythonBin, args, { cwd: engineRoot, stdio: "ignore", env: { ...process.env } });
+    c.on("exit", () => resolve2());
+    c.on("error", () => resolve2());
+  });
+
+  const run = async () => {
     if (running) return;
     running = true;
-    // 1) harness 侧分析：对每只单关狗调 ds_analyze_dog（内部固有取数 + 一次 LLM 决策；可并列并行）→ ds_export_to_python 导出到 data/roles
-    const dogList = (Array.isArray(dogs) && dogs.length ? dogs : ["梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "alpha狗", "alpha2狗"]);
-    const task = `全部分析：对每只单关狗（${dogList.join("、")}）分别调用 ds_analyze_dog(dog=<狗名>)（同一轮里并列发起以并行；工具内部固有完成数据准备/人设/记忆/资金/段落与一次 LLM 决策），全部完成后调用 ds_export_to_python(dry_run=false) 导出到 Python 数据层。`;
-    // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
-    const agentsPy = JSON.stringify(agents);
-    const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${agentsPy}]`;
-    // headless 需要 DEEPSEEK_API_KEY；dsh web 进程环境可能没有（非交互式启动），从 ~/.zshrc 兜底读一次
-    const script = `export DEEPSEEK_API_KEY="$(grep -o 'sk-[a-zA-Z0-9]*' ~/.zshrc | head -1)" && export DSH_SCHEDULED_RUN=1 && dsh --profile headless "${task}" && cd "${engineRoot}" && python3 -c "${emailPy}"`;
-    const c = spawn("/bin/bash", ["-c", script], { stdio: "ignore" });
-    c.on("exit", () => { running = false; });
-    c.on("error", () => { running = false; });
+    try {
+      // 1) 逐狗 analyze（python 桥，live 语义：内部 refresh + 取数 + LLM 决策 + 下单）
+      const dogList = (Array.isArray(dogs) && dogs.length
+        ? dogs : ["梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗", "alpha狗", "alpha2狗"]);
+      const bj = (ts) => new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
+      const day = bj(Date.now() - (12 * 3600 + 60) * 1000);
+      for (const dog of dogList) {
+        const r = await runBridge({
+          pythonBin,
+          engineRoot,
+          req: { func: "analyze", dog, day, opts: { live: true, prefetched: false, jingcai_only: true } },
+        });
+        if (!r.ok) console.warn(`[lota-data] 定时分析失败 ${dog} ${day}: ${r.error}`);
+      }
+      // 2) 发邮件：Python send_order_email 按 email_recipients.txt 名单（agent 过滤）
+      const emailPy = `from src.order_email import send_order_email; [send_order_email(a, None) for a in ${JSON.stringify(agents)}]`;
+      await runPythonCmd(["-c", emailPy]);
+    } catch (e) {
+      console.warn(`[lota-data] 定时任务失败: ${(e && e.message) || e}`);
+    } finally {
+      running = false;
+    }
   };
 
   const tick = () => {
@@ -240,21 +247,15 @@ function apply(ctx, config = {}) {
   // ── 角色解析层（User Role）：config.roles / config.personaDir 可外置修改，缺省=旧行为 ──
   const roles = resolveRoles(config, cacheDir);
 
-  // ── storage 域（纯 JS 状态层，见 harness_js_reconstruction.md §7）──
-  const domainHandles = setupDomains(ctx);
-
-  // ── config.roles / 运行时注册表（创建狗）新狗初始化：只建缺失角色，已有角色资金/订单不动 ──
-  if (roles.configured || roles.hasRegistry) ensureRoleRecords(domainHandles, roles);
-
-  // ── 「斗狗场」仪表盘（/ds-dashboard JSON + /ds-avatars 图片 + /ds-analyze 直启，客户端 tab）──
-  if (once("dashboard-routes")) setupDashboard(ctx, domainHandles, cacheDir, roles, config.avatarDir, {
+  // ── 「斗狗场」仪表盘（/ds-dashboard + /ds-run + /ds-replay，客户端 tab）──
+  if (once("dashboard-routes")) setupDashboard(ctx, cacheDir, roles, config.avatarDir, {
     engineRoot,
     pythonBin,
     taskReg,
   });
 
   // ── 比赛信息定时刷新（每 30 分钟，dsh 启动期间）──
-  if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir);
+  if (once(`refresher:${engineRoot}`)) startMatchRefresher(ctx, engineRoot, cacheDir, pythonBin);
 
   // ── 定时邮件任务（每天固定时间点跑全狗分析 + 发邮件，dsh 启动期间）──
   if (once(`scheduler:${engineRoot}`)) startScheduledJobs(ctx, engineRoot, config, roles.dogs);
@@ -274,16 +275,17 @@ function apply(ctx, config = {}) {
     setupAgentModeRestrict(ctx, cacheDir, config);
   }
 
-  // ── 按语义分组注册工具 ──
-  const deps = {
-    ctx, registerTool, taskReg, domainHandles,
+  // ── 只读数据工具组（agent 面板唯一工具集；固定流执行入口= dashboard 表单）──
+  registerDeterministicTools({
+    registerTool, taskReg,
     cacheDir, engineRoot, pythonBin,
-    roles,
-    helpers: { findMatch },
-  };
-  registerRoleTools(deps);          // 【User Role】人设/记忆/资金
-  registerDeterministicTools(deps); // 【固定无 LLM 工作流】data_fetch / settle_orders / 只读缓存 / 迁移
-  registerHeadlessTools(deps);      // 【有 LLM 但 headless 工作流】分析 / settles / induct / review / replay
+  });
+
+  // ── ds_replay：harness 唯一保留的工作流入口（agent 驱动，插件侧拼装）──
+  registerReplayTool({
+    ctx, registerTool, taskReg,
+    cacheDir, engineRoot, pythonBin,
+  });
 }
 
 export { apply, inject, name };
