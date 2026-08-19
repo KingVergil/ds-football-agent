@@ -76,9 +76,18 @@ Lota API ──(python 引擎数据层 + LOTA_API_KEY)──► 本地缓存 mat
 
 ### 1. 前置
 
-- DSH harness（Cordis 运行环境）
-- Python 3.10+（引擎，`pip install -r` 依赖见 `python-engine/`）
+- DSH harness（Cordis 运行环境，自带 Node 运行时）
+- Python 3.10+
+- 引擎依赖（`python-engine/requirements.txt`）：
+
+  ```bash
+  python -m pip install -r python-engine/requirements.txt   # requests + langgraph
+  ```
+
 - Python 引擎自带数据获取（`src/data_manager.py`，需 `LOTA_API_KEY`，见 [`fetcher_protocol.md`](harness-plugin/docs/fetcher_protocol.md)）
+
+> 可选：`playwright` 只用于 `python-engine/docs/render_diagrams.py` 渲染架构图，
+> 日常分析/结算/因子流程不需要。
 
 ### 2. 装插件 + 配引擎
 

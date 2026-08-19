@@ -6,7 +6,7 @@
    ① 进程内确定性 prefetch（`prepareDay(day, mode="live")` 单例：同 day 并发/重复点击共享同一次拉取）；
    ② 分析子代理**优先挂在当前会话 agent**（body `sessionId`（视图 slot 的 `inject` 注入）→ host
    `ctx.agents.get(sessionId)`）——零对话往返、对话区 subagent 面板**实时可见**（旧「挂在对话的子进程」体验）；
-   会话不可用时**回退 headless** `dsh --profile headless` 子进程（与定时邮件任务同一通道，
+   会话不可用时**回退 headless** `dsh --profile headless` 子进程（headless 通道，
    `DSH_SCHEDULED_RUN=1` 防递归）。全程进度经 taskReg → `/ds-tasks` → 斗狗场轮询可见；
    `dog|day` 在途去重（409），坏狗名/坏日期 400。其余按钮（结算/归纳/判重/review）暂仍走会话输入框，可同样改造。
 1. **回放入详情**：详情页新增「▶️ 回放」区——日期范围 / 模式（半交互/一路到底）/

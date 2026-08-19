@@ -252,14 +252,16 @@ function upsertZshrc(keys, dryRun, noZshrc) {
   console.log(`[install] 密钥已追加到 → ${rc}`);
 }
 
-function platformTips(args, envFile, keyCount) {
+function platformTips(args, engineRoot, envFile, keyCount) {
   const isWin = platform() === "win32";
   console.log("");
   console.log("✅ 安装完成。接下来：");
-  console.log("  1. 确认 python 可用（Windows: `python --version` 或 `py -3 --version`；");
+  console.log("  1. 装引擎依赖（Python 3.10+）：");
+  console.log(`     python -m pip install -r ${engineRoot}/requirements.txt   # requests + langgraph`);
+  console.log("  2. 确认 python 可用（Windows: `python --version` 或 `py -3 --version`；");
   console.log("     macOS/Linux: `python3 --version`）。如果解释器不在 PATH，把");
   console.log(`     pythonBin: <解释器绝对路径> 加进 cordis.patch.yml 的 config（脚本也支持 --python-bin）。`);
-  console.log(`  2. 密钥文件：${envFile}（bridge.js 会自动读取；优先级 环境变量 > .env > ~/.zshrc）`);
+  console.log(`  3. 密钥文件：${envFile}（bridge.js 会自动读取；优先级 环境变量 > .env > ~/.zshrc）`);
   if (!keyCount) {
     console.log(`     ⚠️ 还没写入密钥，手动编辑 ${envFile} 加一行如：`);
     console.log(`        DEEPSEEK_API_KEY=sk-...`);
@@ -269,8 +271,8 @@ function platformTips(args, envFile, keyCount) {
       console.log('       setx DEEPSEEK_API_KEY "sk-..."');
     }
   }
-  console.log("  3. 重启 dsh（或重开 profile），挂载即生效。");
-  console.log("  4. 本安装全部写在用户目录，不需要管理员/提权。");
+  console.log("  4. 重启 dsh（或重开 profile），挂载即生效。");
+  console.log("  5. 本安装全部写在用户目录，不需要管理员/提权。");
 }
 
 function main() {
@@ -310,7 +312,7 @@ function main() {
   } else {
     console.log("[install] 未提供密钥（--set-keys / --keys-file），跳过密钥写入");
   }
-  platformTips(args, envFile, keys.size);
+  platformTips(args, engineRoot, envFile, keys.size);
 }
 
 main();

@@ -2,6 +2,14 @@
 
 基于 LLM 的多 Agent 架构，每个 Agent（"狗"）独立分析比赛、产出订单，日终统一结算并反馈因子表现。
 
+## 依赖
+
+```bash
+python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10+）
+```
+
+`playwright` 可选（仅 `docs/render_diagrams.py` 渲染架构图用）。
+
 ## Agent（狗）列表
 
 引擎不携带任何狗数据：狗由本地角色目录决定（`data/roles/<狗>/<狗>.json` +

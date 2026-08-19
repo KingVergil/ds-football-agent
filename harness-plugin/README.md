@@ -22,7 +22,7 @@ Python 引擎与运行时数据见仓库根 [`../readme.md`](../readme.md)（引
 
 ```
 harness-plugin/
-├─ index.js                # 插件本体（装配 + 只读工具 + 定时刷新/邮件）
+├─ index.js                # 插件本体（装配 + 只读工具 + 定时刷新）
 ├─ bridge.js               # dsh ↔ python-engine 桥（func 白名单 / 进度 / 超时）
 ├─ dashboard.js / client.js  # 斗狗场仪表盘（Host 路由 + Client tab）
 ├─ dogRegistry.js          # 运行时狗注册表（创建/编辑/删除狗，幂等补建 Python 角色）
@@ -33,6 +33,16 @@ harness-plugin/
 ├─ cordis.yml / package.json / SKILL.md
 └─ docs/                   # 桥协议 / 缓存格式 / 回放设计
 ```
+
+## 依赖
+
+| 依赖 | 说明 |
+|---|---|
+| DSH harness（Cordis） | 宿主环境，自带 Node 运行时，无需另装 Node |
+| Python 3.10+ | 引擎运行（Windows 用 `python` / `py -3`，macOS/Linux 用 `python3`） |
+| `requests` + `langgraph` | 引擎依赖：`python -m pip install -r python-engine/requirements.txt` |
+
+密钥：`DEEPSEEK_API_KEY` / `LOTA_API_KEY`（写进 `.env` 或环境变量，见下节）。
 
 ## 挂载
 
