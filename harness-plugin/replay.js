@@ -17,6 +17,7 @@ import { LLM_TEMPERATURES } from "./tools/shared.js";
 import { beijingNowIso } from "./tools/shared.js";
 import { streamText } from "./tools/llmText.js";
 import { runBridge, defaultPythonBin } from "./bridge.js";
+import { readDogRegistry, writeDogRegistry } from "./dogRegistry.js";
 
 /** 回放旁路 LLM 默认模型（deepseek-flash 省 token）。 */
 export const REPLAY_MODEL = "deepseek-v4-flash";
@@ -259,7 +260,19 @@ export function promoteSandbox(cacheDir, sandboxName, dog) {
   role.status = "live";
   role.enabled = true;
   writeJson(rolePath, role);
+  // 注册表同步：看板 enabledFor/默认列表读注册表优先，转正后立即翻 live
+  syncRegistryLive(cacheDir, dog);
   return { ok: true, sandbox: sandboxName, dog, backup };
+}
+
+/** 转正后把注册表条目翻 live（enabled=true, status=live）；无注册表条目（如默认 7 狗）则跳过。 */
+function syncRegistryLive(cacheDir, dog) {
+  const dogs = readDogRegistry(cacheDir);
+  const idx = dogs.findIndex((d) => d && d.name === dog);
+  if (idx < 0) return;
+  const next = [...dogs];
+  next[idx] = { ...next[idx], enabled: true, status: "live" };
+  writeDogRegistry(cacheDir, next);
 }
 
 /** 放弃：删沙箱，线上不动。 */

@@ -132,7 +132,11 @@ export function resolveRoles(config = {}, cacheDir = "") {
     const reg = registryByName().get(dog);
     if (reg) return Boolean(reg.alpha_mode);
     const r = byName.get(dog);
-    return Boolean(r && r.alpha_mode);
+    if (r) return Boolean(r.alpha_mode);
+    // 回退：角色文件 alpha_mode（与 python-engine factor_induction/role_registry 对齐），
+    // 覆盖无 config.roles、无注册表条目的内置 7 狗场景（否则 alpha barrier 会被跳过）。
+    const role = readRoleFile(cacheDir, dog);
+    return Boolean(role && role.alpha_mode);
   };
 
   const enabledFor = (dog) => {
@@ -171,16 +175,21 @@ export function resolveRoles(config = {}, cacheDir = "") {
   };
 }
 
-/** 读角色文件 status（live/sandbox/archived）；缺 status 时由 enabled 派生。 */
-function roleStatusOf(cacheDir, dog) {
+/** 读角色文件 JSON；不存在或损坏返回 null。 */
+function readRoleFile(cacheDir, dog) {
   try {
     const p = join(cacheDir, "roles", dog, `${dog}.json`);
     if (!existsSync(p)) return null;
-    const r = JSON.parse(readFileSync(p, "utf8"));
-    if (r && ["live", "sandbox", "archived"].includes(r.status)) return r.status;
-    if (r && typeof r.enabled === "boolean") return r.enabled ? "live" : "sandbox";
-    return null;
+    return JSON.parse(readFileSync(p, "utf8"));
   } catch {
     return null;
   }
+}
+
+/** 读角色文件 status（live/sandbox/archived）；缺 status 时由 enabled 派生。 */
+function roleStatusOf(cacheDir, dog) {
+  const r = readRoleFile(cacheDir, dog);
+  if (r && ["live", "sandbox", "archived"].includes(r.status)) return r.status;
+  if (r && typeof r.enabled === "boolean") return r.enabled ? "live" : "sandbox";
+  return null;
 }
