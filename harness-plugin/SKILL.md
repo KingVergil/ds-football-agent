@@ -30,6 +30,10 @@ description: 使用 ds-agents-lota-data 插件的只读工具回答比赛/缓存
 | `lota_sections` | `lota_id`, `slugs`(必填, string[]) | 段落 `{lota_id, sections, text}` |
 | `lota_status` | `dog`(狗名) | 狗状态（python 桥只读封装）：资金/待结算/因子数/资金曲线/上次退役 |
 | `ds_replay` | `start`/`end`/`dogs`/`mode`/`factor_review_every`/`reset`/`restore_after` 等 | 回放会话（沙箱目录模型，逐日逐 func 调桥；暂停卡片交用户编辑方向建议） |
+| `ds_list_dogs` / `ds_create_dog` | 选狗 / 语言描述创建新狗（与「➕ 创建狗」表单同一逻辑） | 训练模式入口，纯对话驱动 |
+| `ds_sandbox_list` / `ds_promote_sandbox` / `ds_abort_sandbox` | 沙箱列表 / 转正（替换线上+注册表翻 live）/ 放弃（删沙箱） | 训练模式收尾 |
+
+> 训练模式（创建新狗/选狗 → 回放 → 转正/放弃）的对话流程由项目 skill `ds-agents-training` 指导。
 
 ## 固定流入口（不是工具）
 

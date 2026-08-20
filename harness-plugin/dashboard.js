@@ -139,12 +139,26 @@ function footballDayToday() {
   return bjDateStr(Date.now() - (12 * 3600 + 60) * 1000);
 }
 
-/** 读当日足球日的竞彩列表（jingcai_number 非空）。 */
+/** 读当前足球日的竞彩列表（jingcai_number 非空）。
+ *  足球日 D = [D 12:01, D+1 12:00]；matches 缓存按「日历日」存文件，所以必须合并
+ *  matches/<D>.json 与 matches/<D+1>.json 两个文件，按足球日过滤并按 lota_id 去重
+ *  （API 对相邻日期返回重叠块）。之前只读 <D>.json 会显示上一个足球日的早晨场。 */
 function buildTodayMatches(cacheDir) {
   const day = footballDayToday();
-  const list = readJson(join(cacheDir, "matches", `${day}.json`));
-  const matches = Array.isArray(list) ? list : (list && list.matches) || [];
-  const jc = matches.filter((m) => m && m.jingcai_number);
+  const dayPlus1 = bjDateStr(Date.parse(`${day}T12:01:00+08:00`) + 24 * 3600 * 1000);
+  const seen = {};
+  const jc = [];
+  for (const cd of [day, dayPlus1]) {
+    const list = readJson(join(cacheDir, "matches", `${cd}.json`));
+    const matches = Array.isArray(list) ? list : (list && list.matches) || [];
+    for (const m of matches) {
+      if (!m || !m.jingcai_number || !m.lota_id) continue;
+      if (footballDayOf(m.match_time) !== day) continue;
+      if (seen[m.lota_id]) continue;
+      seen[m.lota_id] = 1;
+      jc.push(m);
+    }
+  }
   return {
     day,
     count: jc.length,

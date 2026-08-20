@@ -22,6 +22,7 @@ import { runBridge, defaultPythonBin } from "./bridge.js";
 import { resolveRoles } from "./tools/roles.js";
 import { registerDeterministicTools } from "./tools/deterministic.js";
 import { registerReplayTool } from "./tools/replayTool.js";
+import { registerTrainingTools } from "./tools/trainingTools.js";
 
 const name = "lota-data";
 // webServer 不放进 inject：headless 没有 web 服务，放进去会导致插件 pending。
@@ -117,8 +118,10 @@ const ANALYZE_FRAMEWORK_SECTION = {
 dsh 只做薄壳：数据准备/分析/结算/因子归纳/因子退役/状态/刷新/重置全部由 python-engine
 执行（入口是斗狗场表单 → POST /ds-run 直连 python 桥；回放由 /ds-replay 插件侧编排，逐日逐 func 调桥）。
 
-你（harness agent）的工具面板只有只读数据工具（lota_matches / lota_match / lota_sections / lota_status），
-用于回答用户关于比赛/缓存/角色状态的查询。**不要尝试用 bash / 文件操作 / 手工编排去执行固定流**——
+你（harness agent）的工具面板：只读数据工具（lota_matches / lota_match / lota_sections / lota_status，
+回答比赛/缓存/角色状态查询）+ 回放（ds_replay）+ 训练模式工具组（ds_list_dogs / ds_create_dog /
+ds_sandbox_list / ds_promote_sandbox / ds_abort_sandbox，用于训练：创建新狗/选狗→回放→转正/放弃，
+流程见 skill ds-agents-training）。**不要尝试用 bash / 文件操作 / 手工编排去执行固定流**——
 执行入口只有 dashboard，固定流工具已从面板移除。
 
 ## 回放模式的唯一 LLM 职责
@@ -212,6 +215,11 @@ function apply(ctx, config = {}) {
   registerReplayTool({
     ctx, registerTool, taskReg,
     cacheDir, engineRoot, pythonBin, envFile,
+  });
+
+  // ── 训练模式工具组（创建狗/选狗/沙箱列表/转正/放弃；回放入口仍走 ds_replay）──
+  registerTrainingTools({
+    registerTool, taskReg, cacheDir, roles,
   });
 }
 
