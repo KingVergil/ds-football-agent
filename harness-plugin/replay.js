@@ -299,7 +299,7 @@ export function listSandboxes(cacheDir) {
           end: (s && s.end) || "",
           daysDone: (s && Number(s.next_idx)) || 0,
           daysTotal: Array.isArray(s && s.days) ? s.days.length : 0,
-          nextDay: Array.isArray(s && s.days) ? s.days[Number(s.next_idx) || 0] : "",
+          nextDay: Array.isArray(s && s.days) ? (s.days[Number(s.next_idx) || 0] ?? "") : "",
           interactive: Boolean(s && s.interactive),
           factorReviewEvery: (s && s.factor_review_every) ?? null,
           skipLlm: Boolean(s && s.skip_llm),

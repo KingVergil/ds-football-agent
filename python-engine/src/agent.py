@@ -16,12 +16,12 @@ from langgraph.graph import StateGraph, END
 from .role import Role
 from .data_manager import DataManager
 from .prompt_builder import PromptBuilder, load_system_prompt
-from .order_utils import parse_orders
+from .order_utils import parse_orders, partition_placement_orders, scale_orders_to_budget
 from .environment import strip_scores, get_football_day, football_day_calendar_dates
 from .session_logger import SessionLogger
 from .base_llm import BaseLLMProvider
 from .store import _get_valid_section_slugs as _valid_section_slugs
-from .fund_limits import FundManager, order_limits_for
+from .fund_limits import order_limits_for
 
 # 阶段5: 反思 key_slugs 可上报的合法数据段白名单
 SECTION_SLUG_WHITELIST = sorted(_valid_section_slugs())
@@ -610,43 +610,17 @@ def node_place_orders(state: AgentState) -> AgentState:
         if m.get("_live_started")
     }
 
-    # ── 分离：已开赛跳过 / 未开赛纳入 ──
-    new_orders = []
-    for o in orders:
-        if o.get("skip"):
-            continue
-        lid = o.get("lota_id", "")
-        if lid in started_lids:
-            print(f"  🔒 跳过已开赛: {lid}（维持原仓）")
-            continue
-        market = (lid, o.get("bet_type"))
-        if market in pending_markets:
-            print(f"  ⏭ 跳过重复单: {market[0]} {market[1]}（已有未结算订单）")
-            continue
-        new_orders.append(o)
+    # ── 分离：已开赛仅占用预算不下注 / 未开赛纳入（不真实扣款）──
+    capital_before = rt.role.capital
+    new_orders, started_total = partition_placement_orders(orders, started_lids, pending_markets)
 
-    # ── 比例折算：LLM按全金额分配 → 按实际余额缩放 ──
-    # 全金额 = 锁定敞口 + 余额  (与 node_build_prompt 一致)
-    capital = rt.role.capital
+    # ── 比例折算：LLM按全金额分配 → 按可用预算缩放（已开赛占用是预算口径，不真实扣款）──
     locked_exposure = sum(
         o.get("bet_size", 0) for o in rt.role.get_orders()
         if not o.get("settled_at")
     )
-
-    # ── 资金管理硬约束（按狗配置；未配置的狗保持旧行为）──
     limits = order_limits_for(rt.role.name)
-    if limits.enabled:
-        new_orders, _dropped = FundManager(limits).apply(new_orders, capital)
-    else:
-        full_amount = capital + locked_exposure
-        new_total = sum(o.get("bet_size", 0) for o in new_orders)
-        if new_total > 0 and full_amount > 0:
-            # 每单: LLM分配金额 / 全金额 * 余额(=capital)
-            scale = capital / full_amount if full_amount > 0 else 1.0
-            print(f"  📐 资金折算: 锁定¥{locked_exposure:,.0f} + 余额¥{capital:,.0f} = 全金额¥{full_amount:,.0f}")
-            print(f"  📐 LLM分配¥{new_total:,.0f} → 折算×{scale:.2f} → 实下¥{int(new_total * scale):,.0f}")
-            for o in new_orders:
-                o["bet_size"] = int(o["bet_size"] * scale)
+    new_orders = scale_orders_to_budget(new_orders, capital_before, locked_exposure, started_total, limits)
 
     for o in new_orders:
         try:

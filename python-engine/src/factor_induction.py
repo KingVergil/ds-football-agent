@@ -42,9 +42,37 @@ FACTORS_DIR = Path(os.environ.get("DS_FACTORS_ROOT") or ROOT / "data" / "factors
 AUDIT_LOG = ROOT / "scripts" / "factor_induction_audit.jsonl"
 BAK_SUFFIX = ".bak.20260805_phase3"
 
+
+def _flat_role_root() -> bool:
+    """沙箱回放：DS_ROLES_ROOT 指向单狗平铺 workspace，角色 json 直接位于根下。"""
+    return bool(os.environ.get("DS_ROLES_ROOT"))
+
+
+def _flat_role_meta() -> dict[str, bool]:
+    """平铺 workspace 根下的角色 json → name → alpha_mode（排除 capital_history 等非角色文件）。"""
+    meta: dict[str, bool] = {}
+    if not _flat_role_root():
+        return meta
+    for p in sorted(ROLES_DIR.glob("*.json")):
+        if p.name == "capital_history.json":
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("name"):
+            meta[str(data["name"])] = bool(data.get("alpha_mode", False))
+    return meta
+
+
 # 从角色文件 alpha_mode 派生（设计定稿：alpha 结构化存角色；注册表狗自动并入）
-ALPHA_ROLES = set(_alpha_agents())
-ALL_ROLES = _all_agents()
+if _flat_role_root():
+    _FLAT_ROLE_META = _flat_role_meta()
+    ALL_ROLES = list(_FLAT_ROLE_META)
+    ALPHA_ROLES = {n for n, a in _FLAT_ROLE_META.items() if a}
+else:
+    ALPHA_ROLES = set(_alpha_agents())
+    ALL_ROLES = _all_agents()
 BIT_DIST_MAX = 2
 NAME_RATIO_MIN = 0.60
 BIT_NAME_FLOOR = 0.35      # bit 候选还需名字相似度 ≥ 下限（slugs 共用核心段，纯 bit 距离会爆量）
@@ -99,6 +127,15 @@ def recompute_stats(entry: dict) -> dict:
 
 def load_roles() -> dict[str, dict]:
     roles: dict[str, dict] = {}
+    if _flat_role_root():
+        # 平铺 workspace：因子记忆集中在 <root>/memory/factor_memory.json，角色名从根下 <狗>.json 派生
+        mp = ROLES_DIR / "memory" / "factor_memory.json"
+        if not mp.exists():
+            return roles
+        data = json.loads(mp.read_text(encoding="utf-8"))
+        for name in _FLAT_ROLE_META:
+            roles[name] = data
+        return roles
     for rd in sorted(ROLES_DIR.iterdir()):
         if not rd.is_dir() or "_sim" in rd.name or rd.name.startswith("__"):
             continue
@@ -234,7 +271,10 @@ def merge_entries(target: dict, source: dict, source_name: str) -> dict:
 
 def find_slugs_in_reflections(role: str, factor_name: str) -> list[str]:
     """从角色反思文本提取该因子出现处的有效 slug（用于孤儿补定义）。"""
-    ref_path = ROLES_DIR / role / "memory" / "reflection_memory.json"
+    if _flat_role_root():
+        ref_path = ROLES_DIR / "memory" / "reflection_memory.json"
+    else:
+        ref_path = ROLES_DIR / role / "memory" / "reflection_memory.json"
     if not ref_path.exists():
         return []
     try:
@@ -293,7 +333,10 @@ def audit(action: str, **kw) -> None:
 
 def save_roles(roles: dict[str, dict], changed: set[str]) -> None:
     for role in changed:
-        mem_path = ROLES_DIR / role / "memory" / "factor_memory.json"
+        if _flat_role_root():
+            mem_path = ROLES_DIR / "memory" / "factor_memory.json"
+        else:
+            mem_path = ROLES_DIR / role / "memory" / "factor_memory.json"
         bak = mem_path.with_name(mem_path.name + BAK_SUFFIX)
         if not bak.exists():
             shutil.copy2(mem_path, bak)
@@ -303,6 +346,7 @@ def save_roles(roles: dict[str, dict], changed: set[str]) -> None:
             for n, e in fp.items()
         }
         roles[role]["factor_perf"] = clean
+        roles[role]["updated_at"] = datetime.now().isoformat()
         mem_path.write_text(
             json.dumps(roles[role], ensure_ascii=False, indent=2), encoding="utf-8")
 

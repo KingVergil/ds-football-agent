@@ -130,6 +130,9 @@ dsh --profile headless \
 
 ## 注意事项
 
+- **沙箱 workspace 是单狗平铺角色目录**：`<狗>.json` + `memory/` + `factors/` + `predicts/` + `history/`；
+  引擎在 `DS_ROLES_ROOT` 下按平铺读取（2026-08-22 起 role.py / memory.py / bridge.py / fund_limits.py 兼容），
+  线上未设置时保持嵌套 `roles/<狗>/`。「角色不存在…先 role-sync」是旧平铺/嵌套错配症状，已修复。
 - **历史日优先**：回放按历史语义（缓存优先、缺了拉 URL）设计，建议回放已过足球日的窗口
   （如回放 07-25 时今天已是 08-17）。回放"当前足球日"时：比赛均已开赛 → 已开赛保护会
   拦下单（0 单），且 web 刷新器可能并发改写缓存——已用快照隔离，但结果仍是 live 语义。

@@ -19,7 +19,7 @@ export function registerReplayTool(deps) {
   registerTool({
     name: "ds_replay",
     description:
-      "回放模式（沙箱模型，harness 唯一保留的工作流）：创建 replays/sandboxes/<狗>_<MMDD>/ 沙箱（新狗空骨架、老狗复制到起始日结算后/因子归纳前），桥经 role_root 写沙箱 workspace，线上零影响；逐日「分析→结算→因子归纳→周期性因子退役」并产 facts.json（事实订单/因子/资金曲线）。半交互（mode=\"interactive\"）时在周期边界暂停，返回 direction_suggestion——你必须呈现给用户确认/编辑，再带 induction_notes 续跑；也可 to_end 一路到底 / rewind_to 回退。skip_llm=true 为演示模式（秒级跑完看交互）。转正/放弃走 POST /ds-sandbox/<沙箱>/promote|abort。",
+      "回放模式（沙箱模型，harness 唯一保留的工作流）：创建 replays/sandboxes/<狗>_<MMDD>/ 沙箱（新狗空骨架、老狗复制到起始日结算后/因子归纳前），桥经 role_root 写沙箱 workspace，线上零影响；workspace 是单狗平铺角色目录（<狗>.json+memory/+factors/+predicts/+history/），引擎经 DS_ROLES_ROOT 平铺读取（2026-08-22 起兼容）；逐日「分析→结算→因子归纳→周期性因子退役」并产 facts.json（事实订单/因子/资金曲线）。半交互（mode=\"interactive\"）时在周期边界暂停，返回 direction_suggestion——你必须呈现给用户确认/编辑，再带 induction_notes 续跑；也可 to_end 一路到底 / rewind_to 回退。skip_llm=true 为演示模式（秒级跑完看交互）。转正/放弃走 POST /ds-sandbox/<沙箱>/promote|abort。",
     parameters: {
       dog: { type: "string", description: "回放狗名（沙箱单狗模型）" },
       start: { type: "string", description: "起始足球日 YYYY-MM-DD（新回放必填）" },

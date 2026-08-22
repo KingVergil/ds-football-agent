@@ -80,7 +80,7 @@ export function registerTrainingTools(deps) {
       initial_capital: { type: "number", description: "初始资金（默认 10000）" },
       alpha_mode: { type: "boolean", description: "是否 alpha 模式（默认 false）" },
       enabled: { type: "boolean", description: "true=直接进全量默认列表；默认 false=观察期" },
-      limits: { type: "object", description: "限额（max_exposure_pct 等，默认 max_exposure_pct=40）" },
+      limits: { type: "object", additionalProperties: true, description: "限额（max_exposure_pct 等，默认 max_exposure_pct=40）" },
       emoji: { type: "string", description: "展示表情（可选）" },
       c1: { type: "string", description: "头像渐变起始色（可选）" },
       c2: { type: "string", description: "头像渐变结束色（可选）" },

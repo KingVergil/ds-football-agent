@@ -196,6 +196,8 @@ class SessionLogger:
         for i, o in enumerate(orders):
             if o.get("skip"):
                 self._w(f"| {i+1} | {o.get('lota_id','?')} | ⏭ skip | - | - | - | {o.get('reason','')[:50]} |")
+            elif o.get("_started_deduct"):
+                self._w(f"| {i+1} | {o.get('lota_id','?')} | ⏭ 已开赛占用 | - | - | {float(o.get('bet_size', 0) or 0):.0f} | 占用预算不下注 |")
             else:
                 self._w(f"| {i+1} | {o.get('lota_id','?')} | {o.get('bet_type','')} | {o.get('pick','')} | "
                         f"{o.get('odds',0):.2f} | {o.get('bet_size',0):.0f} | {o.get('reason','')[:50]} |")

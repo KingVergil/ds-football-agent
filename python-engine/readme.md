@@ -1,6 +1,6 @@
 # ds_agents — 多智能体足球投注决策系统
 
-基于 LLM 的多 Agent 架构，每个 Agent（"狗"）独立分析比赛、产出订单，日终统一结算并反馈因子表现。
+基于 LLM 的多 Agent 架构，每个 Agent（"狗"）独立分析比赛、产出订单，完场即结算并反馈因子表现。
 
 ## 依赖
 
@@ -38,12 +38,15 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 
 ```bash
 ./batch_agents.sh settle 2026-07-21    # 结算指定日期
-./batch_agents.sh settle live          # 结算上一个足球日
+./batch_agents.sh settle live          # 结算所有已完场的未结算订单
 ```
 
 **核心原则**：
 - 只有 `state == 6`（完场）的比赛才会被结算
-- **统一第二天结算前一天**，不要当天边分析边结算——仓位预算是按天统计的，混着来会滚仓
+- 结算会遍历**所有未结算订单**，只结算其中已完场（`state == 6`）的比赛；未开赛/进行中的比赛自动跳过，无需等到第二天
+- 同一天可以边分析边结算（滚仓）：结算后余额立即返还，下一次 `analyze` 会按当前余额重新折算仓位，不会重复扣减
+- 分析时遇**已开赛**比赛：不下单、不扣钱，金额只计入当日预算占用（影响本波折算比例），已开赛且已有未结算订单的场次直接维持原仓
+- 结算只结算订单，**不会自动跑因子归纳**；需要归纳时单独跑 `./batch_agents.sh factor-induction`
 
 ### `dashboard` — 刷新数据并打开看板
 
@@ -76,7 +79,7 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 ```
 20:00  → ./batch_agents.sh analyze live   （第一波，靠近赛前）
 22:30  → ./batch_agents.sh analyze live   （第二波，数据更新后）
-第二天 → ./batch_agents.sh settle live     （统一结算前一天）
+赛后   → ./batch_agents.sh settle live     （结算已完场比赛，余额返还后可滚仓下一波）
 ```
 
 ### 回测

@@ -40,10 +40,11 @@ window.__ModuleLoader__.load({
 .dsd-dog-list{display:flex;flex-direction:column;gap:10px}
 .dsd-dog-row{display:block}
 .dsd-row-card{display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap}
-.dsd-row-main{display:flex;align-items:center;gap:12px;flex:1 1 360px;min-width:0}
-.dsd-row-name{flex:1;min-width:0}
-.dsd-row-metrics{display:flex;align-items:center;gap:16px;text-align:right;flex-shrink:0}
-.dsd-row-metric-label{font-size:10px;color:var(--dsw-alias-label-secondary)}
+.dsd-row-main{display:flex;align-items:center;gap:12px;flex:1 1 360px;min-width:0;flex-wrap:nowrap}
+.dsd-row-name{flex:1;min-width:0;overflow:hidden}
+.dsd-row-metrics{display:flex;align-items:center;gap:16px;text-align:right;flex-shrink:0;flex-wrap:nowrap}
+.dsd-row-metrics > div{flex-shrink:0;white-space:nowrap}
+.dsd-row-metric-label{font-size:10px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsd-row-enter{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;margin-left:8px}
 .dsd-row-actions{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 420px}
 .dsd-row-actions-title{font-size:11px;font-weight:800;color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -56,8 +57,8 @@ window.__ModuleLoader__.load({
 .dsd-card-btn:hover{border-color:var(--dsw-alias-brand-primary);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.10)}
 .dsd-card-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .dsd-card-name{flex:1;min-width:0}
-.dsd-name{font-weight:800;font-size:14px}
-.dsd-sub{font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dsd-name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsd-sub{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsd-cap{text-align:right}
 .dsd-money{font-variant-numeric:tabular-nums}
 .dsd-strong{font-weight:800;font-size:14px}
@@ -194,6 +195,10 @@ window.__ModuleLoader__.load({
       if (x == null) return "—";
       var n = Number(x);
       return (n >= 0 ? "+" : "") + (n * 100).toFixed(1) + "%";
+    }
+    function posPct(v, total) {
+      if (v == null || total == null || Number(total) <= 0) return "—";
+      return (Number(v) / Number(total) * 100).toFixed(1) + "%";
     }
     function money(v, hide) { return hide ? "•••" : fmt(v); }
 
@@ -419,7 +424,7 @@ window.__ModuleLoader__.load({
         h("div", { className: "dsd-stat-label" }, label));
     }
 
-    function renderOrders(orders, hide) {
+    function renderOrders(orders, hide, totalFunds) {
       if (!orders || orders.length === 0) return h("div", { className: "dsd-empty" }, "暂无订单");
       var rows = orders.map(function (o) {
         var tone = o.settled ? (o.profit > 0 ? "dsd-pos" : o.profit < 0 ? "dsd-neg" : "dsd-mut") : "dsd-pend";
@@ -437,7 +442,7 @@ window.__ModuleLoader__.load({
           h("td", { className: "dsd-num dsd-hcp" }, hcp || "—"),
           h("td", { className: "dsd-num" }, o.score || "—"),
           h("td", { className: "dsd-num" }, o.odds == null ? "—" : "@" + o.odds),
-          h("td", { className: "dsd-num dsd-money" }, hide ? "•••" : fmt(o.betSize)),
+          h("td", { className: "dsd-num dsd-money" }, hide ? "•••" : (fmt(o.betSize) + " · " + posPct(o.betSize, totalFunds))),
           h("td", { className: "dsd-num " + tone }, pnl));
       });
       return h("table", { className: "dsd-table" },
@@ -448,7 +453,7 @@ window.__ModuleLoader__.load({
           h("th", { className: "dsd-num" }, "盘口"),
           h("th", { className: "dsd-num" }, "比分"),
           h("th", { className: "dsd-num" }, "赔率"),
-          h("th", { className: "dsd-num dsd-money" }, "投粮"),
+          h("th", { className: "dsd-num dsd-money" }, "仓位"),
           h("th", { className: "dsd-num" }, "净粮"))),
         h("tbody", null, rows));
     }
@@ -1067,6 +1072,8 @@ window.__ModuleLoader__.load({
       var dog = props.dog, meta = props.meta, hide = props.hide, onSelect = props.onSelect, onFire = props.onFire, sessionId = props.sessionId;
       var runningTask = props.runningTask || null;
       var sub = "夏普 " + (dog.sharpe == null ? "—" : Number(dog.sharpe).toFixed(2)) + " · " + scopeLabel(dog.scope) + (dog.alphaMode ? " · α" : "") + " · 待投 " + dog.pendingCount + (dog.inStorage === false ? " · 未初始化" : "");
+      var posText = money(dog.lockedExposure, hide);
+      var posLabel = hide ? "仓位" : ("仓位 " + posPct(dog.lockedExposure, dog.fullCapital));
       return h("div", { className: "dsd-dog-row" },
         h("div", { className: "dsd-card dsd-row-card" },
           h("div", { className: "dsd-row-main dsd-card-btn", role: "button", tabIndex: 0, onClick: onSelect },
@@ -1082,6 +1089,9 @@ window.__ModuleLoader__.load({
               h("div", null,
                 h("div", { className: "dsd-money dsd-strong" }, money(dog.capital, hide)),
                 h("div", { className: "dsd-row-metric-label" }, "存粮")),
+              h("div", null,
+                h("div", { className: "dsd-money dsd-strong" }, posText),
+                h("div", { className: "dsd-row-metric-label" }, posLabel)),
               h("div", null,
                 h("div", { className: dog.pnl >= 0 ? "dsd-pos" : "dsd-neg" }, signed(dog.pnl)),
                 h("div", { className: "dsd-row-metric-label" }, "净粮")),
@@ -1137,7 +1147,7 @@ window.__ModuleLoader__.load({
         h("div", { className: "dsd-detail-grid dsd-compact-grid" },
           h("div", { className: "dsd-panel" },
             h("div", { className: "dsd-panel-title" }, "📋 订单 · 待投 " + pending.length + " · 已结算 " + settled.length),
-            h("div", { className: "dsd-orders dsd-orders-compact" }, renderOrders(pending.concat(settled), hide))),
+            h("div", { className: "dsd-orders dsd-orders-compact" }, renderOrders(pending.concat(settled), hide, dog.fullCapital))),
           h("div", { className: "dsd-panel" },
             h("div", { className: "dsd-panel-title" }, "🧬 正在应用因子 · " + ((dog.factors || []).length) + " 个"),
             renderFactorList(dog.factors || []))));

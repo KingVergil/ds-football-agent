@@ -18,8 +18,8 @@ from datetime import date as _date, datetime, timedelta, timezone
 
 from .data_manager import DataManager
 from .environment import get_football_day
-from .fund_limits import FundManager, order_limits_for
-from .order_utils import parse_orders
+from .fund_limits import order_limits_for
+from .order_utils import parse_orders, partition_placement_orders, scale_orders_to_budget
 from .role import Role
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
@@ -69,37 +69,15 @@ def place_orders_from_response(user: str, day: str, response_text: str) -> dict:
     except (ValueError, TypeError):
         pass
 
-    new_orders: list[dict] = []
-    skipped = 0
-    for o in orders:
-        if o.get("skip"):
-            skipped += 1
-            continue
-        lid = o.get("lota_id", "")
-        if lid in started_lids:
-            skipped += 1
-            print(f"  🔒 跳过已开赛: {lid}（维持原仓）")
-            continue
-        if (lid, o.get("bet_type")) in pending_markets:
-            skipped += 1
-            continue
-        new_orders.append(o)
-
-    # ── 资金折算（与 node_place_orders 一致）──
-    capital = role.capital
+    # ── 分离 + 预算折算（与 node_place_orders 共用同一套确定性逻辑）──
+    capital_before = role.capital
+    new_orders, started_total = partition_placement_orders(orders, started_lids, pending_markets)
+    skipped = len(orders) - len(new_orders)
     locked_exposure = sum(
         o.get("bet_size", 0) for o in role.get_orders() if not o.get("settled_at")
     )
     limits = order_limits_for(role.name)
-    if limits.enabled:
-        new_orders, _dropped = FundManager(limits).apply(new_orders, capital)
-    else:
-        full_amount = capital + locked_exposure
-        new_total = sum(o.get("bet_size", 0) for o in new_orders)
-        if new_total > 0 and full_amount > 0:
-            scale = capital / full_amount
-            for o in new_orders:
-                o["bet_size"] = int(o["bet_size"] * scale)
+    new_orders = scale_orders_to_budget(new_orders, capital_before, locked_exposure, started_total, limits)
 
     # ── 下单 ──
     placed = 0

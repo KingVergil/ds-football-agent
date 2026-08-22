@@ -80,7 +80,9 @@ def _headers() -> dict:
 
 def _atomic_write_text(path: Path, text: str) -> None:
     """原子写入：先写临时文件再替换，避免并发进程读到半截文件。"""
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # 临时文件名带进程号，避免多进程并发写同一文件时互相踩（固定 .tmp 会被
+    # 先完成的进程 os.replace 挪走，后到的进程 replace 找不到源而报错）
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 

@@ -2,6 +2,7 @@ import re
 from typing import Any
 
 from .data_manager import DataManager
+from .fund_limits import FundManager
 from .prompt_builder import parse_order
 
 
@@ -166,3 +167,70 @@ def _dedupe_orders(orders: list[dict]) -> list[dict]:
             )
         seen[key] = order
     return list(seen.values())
+
+
+def partition_placement_orders(
+    orders: list[dict],
+    started_lids: set[str],
+    pending_markets: set[tuple[str, str]],
+) -> tuple[list[dict], float]:
+    """把 LLM 订单拆成「可下单」与「已开赛预算占用」两组（确定性，供两条调用路径复用）。
+
+    规则（按序）：
+      - skip → 直接丢弃；
+      - (lota_id, bet_type) 已有未结算订单 → 跳过（重复单/维持原仓），不计入占用——
+        既有订单的金额已在锁定敞口里，再计入会二次扣减预算；
+      - 已开赛且无既有订单 → 不下注，金额计入当日预算占用（**只影响预算口径，不真实扣款**）；
+      - 其余 → 进入下单列表。
+
+    返回 (new_orders, started_total)。started 订单会打 `_started_deduct` 标记供 session 日志展示。
+    """
+    new_orders: list[dict] = []
+    started_total = 0.0
+    for o in orders:
+        if o.get("skip"):
+            continue
+        lid = o.get("lota_id", "")
+        market = (lid, o.get("bet_type"))
+        if market in pending_markets:
+            print(f"  ⏭ 跳过重复单: {market[0]} {market[1]}（已有未结算订单）")
+            continue
+        if lid in started_lids:
+            started_total += float(o.get("bet_size", 0) or 0)
+            o["_started_deduct"] = True
+            print(f"  🔒 已开赛不下注（计入当日占用）: {lid} ¥{float(o.get('bet_size', 0) or 0):,.0f}")
+            continue
+        new_orders.append(o)
+    return new_orders, started_total
+
+
+def scale_orders_to_budget(
+    new_orders: list[dict],
+    capital_before: float,
+    locked_exposure: float,
+    started_total: float,
+    limits,
+) -> list[dict]:
+    """按可用预算折算下单金额（已开赛占用是预算口径，不真实扣款）。
+
+    可用预算 = 扣减前余额 − 已开赛占用（LLM 下单时的余额口径）。
+    limits 启用 → FundManager 硬约束；否则按「全金额 = 余额 + 锁定敞口」比例缩放。
+    返回折算后可下单的订单列表（不会真实扣掉 started_total）。
+    """
+    effective_capital = capital_before - started_total
+    if effective_capital <= 0:
+        print("  📐 可用预算 ≤ 0（已开赛占用吃满），本轮不下单")
+        return []
+    if limits.enabled:
+        placed, _dropped = FundManager(limits).apply(new_orders, effective_capital)
+        return placed
+    full_amount = capital_before + locked_exposure
+    new_total = sum(o.get("bet_size", 0) for o in new_orders)
+    if new_total > 0 and full_amount > 0:
+        scale = effective_capital / full_amount
+        print(f"  📐 资金折算: 锁定¥{locked_exposure:,.0f} + 余额¥{capital_before:,.0f}"
+              f"（已开赛占用¥{started_total:,.0f}） = 全金额¥{full_amount:,.0f}")
+        print(f"  📐 LLM分配¥{new_total:,.0f} → 折算×{scale:.2f} → 实下¥{int(new_total * scale):,.0f}")
+        for o in new_orders:
+            o["bet_size"] = int(o["bet_size"] * scale)
+    return new_orders

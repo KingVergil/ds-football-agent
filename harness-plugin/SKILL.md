@@ -52,9 +52,14 @@ description: 使用 ds-agents-lota-data 插件的只读工具回答比赛/缓存
 ## 回放（ds_replay / /ds-replay）
 
 - 沙箱身份 `replays/sandboxes/<狗>_<MMDD>/`，幂等创建、可续跑；桥经 `role_root` 写沙箱 workspace，线上零影响；
+- **沙箱 workspace 是单狗平铺角色目录**：`<狗>.json` + `memory/` + `factors/` + `predicts/` + `history/`；
+  引擎在 `DS_ROLES_ROOT` 下按**平铺**读取（2026-08-22 起 role.py / memory.py / bridge.py / fund_limits.py 兼容），
+  线上未设置 `DS_ROLES_ROOT` 时保持嵌套 `roles/<狗>/`；
 - 每 `factor_review_every` 天暂停一次：卡片预填「下一轮方向建议」，用户编辑后作为
   `induction_notes` 注入下一周期退役评估；
 - 转正/放弃 = `POST /ds-sandbox/<沙箱>/promote|abort`（dsh 文件原语，备份→整目录替换 / 删沙箱）。
+- 回放报「角色不存在…先 role-sync」时，先核对沙箱 `workspace/` 是否含 `<狗>.json`（平铺），
+  不要按嵌套路径补文件（旧错配症状，已修复）。
 
 ## 缓存格式
 
