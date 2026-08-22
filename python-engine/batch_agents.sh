@@ -138,21 +138,25 @@ case "$cmd" in
         echo "▸ 串关2狗 — $cmd"
         (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog "$cmd" --user 串关2狗) 2>&1 | tail -3
         ;;
-    settle|factor-review)
+    settle)
         for agent in "${AGENTS[@]}"; do
             echo ""
-            echo "▸ $agent — $cmd ${args[*]:-}"
+            echo "▸ $agent — settle ${args[*]:-}"
             echo ""
-            python "$SCRIPT_DIR/dsfootball_cli.py" agent "$agent" "$cmd" ${args[@]+"${args[@]}"} "--jingcai"
+            python "$SCRIPT_DIR/dsfootball_cli.py" agent "$agent" "settle" ${args[@]+"${args[@]}"} "--jingcai"
         done
-        if [ "$cmd" = "settle" ]; then
+        echo ""
+        echo "▸ 串关2狗 — settle ${args[*]:-}（3串1 独立角色，用自己的因子）"
+        (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-} --user 串关2狗) 2>&1 | tail -3
+        _refresh_dashboard noopen
+        ;;
+    factor-review)
+        for agent in "${AGENTS[@]}"; do
             echo ""
-            echo "▸ 串关2狗 — settle ${args[*]:-}（3串1 独立角色，用自己的因子）"
-            (cd "$SCRIPT_DIR" && python -m src.chuan_guan_dog settle ${args[0]:-} --user 串关2狗) 2>&1 | tail -3
+            echo "▸ $agent — factor-review ${args[*]:-}"
             echo ""
-            echo "🧠 因子归纳（结算后自动：alpha 跨狗 1 次 + 非 alpha 各自，--limit 30）..."
-            python "$SCRIPT_DIR/dsfootball_cli.py" factor-induction --limit 30
-        fi
+            python "$SCRIPT_DIR/dsfootball_cli.py" agent "$agent" "factor-review" ${args[@]+"${args[@]}"} "--jingcai"
+        done
         _refresh_dashboard noopen
         ;;
     factor-induction)

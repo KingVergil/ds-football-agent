@@ -722,7 +722,11 @@ class AgentMemory:
         # 按角色隔离记忆: roles/{name}/memory/
         if role_name:
             roles_root = Path(os.environ.get("DS_ROLES_ROOT") or DATA_ROOT / "roles")
-            base_dir = roles_root / role_name / "memory"
+            if os.environ.get("DS_ROLES_ROOT"):
+                # 沙箱回放：role_root 已是单狗平铺目录，记忆直接在 <root>/memory/
+                base_dir = roles_root / "memory"
+            else:
+                base_dir = roles_root / role_name / "memory"
         else:
             base_dir = DATA_ROOT / "agent_memory"  # 兼容旧代码
         self.orders = OrderMemory(base_dir)

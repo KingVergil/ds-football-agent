@@ -98,6 +98,9 @@ def _ensure_dog(dog: str) -> None:
     if not dog or not dog.strip():
         raise BridgeError("缺少参数 dog")
     path = _role_dir() / dog / f"{dog}.json"
+    if not path.exists() and os.environ.get("DS_ROLES_ROOT"):
+        # 沙箱回放：role_root 是单狗平铺目录，角色 json 直接位于根下
+        path = _role_dir() / f"{dog}.json"
     if not path.exists():
         raise BridgeError(f"角色不存在: {dog}（roles/{dog}/{dog}.json 缺失，先 role-sync）")
 
@@ -125,6 +128,8 @@ def _factor_summary(dog: str) -> dict:
     """从因子记忆汇总状态分布（active/retired/dormant），供状态卡片与退役建议用。"""
     from src.role_registry import ROLES_DIR
     path = ROLES_DIR / dog / "memory" / "factor_memory.json"
+    if not path.exists() and os.environ.get("DS_ROLES_ROOT"):
+        path = ROLES_DIR / "memory" / "factor_memory.json"
     counts = {"active": 0, "retired": 0, "dormant": 0, "testing": 0, "other": 0}
     names = {"active": [], "retired": [], "dormant": [], "testing": []}
     try:

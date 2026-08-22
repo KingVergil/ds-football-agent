@@ -25,6 +25,12 @@ ROLES_DIR = Path(os.environ.get("DS_ROLES_ROOT") or (Path(__file__).parent.paren
 ROLES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _flat_role_root() -> bool:
+    """沙箱回放模式：DS_ROLES_ROOT 指向单只狗的平铺角色目录（workspace），
+    角色 json 直接位于根下，而非 roles/<name>/<name>.json。线上未设置时保持嵌套。"""
+    return bool(os.environ.get("DS_ROLES_ROOT"))
+
+
 def _now() -> str:
     return datetime.now().isoformat()
 
@@ -82,7 +88,7 @@ class Role:
         self.orders = []  # 订单统一存 role.json，不再单独落盘
 
         # 角色专属目录
-        self._role_dir = ROLES_DIR / name
+        self._role_dir = ROLES_DIR if _flat_role_root() else ROLES_DIR / name
         self._predicts_dir = self._role_dir / "predicts"
         for d in [self._role_dir, self._predicts_dir]:
             d.mkdir(parents=True, exist_ok=True)
@@ -115,7 +121,10 @@ class Role:
     @classmethod
     def load(cls, name: str) -> "Role":
         """从磁盘加载角色"""
-        path = ROLES_DIR / name / f"{name}.json"
+        if _flat_role_root():
+            path = ROLES_DIR / f"{name}.json"
+        else:
+            path = ROLES_DIR / name / f"{name}.json"
         if not path.exists():
             raise FileNotFoundError(f"角色 '{name}' 不存在")
 

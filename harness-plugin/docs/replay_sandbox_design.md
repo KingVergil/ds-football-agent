@@ -194,6 +194,13 @@ dog.status ∈ { live, sandbox, archived }
 1. **角色根覆盖（核心）**：`Role` / `DataManager` / `memory` 支持 `DS_ROLES_ROOT`
    （桥 `opts.role_root`）指向沙箱 `workspace/`；analyze/settle/induction/review/
    refresh/reset 全部写沙箱，`status`/`prepare` 只读不受影响。
+   - **平铺契约（2026-08-22 落地）**：workspace 是**单狗平铺角色目录**
+     （`<狗>.json` + `memory/` + `factors/` + `predicts/` + `history/`）；
+     引擎在 `DS_ROLES_ROOT` 设置时按平铺读取——`role.py`（`Role.load`/`_role_dir`）、
+     `memory.py`（`AgentMemory`）、`bridge.py`（`_ensure_dog`/`_factor_summary`）、
+     `fund_limits.py`（`_read_role_json`）均已兼容；线上未设置时保持嵌套 `roles/<狗>/`。
+   - ⚠️ 曾出现的「角色不存在…先 role-sync」是平铺/嵌套错配的症状，现已修复；若再现，
+     先核对沙箱 workspace 是否含 `<狗>.json`（平铺），不要按嵌套路径补文件。
 2. **不做沙箱生命周期 func**（决策 ⑤）：create/promote/abort 由 dsh 文件原语实现，
    桥只多一个 `role_root` 透传 + 校验（沙箱路径必须在 replays/sandboxes 下）。
 3. **线上每日检查点**：live 狗结算后自动落 `D__pre-factor` 快照（供沙箱复制）。

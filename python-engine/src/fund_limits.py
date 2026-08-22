@@ -15,14 +15,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
-ROLES_DIR = Path(__file__).resolve().parent.parent / "data" / "roles"
+ROLES_DIR = Path(os.environ.get("DS_ROLES_ROOT") or (Path(__file__).resolve().parent.parent / "data" / "roles"))
 
 
 def _read_role_json(agent_name: str) -> Optional[dict]:
     path = ROLES_DIR / agent_name / f"{agent_name}.json"
+    if not path.exists() and os.environ.get("DS_ROLES_ROOT"):
+        path = ROLES_DIR / f"{agent_name}.json"
     try:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
