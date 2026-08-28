@@ -42,9 +42,10 @@ FEATURES_DIR = DATA_ROOT / "features"
 TAGS_DIR = Path(__file__).parent.parent / "data" / "tags"
 PREDICTS_DIR = Path(__file__).parent.parent / "data" / "predicts"
 ORDERS_DIR = Path(__file__).parent.parent / "data" / "orders"
+BEIDAN_DIR = DATA_ROOT / "beidan"
 
 # 确保目录存在
-for d in [MATCHES_DIR, FEATURES_DIR, TAGS_DIR, PREDICTS_DIR, ORDERS_DIR]:
+for d in [MATCHES_DIR, FEATURES_DIR, TAGS_DIR, PREDICTS_DIR, ORDERS_DIR, BEIDAN_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -419,6 +420,103 @@ class DataManager:
             self.save_matches_cache(d, buckets[d])
             written[d] = len(buckets[d])
         return written
+
+
+    def fetch_beidan_matches_by_date_range(self, start_date: str, end_date: str) -> list[dict]:
+        """从 v2-api 拉取日期范围内的北单比赛（带 beidan_info: goal_line+开奖sp）."""
+        return self._fetch_all_matches({
+            "start_date": start_date,
+            "end_date": end_date,
+            "is_beidan": "true",
+        })
+
+    def get_cached_beidan_matches(self, date_str: str) -> list[dict]:
+        """本地缓存: 某足球日的北单比赛（含 beidan_info）."""
+        path = BEIDAN_DIR / f"{date_str}.json"
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, list) else data.get("matches", [])
+            except Exception:
+                pass
+        return []
+
+    def refresh_beidan_cache(self, start_date: str, end_date: str) -> dict:
+        """按足球日 [D 12:01, D+1 12:00] 切分并写入 beidan 缓存. 返回 {date_str: 场数}."""
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(hours=12, minutes=1)
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1, hours=12)
+        ms = self.fetch_beidan_matches_by_date_range(
+            start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        if not ms:
+            return {}
+        buckets: dict[str, list[dict]] = {}
+        for m in ms:
+            mt = m.get("match_time", "")
+            if len(mt) < 16:
+                continue
+            try:
+                mdt = datetime.strptime(mt[:16], "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+            if mdt < start_dt or mdt > end_dt:
+                continue
+            d = (mdt - timedelta(hours=12, minutes=1)).date().isoformat()
+            buckets.setdefault(d, []).append(m)
+        written = {}
+        for d in sorted(buckets):
+            if not (start_date <= d <= end_date):
+                continue
+            buckets[d].sort(key=lambda x: x.get("match_time", ""))
+            _atomic_write_text(
+                BEIDAN_DIR / f"{d}.json",
+                json.dumps(buckets[d], ensure_ascii=False, indent=2),
+            )
+            written[d] = len(buckets[d])
+        return written
+
+    def refresh_beidan_history(self, days: int = 60) -> dict:
+        """回填过去 days 天的北单缓存（含 goal_line + 开奖sp），写入 beidan/*.json."""
+        today = datetime.now().date()
+        start = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+        end = today.strftime("%Y-%m-%d")
+        return self.refresh_beidan_cache(start, end)
+
+    def get_cached_beidan_match(self, lota_id: str) -> Optional[dict]:
+        """从 beidan 缓存目录按 lota_id 查找单场北单比赛（含 beidan_info）。"""
+        if not lota_id:
+            return None
+        for path in sorted(BEIDAN_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                matches = data if isinstance(data, list) else data.get("matches", [])
+                for m in matches:
+                    if m.get("lota_id") == lota_id:
+                        return m
+            except Exception:
+                continue
+        return None
+
+    def get_cached_beidan_results(self, lota_ids: set[str]) -> dict[str, dict]:
+        """批量返回 {lota_id: beidan_info}，单次扫描 beidan 缓存目录。"""
+        result: dict[str, dict] = {}
+        if not lota_ids:
+            return result
+        for path in sorted(BEIDAN_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            matches = data if isinstance(data, list) else data.get("matches", [])
+            for m in matches:
+                lid = m.get("lota_id")
+                if lid in lota_ids and m.get("beidan_info"):
+                    result[lid] = m["beidan_info"]
+            if len(result) >= len(lota_ids):
+                break
+        return result
+
 
     def get_cached_match(self, lota_id: str) -> Optional[dict]:
         """从本地缓存查找单场比赛（扫描 matches + features）"""

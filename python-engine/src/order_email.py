@@ -20,6 +20,9 @@ from .email_sender import send_email
 SNAPSHOT_DIR = Path(__file__).parent.parent / "data" / "email_snapshots"
 ROLES_DIR = Path(__file__).parent.parent / "data" / "roles"
 
+# 距开赛超过该小时数的比赛，其预测视为「可能变」（尚未定型）
+PROVISIONAL_HOURS = 3
+
 
 # ═══════════════════════════════════════════════
 # 订单加载
@@ -255,6 +258,68 @@ def _fmt_hc(hc) -> str:
     return f"{hc:+.2f}"
 
 
+def _is_provisional(order: dict, now: datetime) -> bool:
+    """距开赛超过 PROVISIONAL_HOURS 小时且未完场 → 该预测后续可能调整（标注「可能变」）。"""
+    if order.get("state", 0) == 6:
+        return False
+    try:
+        mt = datetime.strptime(order["match_time"], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return False
+    return mt > now + timedelta(hours=PROVISIONAL_HOURS)
+
+
+def _match_label(order: dict) -> str:
+    """比赛标签：主队 vs 客队 (MM-DD HH:MM)。"""
+    home = order.get("home_name", "?")
+    away = order.get("away_name", "?")
+    mt = (order.get("match_time", "") or "")[5:16]
+    return f"{home} vs {away}" + (f" <span style='color:#999'>({mt})</span>" if mt else "")
+
+
+def _build_change_summary(changes: dict, capital) -> str:
+    """构建「本封更新」摘要 HTML：清晰写明哪些比赛变更/取消。无变更则返回空串。"""
+    changed = changes.get("changed", [])
+    removed = changes.get("removed", [])
+    if not changed and not removed:
+        return ""
+
+    items = []
+    for c in changed:
+        o = c["order"]
+        parts = []
+        if c.get("old_pick") is not None:
+            parts.append(f"选择 {_old_pick_display(c['old_pick'], o)} → {_pick_display(o)}")
+        if c.get("old_handicap") is not None:
+            parts.append(f"让球 {_fmt_hc(c['old_handicap'])} → {_fmt_hc(o.get('handicap'))}")
+        if c.get("old_odds") is not None:
+            parts.append(f"赔率 {c['old_odds']} → {o.get('odds') or '-'}")
+        if c.get("old_bet_size") is not None and capital and capital > 0:
+            old_pct = f"{c['old_bet_size'] / capital * 100:.1f}%"
+            new_pct = f"{o.get('bet_size', 0) / capital * 100:.1f}%"
+            parts.append(f"仓位 {old_pct} → {new_pct}")
+        items.append(("变更", "#e67e22", _match_label(o), "；".join(parts)))
+
+    for r in removed:
+        lid = r.get("lota_id", "")
+        match = tools.lookup_match(lid) or {}
+        label = f"{match.get('home_name', '?')} vs {match.get('away_name', '?')}"
+        items.append(("取消", "#e74c3c", label, "取消 / 不下"))
+
+    rows = ""
+    for badge, color, label, detail in items:
+        rows += (
+            f'<div style="margin:4px 0">'
+            f'<span style="background:{color};color:#fff;font-size:11px;padding:1px 7px;border-radius:3px">{badge}</span> '
+            f'{label} <span style="color:#999">·</span> {detail}</div>'
+        )
+
+    return f"""
+    <div style="background:#fdf2f2;border:1px solid #f0b0b0;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#8a4b4b">
+        📩 <b>本封更新（相对上一封 {len(changed) + len(removed)} 处）：</b>{rows}
+    </div>"""
+
+
 def build_email_body(
     agent_name: str,
     football_day: str,
@@ -346,11 +411,16 @@ def build_email_body(
 
         new_badge = '<span style="background:#27ae60;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">NEW</span>' if lid in new_ids else ""
 
+        provisional_badge = (
+            '<span style="background:#f39c12;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px" '
+            f'title="距开赛超过{PROVISIONAL_HOURS}小时，预测后续可能调整或取消">可能变</span>'
+        ) if _is_provisional(o, now) else ""
+
         pct = f"{o.get('bet_size', 0) / capital * 100:.1f}%" if capital and capital > 0 else "-"
         rows_html += f"""
         <tr style="background:{bg}">
             <td style="padding:6px 8px;text-align:center;color:{'#bbb' if is_finished_row else '#999'}">{i}{new_badge}</td>
-            <td style="padding:6px 6px;white-space:nowrap;color:{text_color}">{match_time_short}</td>
+            <td style="padding:6px 6px;white-space:nowrap;color:{text_color}">{match_time_short}{provisional_badge}</td>
             <td style="padding:6px 6px;color:{'#bbb' if is_finished_row else '#666'}">{league}</td>
             <td style="padding:6px 6px;text-align:right;max-width:80px;color:{text_color}">{home}</td>
             <td style="padding:6px 2px;text-align:center;color:#ccc">vs</td>
@@ -407,24 +477,44 @@ def build_email_body(
             <td style="padding:1px 12px;text-align:center">{pct_cell}</td>
         </tr>"""
 
-    # ── 计算近 2h 订单数 ──
-    two_h = now + timedelta(hours=2)
+    # ── 计算近 3h 订单数 & 「可能变」数量 ──
+    two_h = now + timedelta(hours=PROVISIONAL_HOURS)
     near_count = 0
+    provisional_count = 0
     for o in orders:
+        if _is_provisional(o, now):
+            provisional_count += 1
         try:
             mt = datetime.strptime(o["match_time"], "%Y-%m-%d %H:%M:%S")
             if mt <= two_h:
                 near_count += 1
         except ValueError:
             pass
-    time_hint = f"近2h {near_count}单" if near_count > 0 else f"剩余 {len(orders)}单"
+    time_hint = f"近{PROVISIONAL_HOURS}h {near_count}单" if near_count > 0 else f"剩余 {len(orders)}单"
+
+    # ── 顶部提示：说明「可能变」比赛 ──
+    if provisional_count > 0:
+        hint_html = (
+            f'⏰ <b>提示：</b>有 <b>{provisional_count} 场</b>比赛距开赛超过 {PROVISIONAL_HOURS} 小时，'
+            f'表中已标「<span style="color:#b9770e">可能变</span>」：<b>预测后续可能调整或取消</b>，'
+            '请以临近该场开赛时点的邮件为准。'
+        )
+    else:
+        hint_html = (
+            f'⏰ <b>提示：</b>所有待结算比赛距开赛均在 {PROVISIONAL_HOURS} 小时内，预测已进入锁定阶段。'
+        )
+
+    # ── 本封更新摘要（变更 / 取消）──
+    summary_html = _build_change_summary(changes, capital)
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,SF Pro Display,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#333;max-width:900px;margin:0 auto;padding:20px">
 
+    {summary_html}
+
     <div style="background:#fff8e1;border:1px solid #f0c36d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#7a5c00">
-        ⏰ <b>提示：</b>除 12 点附近的邮件外，请参考未来 3 小时内的比赛。
+        {hint_html}
     </div>
 
     <div style="margin-bottom:16px">

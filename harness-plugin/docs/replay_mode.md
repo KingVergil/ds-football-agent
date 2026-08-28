@@ -54,6 +54,11 @@ ds_replay(
 
 ## 运行方式：一路到底 / 半交互续跑
 
+- **按天暂停（2026-08-24 新增）**：`pause_every=1`（或 N）时，每跑 N 天自动暂停一次
+  （不触发因子退役，适合逐日检查当天窗口/订单/因子效果，避免跑完整个 8 月才发现问题）；
+  暂停后返回 `run_id` / `next_day` / 当天轨迹与日志，用 `resume_run_id` 续跑下一天，
+  或 `to_end=true` 一路跑完。
+
 - **一路到底（默认）**：不传 `mode`/`interactive`，跑完整段 `[start, end]` 出报告（行为与旧版一致）。
 - **半交互**：`mode="interactive"`（或 `interactive=true`）→ 每个因子退役周期（`factor_review_every` 天）结束就**暂停**，返回：
   - `status: "paused"`、`run_id`、`next_day`、`remaining_days`；
@@ -78,12 +83,30 @@ ds_replay(
 
 ```
 0. 范围数据一次性准备（prepareRange：单例 + 缓存优先，缺了拉 URL）
-1. 并行分析：fan-out 每狗独立 subagent（比赛列表已注入 + 人设已注入上下文）
+   - 2026-08-24 已落地：新回放启动时先调桥 `prepare-range`（按日历日逐个强制刷新
+     比赛缓存 + 预取特征/标签），逐日 prepare 只读已备好的缓存——修复"跑到某天缓存
+     缺失→临时拉取返回空→0 场"的数据不一致（第二轮 08-14/17-20 缺 5 天的根因）。
+1. 分析（按智能窗口分批）：当日竞彩 ≤10 场 → 单窗口全量一次；
+   当日竞彩 >10 场 → `windows.js` 按波次锚点（默认 17:30 / 19:30 / 21:30 / 00:30，
+   北京时间开赛边界）切成多个窗口，逐窗 analyze（每窗只注入该窗口比赛）
 2. 结算：settleDog（纯 JS，只认 state==6 比分）
 3. 反思：旁路 LLM（模型可覆盖，默认 flash）
 4. 因子归纳：alpha 跨狗 1 次 + 非 alpha 各自（flash 判重）
 5. 每 factor_review_every 天：因子退役评估（代码门控 + 旁路 LLM；user_notes 注入评估 prompt）
 ```
+
+## 智能窗口（time windows，2026-08-23）
+
+- 波次启动时机是**外部编排**（harness），不进引擎：`harness-plugin/windows.js` 只负责把
+  当天的竞彩比赛按开赛时间分窗，`replay.js` 逐窗调桥 `analyze`（`opts.window.match_ids`），
+  引擎只做白名单过滤（`node_fetch_matches`）。
+- 切分规则（`splitDayWindows`）：
+  - 当天 ≤10 场 → 1 个窗口（全量，行为不变）；
+  - 当天 >10 场 → 按锚点切窗：开赛时间落在 `[17:30,19:30)` / `[19:30,21:30)` /
+    `[21:30,00:30)` / `[00:30,12:00)` 分别归 17:30 / 19:30 / 21:30 / 00:30 波次；
+  - 末波 00:30 覆盖到 ~04:30（`lastWaveSpan=240min`），内部间隙不拆；04:30 之后早场单独成窗；
+  - 同一锚点带内开赛跨度 >180min 或相邻间隙 ≥90min 再细分；每窗 ≤10 场上限。
+- 桥 `prepare` 额外返回 `matches`（lota_id + match_time，去重），供 harness 切窗。
 
 ## 启动次序（单例取数 → 范围正确性 → 替换/还原）
 

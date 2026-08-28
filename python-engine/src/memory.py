@@ -21,6 +21,9 @@ from .factor_select import (
     FACTOR_SAMPLE_WINDOW,
     FACTOR_SMALL_SAMPLE,
     FACTOR_MAX_MAIN,
+    FACTOR_MAX_MAIN_POS,
+    FACTOR_MAX_MAIN_NEG,
+    FACTOR_NOISE_W_RETURN,
 )
 
 
@@ -513,7 +516,7 @@ class FactorMemory:
         """
         if not self._loaded or not self.factor_perf:
             return [], [], 0
-        main, aux, dormant_count = [], [], 0
+        main_pos, main_neg, aux, dormant_count = [], [], [], 0
         for fid, s in self.factor_perf.items():
             status = s.get("status", "active")
             if status == "retired":
@@ -528,19 +531,37 @@ class FactorMemory:
                 dormant_count += 1
                 continue
             item = (fid, s, prof)
-            if prof["n"] >= 2 and prof["w_return"] > 0:
-                main.append(item)
-            else:
+            n, wr = prof["n"], prof["w_return"]
+            if n < 2:
                 aux.append(item)
-        main.sort(key=lambda x: -x[2]["w_return"])
+            elif wr >= FACTOR_NOISE_W_RETURN:
+                prof["sign"] = "pos"
+                main_pos.append(item)
+            elif wr <= -FACTOR_NOISE_W_RETURN:
+                prof["sign"] = "neg"
+                main_neg.append(item)
+            # else: 0 回报附近噪声 → 不展示
+        main_pos.sort(key=lambda x: -x[2]["w_return"])
+        main_neg.sort(key=lambda x: x[2]["w_return"])
         aux.sort(key=lambda x: -x[2]["w_return"] if x[2] else 0)
+        main = main_pos[:FACTOR_MAX_MAIN_POS] + main_neg[:FACTOR_MAX_MAIN_NEG]
         return main[:FACTOR_MAX_MAIN], aux[:6], dormant_count
 
     def perf_text(self, as_of=None) -> str:
-        """分层注入：L1 负例护栏 + L2 正例(自适应main) + L3 观察摘要 + L4 休眠计数。"""
+        """分层注入：L1 负例护栏 + L2 顺向(正回报) + L3 反向(负回报/反买) + L4 观察 + 噪声/休眠计数。"""
         if not self._loaded or not self.factor_perf:
             return ""
         main, aux, dormant_count = self.selected_active(as_of)
+        noise_count = 0
+        for fid, s in self.factor_perf.items():
+            status = s.get("status", "active")
+            if status in ("retired", "dormant"):
+                continue
+            prof = factor_profile(s, now=as_of)
+            if prof is None or prof["dormant"] or prof["n"] < 2:
+                continue
+            if abs(prof["w_return"]) < FACTOR_NOISE_W_RETURN:
+                noise_count += 1
         retired = sorted(
             ((fid, s0) for fid, s0 in self.factor_perf.items() if s0.get("status") == "retired"),
             key=lambda x: -float(x[1].get("profit") or 0),
@@ -550,20 +571,32 @@ class FactorMemory:
             lines.append("🪦 已证伪模式（负例护栏，勿用）:")
             for fid, s0 in retired:
                 lines.append(f"  ❌ {fid} (累计{float(s0.get('profit') or 0):+.0f})")
-        if main:
-            lines.append("📐 活跃因子（按自适应得分）:")
-            for fid, s0, p0 in main:
+        pos = [x for x in main if x[2].get("sign") == "pos"]
+        neg = [x for x in main if x[2].get("sign") == "neg"]
+        if pos:
+            lines.append("📈 顺向因子（正回报，按自适应得分）:")
+            for fid, s0, p0 in pos:
+                small = f" ⚠️样本少({p0['n']}单)" if p0["n"] < 5 else ""
+                lines.append(f"  {fid} [近{p0['n']}单 命中{p0['hits']}/{p0['n']} 加权回报{p0['w_return']:+.2f}{small}]")
+                desc = s0.get("desc", "")
+                if desc:
+                    lines.append(f"     {desc[:80]}")
+        if neg:
+            lines.append("🔄 反向因子（负回报，反买/规避信号）:")
+            for fid, s0, p0 in neg:
                 small = f" ⚠️样本少({p0['n']}单)" if p0["n"] < 5 else ""
                 lines.append(f"  {fid} [近{p0['n']}单 命中{p0['hits']}/{p0['n']} 加权回报{p0['w_return']:+.2f}{small}]")
                 desc = s0.get("desc", "")
                 if desc:
                     lines.append(f"     {desc[:80]}")
         if aux:
-            lines.append("📉 观察（样本不足/走弱，勿重仓）:")
+            lines.append("📉 观察（样本不足，勿重仓）:")
             for fid, s0, p0 in aux[:15]:
                 wr = p0["w_return"] if p0 else 0.0
                 n = p0["n"] if p0 else 0
                 lines.append(f"  ⚠️ {fid}: 近{n}单 加权回报{wr:+.2f}")
+        if noise_count:
+            lines.append(f"  (另有 {noise_count} 个 0 回报附近噪声因子已过滤)")
         if dormant_count:
             lines.append(f"  (另有 {dormant_count} 个休眠因子)")
         return "\n".join(lines)
@@ -719,6 +752,7 @@ class AgentMemory:
     """
 
     def __init__(self, role_name: str = ""):
+        self.as_of = None  # 回放/模拟时注入的评估基准时间；None=真实当前时间
         # 按角色隔离记忆: roles/{name}/memory/
         if role_name:
             roles_root = Path(os.environ.get("DS_ROLES_ROOT") or DATA_ROOT / "roles")
@@ -786,9 +820,9 @@ class AgentMemory:
 
         # 因子表现
         if config.get("include_factor_perf", False):
-            blocks.append(self.factors.perf_text())
+            blocks.append(self.factors.perf_text(self.as_of))
             # 附加因子详细定义（从 fac_*.json 读取）
-            desc_text = self.factors.factor_desc_text()
+            desc_text = self.factors.factor_desc_text(self.as_of)
             if desc_text:
                 blocks.append(desc_text)
 
@@ -798,7 +832,7 @@ class AgentMemory:
 
         # Alpha 反思
         if config.get("include_reflections", True):
-            ref_text = self.reflections.format_for_prompt()
+            ref_text = self.reflections.format_for_prompt(self.as_of)
             if ref_text:
                 blocks.append(ref_text)
 
@@ -853,12 +887,33 @@ class ReflectionMemory:
     def recent_reflections(self, n: int = 5) -> list[dict]:
         return self.reflections[-n:] if self.reflections else []
 
-    def format_for_prompt(self) -> str:
-        """注入 prompt 的反思文本"""
+    def format_for_prompt(self, as_of=None) -> str:
+        """注入 prompt 的反思文本。
+
+        as_of: 评估基准时间（datetime 或 date）。传值时只保留 date <= as_of 的反思，
+        避免预加载/并行挖掘场景下未来反思泄漏到历史 analyze prompt。
+        """
         if not self._loaded or not self.reflections:
             return ""
+        refs = self.reflections
+        if as_of is not None:
+            try:
+                cutoff = (
+                    as_of.strftime("%Y-%m-%d")
+                    if hasattr(as_of, "strftime")
+                    else str(as_of)[:10]
+                )
+            except Exception:
+                cutoff = str(as_of)[:10]
+            refs = [
+                r for r in refs
+                if (r.get("date", "") or "")[:10] <= cutoff
+            ]
+        refs = refs[-5:]
+        if not refs:
+            return ""
         lines = ["## 📝 历史反思（Alpha 因子积累）", ""]
-        for r in self.reflections[-5:]:
+        for r in refs:
             lines.append(f"### {r['date']}")
             sc = r.get("sample_count")
             text = r.get("reflection", "")

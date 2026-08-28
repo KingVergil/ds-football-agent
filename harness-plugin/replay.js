@@ -18,6 +18,7 @@ import { beijingNowIso } from "./tools/shared.js";
 import { streamText } from "./tools/llmText.js";
 import { runBridge, defaultPythonBin } from "./bridge.js";
 import { readDogRegistry, writeDogRegistry } from "./dogRegistry.js";
+import { splitDayWindows } from "./windows.js";
 
 /** 回放旁路 LLM 默认模型（deepseek-flash 省 token）。 */
 export const REPLAY_MODEL = "deepseek-v4-flash";
@@ -201,7 +202,8 @@ async function bridgeCallTick(cacheDir, engineRoot, pythonBin, req, onProgress, 
 /**
  * 创建沙箱（幂等）：snapshot/ = 线上角色复制；workspace/ 初始化 =
  *   - 线上有 `<start>__pre-factor` 检查点（结算后/因子归纳前）→ 复制它（老狗，从 D 因子归纳继续）
- *   - 否则 → 复制线上当前角色（新狗=空骨架，从 D 完整日管线开始）
+ *   - 否则 → 复制线上当前角色（新狗=空骨架，从 D 完整日管线开始）；老狗无检查点时，
+ *     runReplay 会先把复制带入的历史挂单结算掉（起点=结算后阶段，见 runReplay）
  * @returns {{ok:boolean, sandboxDir:string, workspace:string, partialFirstDay:boolean, error?:string}}
  */
 export function createSandbox(cacheDir, dog, startDay, sandboxName) {
@@ -238,40 +240,78 @@ export function createSandbox(cacheDir, dog, startDay, sandboxName) {
   return { ok: true, sandboxDir: sbDir, workspace, partialFirstDay, snapshot };
 }
 
-/** 转正：备份线上 → workspace 整目录替换线上（决策①：替换）。 */
-export function promoteSandbox(cacheDir, sandboxName, dog) {
+/**
+ * 转正：备份线上 → workspace 整目录替换线上（决策①：替换）。
+ * targetName 缺省 = 沙箱狗名；传新名字时把角色文件/name 字段/会话目录同步改名（如 梭哈4狗）。
+ */
+export function promoteSandbox(cacheDir, sandboxName, dog, targetName = "") {
+  const to = String(targetName || dog).trim();
+  if (!to) return { ok: false, error: "转正目标狗名不能为空" };
   const sbDir = sandboxDirOf(cacheDir, sandboxName);
   const workspace = join(sbDir, "workspace");
-  if (!existsSync(join(workspace, `${dog}.json`))) {
+  const srcRole = join(workspace, `${dog}.json`);
+  if (!existsSync(srcRole)) {
     return { ok: false, error: `沙箱 ${sandboxName} 的 workspace 缺少 ${dog}.json，无法转正` };
   }
-  const live = roleDir(cacheDir, dog);
+  const live = roleDir(cacheDir, to);
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const backup = join(cacheDir, "backups", `promote_${dog}_${ts}`);
+  const backup = join(cacheDir, "backups", `promote_${to}_${ts}`);
   if (existsSync(live)) {
     mkdirSync(backup, { recursive: true });
     copyDir(live, backup);
   }
   rmSync(live, { recursive: true, force: true });
   copyDir(workspace, live);
-  // 状态置 live（角色文件 + 注册表）
-  const rolePath = join(live, `${dog}.json`);
-  const role = readJson(rolePath) || {};
-  role.status = "live";
-  role.enabled = true;
-  writeJson(rolePath, role);
-  // 注册表同步：看板 enabledFor/默认列表读注册表优先，转正后立即翻 live
-  syncRegistryLive(cacheDir, dog);
-  return { ok: true, sandbox: sandboxName, dog, backup };
+
+  // 改名转正：<dog>.json → <to>.json + name 字段；会话目录同步改名（内容为历史日志，不改写）
+  if (to !== dog) {
+    const oldRole = join(live, `${dog}.json`);
+    if (existsSync(oldRole)) {
+      const role = readJson(oldRole) || {};
+      role.name = to;
+      role.status = "live";
+      role.enabled = true;
+      writeJson(join(live, `${to}.json`), role);
+      try { rmSync(oldRole, { force: true }); } catch { /* 忽略 */ }
+    }
+    const oldSess = join(live, "sessions", dog);
+    if (existsSync(oldSess)) {
+      mkdirSync(join(live, "sessions"), { recursive: true });
+      try {
+        renameSync(oldSess, join(live, "sessions", to));
+      } catch { /* 忽略重命名失败 */ }
+    }
+  } else {
+    // 状态置 live（角色文件 + 注册表）
+    const rolePath = join(live, `${to}.json`);
+    const role = readJson(rolePath) || {};
+    role.status = "live";
+    role.enabled = true;
+    writeJson(rolePath, role);
+  }
+  // 注册表同步：目标狗翻 live（无条目则沿用源狗配置补建）
+  syncRegistryLive(cacheDir, to, dog);
+  return { ok: true, sandbox: sandboxName, dog: to, from: dog, backup };
 }
 
-/** 转正后把注册表条目翻 live（enabled=true, status=live）；无注册表条目（如默认 7 狗）则跳过。 */
-function syncRegistryLive(cacheDir, dog) {
+/** 转正后把注册表条目翻 live（enabled=true, status=live）；无条目则沿用源狗配置补建。 */
+function syncRegistryLive(cacheDir, dog, fromDog = "") {
   const dogs = readDogRegistry(cacheDir);
   const idx = dogs.findIndex((d) => d && d.name === dog);
-  if (idx < 0) return;
-  const next = [...dogs];
-  next[idx] = { ...next[idx], enabled: true, status: "live" };
+  let next;
+  if (idx >= 0) {
+    next = [...dogs];
+    next[idx] = { ...next[idx], enabled: true, status: "live" };
+  } else {
+    const src = fromDog ? dogs.find((d) => d && d.name === fromDog) : null;
+    const base = src
+      ? {
+          scope: src.scope, initial_capital: src.initial_capital, alpha_mode: src.alpha_mode,
+          limits: src.limits, emoji: src.emoji, c1: src.c1, c2: src.c2,
+        }
+      : {};
+    next = [...dogs, { ...base, name: dog, enabled: true, status: "live", created_at: beijingNowIso() }];
+  }
   writeDogRegistry(cacheDir, next);
 }
 
@@ -391,16 +431,35 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
       warn(`[${d}] 数据准备失败: ${prep.error}`);
     }
 
-    // 2) 分析（沙箱内 LLM 决策）
-    onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析`, done: dayIdx, total, detail: d });
-    const r = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
-      func: "analyze", dog, day: d,
-      opts: { prefetched: true, live: false, jingcai_only: true, ...(skipLlm ? { skip_llm: true } : {}) },
-    }, (p) => onProgress({
-      phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d,
-    }), `第 ${dayIdx + 1}/${total} 天 分析 ${dog}`, roleRoot, envFile);
-    placed = r.ok ? (r.data.placed || 0) : 0;
-    log.push(`     ${r.ok ? "✅" : "❌"} ${dog} 下单 ${placed} 单${r.error ? " " + r.error : ""}`);
+    // 2) 分析（沙箱内 LLM 决策；当日竞彩 >10 场时按智能窗口分批，模拟多波次启动）
+    const prepMatches = (prep.ok && Array.isArray(prep.data.matches)) ? prep.data.matches : [];
+    const windows = splitDayWindows(d, prepMatches, {});
+    const winList = windows.length > 1 ? windows : [null];
+    let placedTotal = 0;
+    for (let wi = 0; wi < winList.length; wi++) {
+      const win = winList[wi];
+      const winLabel = win
+        ? `窗口 ${wi + 1}/${winList.length} [${win.anchor}] ${win.start.slice(11)}~${win.end.slice(11)}·${win.match_ids.length}场`
+        : "全量";
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog} ${winLabel}`, done: dayIdx, total, detail: d });
+      const r = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
+        func: "analyze", dog, day: d,
+        opts: {
+          prefetched: true, live: false, jingcai_only: true,
+          ...(win ? { window: { match_ids: win.match_ids } } : {}),
+          ...(skipLlm ? { skip_llm: true } : {}),
+        },
+      }, (p) => onProgress({
+        phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d,
+      }), `第 ${dayIdx + 1}/${total} 天 分析 ${dog} ${winLabel}`, roleRoot, envFile);
+      const placedWin = r.ok ? (r.data.placed || 0) : 0;
+      placedTotal += placedWin;
+      log.push(`     ${r.ok ? "✅" : "❌"} ${dog} ${winLabel} 下单 ${placedWin} 单${r.error ? " " + r.error : ""}`);
+    }
+    placed = placedTotal;
+    if (windows.length > 1) {
+      log.push(`     🪟 ${dog} 当日 ${windows.reduce((s, w) => s + w.match_ids.length, 0)} 场拆 ${windows.length} 个窗口，共下单 ${placed} 单`);
+    }
 
     // 3) 结算（写沙箱；live 侧由桥自动落 pre-factor 检查点，沙箱内由本层管）
     onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 结算 ${dog}`, done: dayIdx, total, detail: d });
@@ -523,7 +582,10 @@ async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sand
     const { reviewDone } = await runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, d, dayIdx, cfg, acc);
     s.next_idx = dayIdx + 1;
     saveSession(sandboxDir, s); // 每日即时落盘：dashboard 逐日刷新
-    if (s.interactive && reviewDone && s.next_idx < s.days.length) {
+    // 按批暂停（pause_every>0：本段续跑起点起跑满 N 天即停，不触发退役）；
+    // 或因子退役周期边界暂停
+    const stepPause = s.pause_every > 0 && dayIdx + 1 >= (s.batch_until ?? s.days.length);
+    if (s.interactive && (stepPause || reviewDone) && s.next_idx < s.days.length) {
       return { paused: true, lastDay: d, cycleEndIdx: dayIdx };
     }
   }
@@ -531,7 +593,7 @@ async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sand
 }
 
 /** 暂停：生成方向建议、写事实、落 session、返回 paused。 */
-async function pauseReplay(ctx, sandboxDir, s, seg) {
+async function pauseReplay(ctx, cacheDir, sandboxDir, s, seg) {
   const d = seg.lastDay;
   const cycleReviews = s.reviewLog.filter((r) => r.day === d);
   const cycleStartIdx = Math.max(0, seg.cycleEndIdx - s.factor_review_every + 1);
@@ -670,7 +732,8 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
 
   const created = createSandbox(cacheDir, dog, start, sandbox);
   if (!created.ok) return created;
-  const interactive = opts.interactive === true || opts.mode === "interactive";
+  const pauseEvery = Math.max(0, Number(opts.pause_every) || 0);
+  const interactive = opts.interactive === true || opts.mode === "interactive" || pauseEvery > 0;
   const model = opts.model || REPLAY_MODEL;
   const factorReviewEvery = Math.max(1, Number(opts.factor_review_every) || 7);
   const reset = opts.reset === "zero" ? "zero" : "none";
@@ -696,11 +759,34 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
       else warn(`${dog} reset 失败: ${r.error}`);
     }
 
+    // 老狗复制且无 <start>__pre-factor 检查点：把复制带入的历史挂单先结算掉，
+    // 沙箱起点 = 结算后阶段——避免首日结算把线上历史挂单一起结掉、
+    // 资金回笼污染首日轨迹与「起点 vs 终点」（2026-08-25 修复）。
+    if (!created.reused && !created.partialFirstDay) {
+      const role0 = readJson(join(roleRoot, `${dog}.json`)) || {};
+      const pending = (role0.orders || []).filter((o) => !o.settled_at);
+      const settleDays = [...new Set(pending.map((o) => orderFootballDay(o)).filter(Boolean))].sort();
+      if (settleDays.length) {
+        log.push(`🧹 沙箱起点结算（无 ${start}__pre-factor 检查点）：先结算带入历史挂单 ${pending.length} 单（${settleDays.join("、")}）`);
+        for (const day of settleDays) {
+          onProgress({ phase: "沙箱起点结算", detail: `${dog} ${day}` });
+          const sr = await bridgeCall(cacheDir, engineRoot, pythonBin, {
+            func: "settle", dog, day, opts: {},
+          }, undefined, roleRoot, envFile);
+          const sm = (sr.ok && sr.data && sr.data.settlement) || {};
+          if (sr.ok) log.push(`   ✅ 起点结算 ${day}: ${sm.settled ?? 0} 单，PnL ${sm.pnl ?? 0}`);
+          else warn(`[起点结算] ${day} 失败: ${sr.error}`);
+        }
+      }
+    }
+
     const startCapital = Number(readJson(join(roleRoot, `${dog}.json`)).capital || 0);
     const s = {
       run_id: runId, sandbox, dog, start, end, model,
       factor_review_every: factorReviewEvery, reset, restore_after: restoreAfter,
       interactive, days: dayListOf(start, end), next_idx: 0, status: "running",
+      pause_every: pauseEvery,
+      batch_until: pauseEvery > 0 ? Math.min(pauseEvery, dayListOf(start, end).length) : dayListOf(start, end).length,
       user_notes: userNotes, skip_llm: skipLlm,
       partial_first_day: created.partialFirstDay === true,
       start_capital: startCapital,
@@ -710,8 +796,27 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
     };
     saveSession(sandboxDir, s);
 
+    // 回放前全量预取（非因子数据，prepareRange）：一次拉全 start~end 比赛缓存 + 特征，
+    // 逐日 prepare 只读缓存，避免中途"缓存缺失→临时拉取返回空→0 场"的数据不一致。
+    onProgress({ phase: "范围数据预取", detail: `${start} ~ ${end}` });
+    const prepRange = await bridgeCall(cacheDir, engineRoot, pythonBin, {
+      func: "prepare-range", start, end, opts: { jingcai_only: true },
+    }, undefined, roleRoot, envFile);
+    if (prepRange.ok) {
+      const days0 = (prepRange.data.days || []).filter((x) => (x.candidates || 0) === 0);
+      log.push(`🗂️ 范围预取: ${start}~${end} ${(prepRange.data.days || []).length} 天，共 ${prepRange.data.total_candidates ?? 0} 场候选`);
+      if (days0.length) {
+        log.push(`⚠️ 预取后仍 0 场: ${days0.map((x) => x.day).join("、")}（可能当天无竞彩或拉取失败）`);
+      }
+      if ((prepRange.data.total_failed || 0) > 0) {
+        log.push(`⚠️ 范围预取特征失败 ${prepRange.data.total_failed} 场`);
+      }
+    } else {
+      warn(`范围预取失败: ${prepRange.error}`);
+    }
+
     const seg = await replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, s);
-    if (seg.paused) return await pauseReplay(ctx, sandboxDir, s, seg);
+    if (seg.paused) return await pauseReplay(ctx, cacheDir, sandboxDir, s, seg);
     return await finalizeReplay(cacheDir, sandboxDir, s, restoreAfter);
   } catch (e) {
     if (restoreAfter) {
@@ -756,10 +861,14 @@ async function resumeReplay(ctx, cacheDir, engineRoot, opts) {
   }
   if (opts.to_end === true) s.interactive = false;
   s.status = "running";
+  // 按批暂停：本段续跑起点起跑满 pause_every 天即停（缺省=一路到结束）
+  s.batch_until = s.pause_every > 0
+    ? Math.min(Number(s.next_idx) + s.pause_every, s.days.length)
+    : s.days.length;
 
   try {
     const seg = await replaySegment(ctx, cacheDir, engineRoot, opts.pythonBin || defaultPythonBin(), opts.envFile || "", sandboxDir, s);
-    if (seg.paused) return await pauseReplay(ctx, sandboxDir, s, seg);
+    if (seg.paused) return await pauseReplay(ctx, cacheDir, sandboxDir, s, seg);
     return await finalizeReplay(cacheDir, sandboxDir, s, s.restore_after);
   } catch (e) {
     s.status = "paused";

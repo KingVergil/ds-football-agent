@@ -20,6 +20,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { DS_REAL_DOGS } from "./tools/roles.js";
 import { readTasks } from "./taskStatus.js";
@@ -274,6 +275,9 @@ function activeFactorsFor(rec) {
     .sort((a, b) => (Number((b[1] && b[1].total) || 0)) - (Number((a[1] && a[1].total) || 0)))
     .map(([factor, s]) => ({
       factor,
+      source: String(factor || "").startsWith("矿") || String((s && s.fac_id) || "").startsWith("fac_矿")
+        ? "矿因子"
+        : "基础因子",
       desc: (s && s.desc) || "",
       total: Number((s && s.total) || 0),
       hit: Number((s && s.hit) || 0),
@@ -319,16 +323,15 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     let run = initial;
     const curve = dates.map((d) => { run += dayMap[d]; return { date: d, capital: round2(run) }; });
 
-    const orderRows = orders.map((o) => {
+    function singleOrderRow(o) {
       const lota = String(o.lota_id || "");
       const m = matchMap[lota] || {};
-      const matchDay = m.time ? footballDayOf(m.time) : "";
       return {
         lotaId: lota,
         match: m.match || "",
         league: m.league || "",
         time: m.time || "",
-        matchDay,
+        matchDay: m.time ? footballDayOf(m.time) : "",
         betType: o.bet_type || "",
         pick: o.pick || "",
         pickLabel: pickLabel(o.bet_type, o.pick, m.match || ""),
@@ -342,7 +345,78 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
         settledAt: o.settled_at ? String(o.settled_at).slice(0, 10) : "",
         reason: o.reason || "",
       };
-    }).sort((a, b) => String(b.matchDay || b.settledAt || b.time || "").localeCompare(String(a.matchDay || a.settledAt || a.time || "")));
+    }
+
+    function parlayLegView(l) {
+      const gl = l.goal_line == null ? null : Number(l.goal_line);
+      const picks = Array.isArray(l.picks) ? l.picks : [];
+      const odds = (l.odds && typeof l.odds === "object") ? l.odds : {};
+      // 北单让球胜平负固定码：3=让球后主胜，1=平，0=让球后客胜
+      const sideLabel = (p) => (p === "H" ? "3" : p === "D" ? "1" : p === "A" ? "0" : p);
+      return {
+        match: `${l.home_name || "?"} vs ${l.away_name || "?"}`,
+        league: l.league_name || "",
+        goalLine: gl,
+        picks,
+        picksLabel: picks.length >= 3 ? "全包" : picks.length === 2 ? "双选" : "单选",
+        pickText: picks.map(sideLabel).join("&"),
+        odds: Object.keys(odds).map((k) => [sideLabel(k), odds[k]]),
+      };
+    }
+
+    // 串关单按 slip_id 聚合为一张票；单关单保持原样。
+    const parlayBySlip = new Map();
+    const plainOrders = [];
+    for (const o of orders) {
+      if (Array.isArray(o.ticket_legs) && o.ticket_legs.length) {
+        const sid = o.slip_id || String(o.id || "");
+        if (!parlayBySlip.has(sid)) {
+          parlayBySlip.set(sid, { slip_id: sid, ticket_type: o.slip_type || o.ticket_type || "", bet_type: o.bet_type || "", combos_count: o.combos_count || 0, ticket_legs: o.ticket_legs, orders: [] });
+        }
+        parlayBySlip.get(sid).orders.push(o);
+      } else {
+        plainOrders.push(o);
+      }
+    }
+
+    const orderRows = plainOrders.map(singleOrderRow);
+    for (const p of parlayBySlip.values()) {
+      const sub = p.orders;
+      const settledCount = sub.filter((o) => o.settled_at).length;
+      const allSettled = settledCount === sub.length;
+      const profit = sub.reduce((s, o) => s + (Number(o.profit) || 0), 0);
+      const hitCount = sub.filter((o) => o.hit).length;
+      const legs = (p.ticket_legs || []).map(parlayLegView);
+      const nSingle = legs.filter((l) => l.picks.length === 1).length;
+      const nCover = legs.length - nSingle;
+      const totalStake = sub.reduce((s, o) => s + (Number(o.bet_size) || 0), 0);
+      const created = sub.map((o) => o.created_at || "").sort().pop() || "";
+      const settledAt = sub.map((o) => o.settled_at || "").sort().pop() || "";
+      const matchDay = sub.map((o) => (matchMap[String(o.lota_id || "")] || {}).time)
+        .filter(Boolean).map(footballDayOf).sort().pop() || "";
+      orderRows.push({
+        lotaId: "slip_" + p.slip_id,
+        match: `${p.ticket_type || "串关"} · ${nCover}全包+${nSingle}单选`,
+        league: p.bet_type || "",
+        time: created,
+        matchDay,
+        betType: p.bet_type || "",
+        pick: `${p.ticket_type || "串关"}`,
+        pickLabel: `${p.combos_count || sub.length} 注`,
+        handicap: null,
+        odds: null,
+        betSize: totalStake || null,
+        score: "",
+        hit: allSettled ? hitCount > 0 : null,
+        profit: allSettled ? round2(profit) : null,
+        settled: allSettled,
+        settledAt: settledAt ? String(settledAt).slice(0, 10) : "",
+        reason: "",
+        legs,
+        isParlay: true,
+      });
+    }
+    orderRows.sort((a, b) => String(b.matchDay || b.settledAt || b.time || "").localeCompare(String(a.matchDay || a.settledAt || a.time || "")));
 
     dogs.push({
       name,
@@ -394,6 +468,8 @@ function readRequestBody(req, limit = 1024 * 1024) {
 }
 
 /** 注册 /ds-dashboard 与 /ds-avatars 路由。幂等：由 ctx.effect 挂上并在卸载时移除。 */
+const PLUGIN_DIR = fileURLToPath(new URL(".", import.meta.url));
+const TAVERN_BG = join(PLUGIN_DIR, "assets", "tavern_bg.jpg");
 export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, extras = {}) {
   const avatarDirs = avatarDirsFor(cacheDir, avatarDir);
   // 用 ctx.get(strict=false) 而非 ctx.webServer 属性访问：headless 模式没有 webServer，
@@ -632,6 +708,15 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
           const start = String(spec.start || "").trim();
           const end = String(spec.end || "").trim();
           const key = `${dog}|${func}|${day || end}`;
+          // 同一只狗只允许一个在跑的桥任务（读持久层，跨 dsh 重启也拦得住）。
+          const dogRunning = (dog && MUTATING_FUNCS.has(func))
+            ? readTasks(cacheDir).tasks.filter((t) => t.status === "running" && t.params && t.params.dog === dog).length
+            : 0;
+          if (dogRunning > 0) {
+            res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ ok: false, error: `狗「${dog}」已有任务在跑（同一只狗只允许 1 个）` }));
+            return;
+          }
           if (MUTATING_FUNCS.has(func) && __inflightBridge.has(key)) {
             res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ ok: false, error: `${dog || ""} ${FUNC_LABEL[func] || func} ${day || end || ""} 已在运行` }));
@@ -699,6 +784,51 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
       },
     });
   }, "ds-run.route");
+
+  // POST /ds-tavern：多狗 LLM 酒馆「下一轮」——同步跑 python 桥，返回本轮对话（messages）。
+  // 纯聊天模式：桥内绝不调用 analyze / 写订单（user_text 只按人设聊天），
+  // 相对短时（单次 LLM）用同步请求，前端点击后等结果直接追加，无需任务轮询。
+  ctx.effect(() => {
+    return webServer.register({
+      kind: "exact",
+      path: "/ds-tavern",
+      handler: async (req, res) => {
+        const json = (o, code = 200) => {
+          res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(JSON.stringify(o));
+        };
+        try {
+          if (String(req.method || "GET").toUpperCase() !== "POST") return json({ ok: false, error: "仅支持 POST" }, 405);
+          let body = {};
+          try { body = JSON.parse(await readRequestBody(req) || "{}"); } catch { body = {}; }
+          const r = await runBridge({
+            pythonBin,
+            engineRoot,
+            envFile,
+            req: {
+              func: "tavern",
+              opts: {
+                day: String(body.day || "").trim(),
+                dogs: Array.isArray(body.dogs) ? body.dogs : [],
+                slate: Array.isArray(body.slate) ? body.slate : [],
+                picks: body.picks || {},
+                history: Array.isArray(body.history) ? body.history : [],
+                user_text: String(body.user_text || "").trim(),
+              },
+            },
+          });
+          if (!r.ok) {
+            const tail = String(r.stderr || "").trim().slice(-300);
+            return json({ ok: false, error: (r.error || "桥调用失败") + (tail ? `｜${tail}` : "") });
+          }
+          const data = r.data || {};
+          return json({ ok: true, messages: Array.isArray(data.messages) ? data.messages : [] });
+        } catch (e) {
+          return json({ ok: false, error: String((e && e.message) || e) });
+        }
+      },
+    });
+  }, "ds-tavern.route");
 
   // POST /ds-induct-all：归纳全部（batch 模式）——非 alpha 并行，全部结束后 alpha barrier 串行一次。
   ctx.effect(() => {
@@ -818,7 +948,8 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             return;
           }
           const sandbox = String(spec.sandbox || sandboxNameFor(dog, start)).trim();
-          const interactive = spec.mode === "interactive";
+          const pauseEvery = Math.max(0, Number(spec.pause_every) || 0);
+          const interactive = spec.mode === "interactive" || pauseEvery > 0;
           const reset = spec.reset === "zero" ? "zero" : "none";
           const skipLlm = spec.skip_llm === true;
 
@@ -830,6 +961,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             start,
             end,
             interactive,
+            pause_every: pauseEvery,
             skip_llm: skipLlm,
             message: `沙箱 ${sandbox} 回放已启动（${dog} ${start}~${end}${interactive ? "，半交互" : ""}${skipLlm ? "，演示模式·跳过 LLM" : ""}）`,
           }));
@@ -854,6 +986,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
               sandbox,
               mode: interactive ? "interactive" : "auto",
               factor_review_every: Math.max(1, Number(spec.factor_review_every) || 7),
+              pause_every: pauseEvery,
               reset,
               restore_after: spec.restore_after === true,
               skip_llm: skipLlm,
@@ -891,7 +1024,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
   ctx.effect(() => {
     return webServer.register({
       kind: "prefix",
-      path: "/ds-replay/",
+      path: "/ds-replay",
       handler: async (req, res) => {
         try {
           if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -962,7 +1095,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
   ctx.effect(() => {
     return webServer.register({
       kind: "prefix",
-      path: "/ds-sandbox/",
+      path: "/ds-sandbox",
       handler: async (req, res) => {
         try {
           if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -991,8 +1124,10 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
               res.end(JSON.stringify({ ok: false, error: "沙箱会话缺 dog，无法转正" }));
               return;
             }
-            const p = promoteSandbox(cacheDir, sandbox, dog);
-            if (p.ok) setDogStatus(cacheDir, dog, "live");
+            let body = {};
+            try { body = JSON.parse(await readRequestBody(req) || "{}"); } catch { body = {}; }
+            const p = promoteSandbox(cacheDir, sandbox, dog, String(body.name || "").trim());
+            if (p.ok) setDogStatus(cacheDir, p.dog, "live");
             res.writeHead(p.ok ? 200 : 400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
             res.end(JSON.stringify(p));
             return;
@@ -1039,4 +1174,20 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
       },
     });
   }, "ds-avatars.route");
+
+  webServer.register({
+    kind: "exact",
+    path: "/ds-tavern-bg",
+    handler: (req, res) => {
+      try {
+        const bytes = readFileSync(TAVERN_BG);
+        const contentType = /\.png$/i.test(TAVERN_BG) ? "image/png" : "image/jpeg";
+        res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" });
+        res.end(bytes);
+      } catch (e) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("not found");
+      }
+    },
+  }, "ds-tavern-bg.route");
 }

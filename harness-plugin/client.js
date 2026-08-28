@@ -39,6 +39,46 @@ window.__ModuleLoader__.load({
 .dsd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .dsd-dog-list{display:flex;flex-direction:column;gap:10px}
 .dsd-dog-row{display:block}
+.dsd-tavern{position:relative;height:100%;min-height:460px;border-radius:16px;overflow:hidden}
+.dsd-tavern-bg{position:absolute;inset:0;background:url(/ds-tavern-bg) center/cover no-repeat;filter:blur(3px) saturate(1.05);transform:scale(1.04)}
+.dsd-tav-avatar .dsd-avatar{box-shadow:0 0 0 3px rgba(255,244,224,.8),0 4px 12px rgba(0,0,0,.3)}
+.dsd-tavern-active [data-composer-seat]{display:none!important}
+.dsd-tavern-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,8,6,.16),rgba(10,8,6,.02) 34%,rgba(10,8,6,.16) 62%,rgba(10,8,6,.40)),radial-gradient(120% 70% at 50% 42%,rgba(0,0,0,0) 50%,rgba(10,8,6,.36))}
+.dsd-tavern-inner{position:relative;z-index:1;height:100%;display:flex;flex-direction:column}
+.dsd-tav-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px 6px;flex-shrink:0}
+.dsd-tav-title{font-size:16px;font-weight:800;text-shadow:0 1px 4px rgba(0,0,0,.55)}
+.dsd-tav-sub{font-size:11px;color:#e8dcc8;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.dsd-tav-day{font-size:11px;color:#e8dcc8;padding:3px 8px;border-radius:999px;border:1px solid rgba(220,196,150,.4);white-space:nowrap;background:rgba(0,0,0,.32);backdrop-filter:blur(4px)}
+.dsd-tav-head-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dsd-tav-gen{appearance:none;font-size:12px;padding:7px 12px;border-radius:999px;border:1px solid #d3a44a;background:linear-gradient(135deg,#b07b2f,#8a5a2b);color:#fff;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.dsd-tav-gen:disabled{opacity:.5;cursor:default}
+.dsd-tav-chat{flex:1;min-height:0;overflow-y:scroll;padding:6px 14px 16px;display:flex;flex-direction:column;gap:10px;scrollbar-width:auto;scrollbar-color:rgba(80,60,40,.55) rgba(0,0,0,.08)}
+.dsd-tav-chat::-webkit-scrollbar{width:10px}
+.dsd-tav-chat::-webkit-scrollbar-thumb{background:rgba(80,60,40,.5);border-radius:5px}
+.dsd-tav-chat::-webkit-scrollbar-thumb:hover{background:rgba(80,60,40,.75)}
+.dsd-tav-chat::-webkit-scrollbar-track{background:rgba(0,0,0,.08);border-radius:5px}
+.dsd-tav-body{flex:1;min-height:0;display:flex;flex-direction:column;width:min(760px,100%);margin:0 auto}
+.dsd-tav-compose{flex-shrink:0;display:flex;gap:8px;padding:10px 14px 14px}
+.dsd-tav-line-input{flex:1;box-sizing:border-box;font-size:13px;line-height:1.5;color:#f3ece0;background:rgba(24,17,12,.6);border:1px solid rgba(190,160,112,.34);border-radius:999px;padding:9px 16px;font-family:inherit;backdrop-filter:blur(9px)}
+.dsd-tav-line-input::placeholder{color:rgba(240,227,205,.6)}
+.dsd-tav-line-send{appearance:none;font-size:12px;padding:8px 16px;border-radius:999px;border:1px solid #d3a44a;background:linear-gradient(135deg,#b07b2f,#8a5a2b);color:#fff;cursor:pointer;white-space:nowrap}
+.dsd-tav-line-send:disabled{opacity:.5;cursor:default}
+.dsd-tav-msg{display:flex;gap:10px;align-items:flex-start;max-width:76%}
+.dsd-tav-msg.you{flex-direction:row-reverse;align-self:flex-end}
+.dsd-tav-avatar{flex-shrink:0}
+.dsd-tav-bubble{background:rgba(255,255,255,.72);backdrop-filter:blur(9px);border:1px solid rgba(255,255,255,.55);border-radius:14px;padding:8px 12px;box-shadow:0 5px 16px rgba(0,0,0,.18);min-width:0}
+.dsd-tav-msg.you .dsd-tav-bubble{background:rgba(255,255,255,.86);border-color:rgba(255,255,255,.7)}
+.dsd-tav-name{display:flex;align-items:center;gap:6px;font-weight:800;font-size:12px;margin-bottom:3px;color:#3a2c1e}
+.dsd-tav-msg.you .dsd-tav-name{color:rgba(58,44,30,.72)}
+.dsd-tav-verb{font-size:11px;color:rgba(90,70,45,.85);font-style:italic;margin-bottom:2px}
+.dsd-tav-tagline{font-size:11px;font-style:italic;color:rgba(90,70,45,.82);margin:0 0 4px}
+.dsd-tav-line{font-size:12px;line-height:1.55;color:#33261a;white-space:pre-wrap;word-break:break-word}
+.dsd-tav-time{font-size:10px;color:rgba(90,70,45,.6);margin-top:4px}
+.dsd-tav-res-ok{color:#2e7d4f}
+.dsd-tav-res-bad{color:#c0392b}
+.dsd-tav-res-run{color:#b8801f}
+.dsd-tav-typing{font-size:11px;color:rgba(90,70,45,.8);font-style:italic}
+.dsd-tav-empty{color:rgba(240,227,205,.8);text-align:center;padding:24px;font-size:13px}
 .dsd-row-card{display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap}
 .dsd-row-main{display:flex;align-items:center;gap:12px;flex:1 1 360px;min-width:0;flex-wrap:nowrap}
 .dsd-row-name{flex:1;min-width:0;overflow:hidden}
@@ -59,6 +99,8 @@ window.__ModuleLoader__.load({
 .dsd-card-name{flex:1;min-width:0}
 .dsd-name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsd-sub{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsd-tagline{font-size:11px;font-style:italic;color:var(--dsw-alias-label-secondary);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.dsd-tagline-lg{font-size:13px;line-height:1.4;white-space:normal;margin-top:4px;opacity:.9}
 .dsd-cap{text-align:right}
 .dsd-money{font-variant-numeric:tabular-nums}
 .dsd-strong{font-weight:800;font-size:14px}
@@ -96,11 +138,27 @@ window.__ModuleLoader__.load({
 .dsd-td-match{max-width:200px;overflow:hidden;text-overflow:ellipsis}
 .dsd-match-cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsd-reason-line{font-size:10px;color:var(--dsw-alias-label-secondary);white-space:normal;word-break:break-all;max-width:220px;line-height:1.4;margin-top:2px}
+.dsd-parlay-ticket{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--dsw-alias-bg-layer-1)}
+.dsd-parlay-ticket-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.dsd-parlay-title{font-weight:700;font-size:12px}
+.dsd-parlay-meta{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dsd-parlay-legs{width:100%;border-collapse:collapse;font-size:11px}
+.dsd-parlay-legs th{text-align:left;padding:3px 6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-weight:600;font-size:10px}
+.dsd-parlay-legs td{padding:3px 6px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dsd-parlay-legs .dsd-num{text-align:right;font-variant-numeric:tabular-nums}
+.dsd-factor-details summary{list-style:none;cursor:pointer}
+.dsd-factor-details summary::-webkit-details-marker{display:none}
+.dsd-factor-toggle{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:0}
+.dsd-factor-toggle:after{content:"▸";font-size:10px;margin-left:6px}
+.dsd-factor-details[open] .dsd-factor-toggle:after{content:"▾"}
+.dsd-factor-toggle:hover{color:var(--dsw-alias-label-primary)}
 .dsd-factor-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
 .dsd-factor-chip{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 8px}
 .dsd-factor-name{font-size:11px;font-weight:800}
 .dsd-factor-desc{font-size:10px;color:var(--dsw-alias-label-secondary);line-height:1.4;margin-top:2px;white-space:normal;word-break:break-all}
 .dsd-factor-meta{font-size:10px;color:var(--dsw-alias-label-secondary);margin-top:3px;font-variant-numeric:tabular-nums}
+.dsd-factor-src{margin-left:6px;font-size:9px;font-weight:600;padding:1px 6px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);white-space:nowrap;vertical-align:1px}
+.dsd-factor-src.mine{color:#f0b429;border-color:rgba(240,180,41,.45);background:rgba(240,180,41,.08)}
 .dsd-podium{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 @media(max-width:760px){.dsd-podium{grid-template-columns:1fr}}
 .dsd-podium-card{position:relative;border-radius:16px;padding:18px 12px;text-align:center;cursor:pointer;transition:transform .15s,box-shadow .15s;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);overflow:hidden}
@@ -205,10 +263,10 @@ window.__ModuleLoader__.load({
     var DOG_META = {
       "alpha2狗": { emoji: "🐕‍🦺", c1: "#ff9a8b", c2: "#ff6a88" },
       "alpha狗": { emoji: "🐺", c1: "#a18cd1", c2: "#fbc2eb" },
-      "梭哈2狗": { emoji: "🦁", c1: "#ffd86f", c2: "#fc6262" },
+      "梭哈2狗": { emoji: "🦁", c1: "#ffd86f", c2: "#fc6262", tagline: "别人睁眼找答案，我蒙眼找信号。名字会骗人，数字不会。" },
       "梭哈3狗": { emoji: "🐯", c1: "#fbc2eb", c2: "#a6c1ee" },
       "平局狗": { emoji: "🐢", c1: "#43e97b", c2: "#38f9d7" },
-      "跟风狗": { emoji: "🦊", c1: "#fa709a", c2: "#fee140" },
+      "跟风狗": { emoji: "🦊", c1: "#fa709a", c2: "#fee140", tagline: "别人追的是热闹，我跟的是底气。风会停，强队不会——值不值，一成见真章。" },
       "均注狗": { emoji: "🐿️", c1: "#30cfd0", c2: "#330867" },
       "串关2狗": { emoji: "🎯", c1: "#f6d365", c2: "#fda085" },
     };
@@ -230,6 +288,7 @@ window.__ModuleLoader__.load({
         emoji: (dog && dog.emoji) || base.emoji,
         c1: (dog && dog.c1) || base.c1,
         c2: (dog && dog.c2) || base.c2,
+        tagline: (dog && dog.tagline) || base.tagline || "",
         img: img,
       };
     }
@@ -300,10 +359,10 @@ window.__ModuleLoader__.load({
     var DIMS = [
       { key: "hitRate", label: "咬中", higher: true },
       { key: "mdd", label: "抗回撤", higher: false },
-      { key: "totalCount", label: "单数", higher: true },
+      { key: "totalCount", label: "单数", higher: true, scale: "sqrt" },
       { key: "roi", label: "ROI", higher: true },
-      { key: "pnl", label: "净粮", higher: true },
-      { key: "fullCapital", label: "满仓", higher: true },
+      { key: "pnl", label: "净粮", higher: true, scale: "sqrt" },
+      { key: "fullCapital", label: "满仓", higher: true, scale: "sqrt" },
     ];
     var DIM_LABELS = DIMS.map(function (d) { return d.label; });
 
@@ -321,7 +380,13 @@ window.__ModuleLoader__.load({
       var byName = {};
       dogs.forEach(function (d) { byName[d.name] = []; });
       DIMS.forEach(function (dim) {
-        var vals = dogs.map(function (d) { var v = d[dim.key]; return v == null ? 0 : Number(v); });
+        var vals = dogs.map(function (d) {
+          var v = d[dim.key];
+          if (v == null) v = 0;
+          v = Number(v);
+          if (dim.scale === "sqrt") v = Math.sqrt(Math.max(0, v));
+          return v;
+        });
         var scores = normalize(vals, dim.higher);
         dogs.forEach(function (d, i) { byName[d.name].push(scores[i]); });
       });
@@ -424,9 +489,53 @@ window.__ModuleLoader__.load({
         h("div", { className: "dsd-stat-label" }, label));
     }
 
+    function renderParlayTicket(o, hide) {
+      var tone = o.settled ? (o.profit > 0 ? "dsd-pos" : o.profit < 0 ? "dsd-neg" : "dsd-mut") : "dsd-pend";
+      var pnl = o.settled ? (o.profit == null ? "—" : signed(o.profit)) : "⏳ 待投";
+      var legRows = (o.legs || []).map(function (l, i) {
+        var gl = l.goalLine == null ? "—" : (l.goalLine > 0 ? "受让" + l.goalLine : l.goalLine < 0 ? "让" + Math.abs(l.goalLine) : "平手");
+        var oddsTxt = (l.odds || []).map(function (kv) { return kv[0] + "@" + kv[1]; }).join(" & ");
+        return h("tr", { key: i },
+          h("td", { className: "dsd-num" }, i + 1),
+          h("td", { className: "dsd-td-match", title: l.league }, l.match + (l.league ? " · " + l.league : "")),
+          h("td", { className: "dsd-num dsd-hcp" }, gl),
+          h("td", null, l.pickText),
+          h("td", { className: "dsd-num" }, oddsTxt || "—"));
+      });
+      return h("div", { className: "dsd-parlay-ticket" },
+        h("div", { className: "dsd-parlay-ticket-head" },
+          h("span", { className: "dsd-parlay-title" }, o.match),
+          h("span", { className: "dsd-parlay-meta" },
+            o.pickLabel + " · " + money(o.betSize, hide) + "元" + (o.settled ? " · " + pnl : " · " + pnl))),
+        h("table", { className: "dsd-parlay-legs" },
+          h("thead", null, h("tr", null,
+            h("th", { className: "dsd-num" }, "#"),
+            h("th", null, "比赛"),
+            h("th", { className: "dsd-num" }, "让球"),
+            h("th", null, "胜平负"),
+            h("th", { className: "dsd-num" }, "赔率"))),
+          h("tbody", null, legRows)));
+    }
+
+    function renderSingleTable(rows, hide, totalFunds) {
+      return h("table", { className: "dsd-table" },
+        h("thead", null, h("tr", null,
+          h("th", { className: "dsd-num" }, "日期"),
+          h("th", null, "比赛"),
+          h("th", null, "选择"),
+          h("th", { className: "dsd-num" }, "盘口"),
+          h("th", { className: "dsd-num" }, "比分"),
+          h("th", { className: "dsd-num" }, "赔率"),
+          h("th", { className: "dsd-num dsd-money" }, "仓位"),
+          h("th", { className: "dsd-num" }, "净粮"))),
+        h("tbody", null, rows));
+    }
+
     function renderOrders(orders, hide, totalFunds) {
       if (!orders || orders.length === 0) return h("div", { className: "dsd-empty" }, "暂无订单");
-      var rows = orders.map(function (o) {
+      var parlay = orders.filter(function (o) { return o.isParlay; });
+      var singles = orders.filter(function (o) { return !o.isParlay; });
+      var singleRows = singles.map(function (o) {
         var tone = o.settled ? (o.profit > 0 ? "dsd-pos" : o.profit < 0 ? "dsd-neg" : "dsd-mut") : "dsd-pend";
         var pnl = o.settled ? (o.profit == null ? "—" : signed(o.profit)) : "⏳ 待投";
         var hcp = o.handicap == null ? "" : (o.betType === "大小球" ? Number(o.handicap).toFixed(2) : ((o.handicap >= 0 ? "+" : "") + Number(o.handicap).toFixed(2)));
@@ -445,17 +554,9 @@ window.__ModuleLoader__.load({
           h("td", { className: "dsd-num dsd-money" }, hide ? "•••" : (fmt(o.betSize) + " · " + posPct(o.betSize, totalFunds))),
           h("td", { className: "dsd-num " + tone }, pnl));
       });
-      return h("table", { className: "dsd-table" },
-        h("thead", null, h("tr", null,
-          h("th", { className: "dsd-num" }, "日期"),
-          h("th", null, "比赛"),
-          h("th", null, "选择"),
-          h("th", { className: "dsd-num" }, "盘口"),
-          h("th", { className: "dsd-num" }, "比分"),
-          h("th", { className: "dsd-num" }, "赔率"),
-          h("th", { className: "dsd-num dsd-money" }, "仓位"),
-          h("th", { className: "dsd-num" }, "净粮"))),
-        h("tbody", null, rows));
+      return h("div", null,
+        parlay.map(function (o) { return renderParlayTicket(o, hide); }),
+        singleRows.length ? renderSingleTable(singleRows, hide, totalFunds) : null);
     }
 
     function renderFactorList(factors) {
@@ -463,7 +564,12 @@ window.__ModuleLoader__.load({
       return h("div", { className: "dsd-factor-list" },
         factors.map(function (f) {
           return h("div", { key: f.factor, className: "dsd-factor-chip" },
-            h("div", { className: "dsd-factor-name" }, f.factor),
+            h("div", { className: "dsd-factor-name" },
+              f.factor,
+              f.source
+                ? h("span", { className: "dsd-factor-src" + (f.source === "矿因子" ? " mine" : "") },
+                    f.source === "矿因子" ? "⛏️ 矿因子" : "基础因子")
+                : null),
             f.desc ? h("div", { className: "dsd-factor-desc" }, f.desc) : null,
             h("div", { className: "dsd-factor-meta" },
               "样本 " + f.total + " · 命中 " + f.hit + " · 净 " + signed(f.profit) + (f.lastSeen ? " · 最近 " + f.lastSeen : "")));
@@ -501,7 +607,7 @@ window.__ModuleLoader__.load({
           label: "⚡ 分析",
           title: "python 桥直启：live 分析（数据准备 + LLM 决策 + 下单）",
           func: "analyze",
-          payload: { dog: name, func: "analyze", day: fday, opts: { live: true, prefetched: false, jingcai_only: true } },
+          payload: { dog: name, func: "analyze", day: fday, opts: (dog.scope === "beidan") ? { live: true, prefetched: false, beidan_only: true } : { live: true, prefetched: false, jingcai_only: true } },
         },
         {
           id: "settle",
@@ -1084,7 +1190,8 @@ window.__ModuleLoader__.load({
                 h("span", { className: "dsd-scope" + (dog.alphaMode ? " alpha" : "") }, scopeLabel(dog.scope)),
                 dog.inStorage === false ? h("span", { className: "dsd-scope dsd-new" }, "新") : null,
                 dog.observation ? h("span", { className: "dsd-scope dsd-obs" }, "👀 观察") : null),
-              h("div", { className: "dsd-sub" }, sub)),
+              h("div", { className: "dsd-sub" }, sub),
+              (meta && meta.tagline) ? h("div", { className: "dsd-tagline" }, meta.tagline) : null),
             h("div", { className: "dsd-row-metrics" },
               h("div", null,
                 h("div", { className: "dsd-money dsd-strong" }, money(dog.capital, hide)),
@@ -1120,8 +1227,7 @@ window.__ModuleLoader__.load({
               h("span", { className: "dsd-scope" + (dog.alphaMode ? " alpha" : "") }, scopeLabel(dog.scope)),
               dog.inStorage === false ? h("span", { className: "dsd-scope dsd-new" }, "未初始化") : null,
               dog.observation ? h("span", { className: "dsd-scope dsd-obs" }, "👀 观察") : null),
-            h("div", { className: "dsd-detail-meta" },
-              "存粮 " + money(dog.capital, hide) + " · 满仓 " + money(dog.fullCapital, hide) + " · 锁粮 " + money(dog.lockedExposure, hide) + (dog.initialCapital != null ? " · 初始 " + money(dog.initialCapital, hide) : ""))),
+            (meta && meta.tagline) ? h("div", { className: "dsd-tagline dsd-tagline-lg" }, meta.tagline) : null),
           h("span", { className: "dsd-power-badge" }, "夏普 " + (dog.sharpe == null ? "—" : Number(dog.sharpe).toFixed(2)))),
         h("div", { className: "dsd-stats" },
           Stat("净粮", signed(dog.pnl), dog.pnl >= 0 ? "dsd-pos" : "dsd-neg"),
@@ -1149,8 +1255,9 @@ window.__ModuleLoader__.load({
             h("div", { className: "dsd-panel-title" }, "📋 订单 · 待投 " + pending.length + " · 已结算 " + settled.length),
             h("div", { className: "dsd-orders dsd-orders-compact" }, renderOrders(pending.concat(settled), hide, dog.fullCapital))),
           h("div", { className: "dsd-panel" },
-            h("div", { className: "dsd-panel-title" }, "🧬 正在应用因子 · " + ((dog.factors || []).length) + " 个"),
-            renderFactorList(dog.factors || []))));
+            h("details", { className: "dsd-factor-details", open: true },
+              h("summary", { className: "dsd-factor-toggle" }, "🧬 正在应用因子 · " + ((dog.factors || []).length) + " 个"),
+              renderFactorList(dog.factors || [])))));
     }
 
     // 会话头部右侧任务状态徽章：常驻显示运行中数，点击展开任务列表（单狗/群狗都考虑）
@@ -1199,6 +1306,290 @@ window.__ModuleLoader__.load({
         }, "📡 " + running.length + " 运行中"),
         open ? h("div", { className: "dsts-panel" },
           rows.length ? rows : h("div", { className: "dsts-phase" }, "暂无任务（跑分析/结算/因子流时实时显示）")) : null);
+    }
+
+    var TAV_VERB = {
+      "梭哈2狗": "一脚踩上桌，推出一把筹码",
+      "梭哈3狗": "咧开嘴，亮出三张底牌",
+      "平局狗": "慢悠悠抿了口酒",
+      "跟风狗": "眯了眯眼，盯着那边热闹",
+      "均注狗": "把酒杯端平，不多不少",
+      "alpha狗": "推了推墨镜",
+      "alpha2狗": "清了清嗓",
+      "串关2狗": "掂了掂手里那串筹码",
+    };
+    var TAV_QUIP = {
+      "梭哈2狗": "废话少说，跟着梭就完了。",
+      "梭哈3狗": "三张牌三条命，你敢不敢跟？",
+      "平局狗": "急什么，稳一点，等它平。",
+      "跟风狗": "我先看强队值不值，值再说。",
+      "均注狗": "一成，多一个子儿都不加。",
+      "alpha狗": "信号说话，其它的我懒得听。",
+      "alpha2狗": "行，那就再加一笔。",
+      "串关2狗": "串起来才够味，你懂我意思。",
+    };
+    function tavVerb(name) { return TAV_VERB[name] || "给自己倒了杯酒"; }
+    function snippet(s, n) {
+      s = String(s || "");
+      return s.length > n ? s.slice(0, n - 1) + "…" : s;
+    }
+    function tavOrders(dog, day) {
+      return (dog.orders || []).filter(function (o) { return o.matchDay === day; })
+        .sort(function (a, b) { return String(a.time || "").localeCompare(String(b.time || "")); });
+    }
+    function tavLineNodes(ords, hide) {
+      if (!ords.length) {
+        return [h("div", { className: "dsd-tav-line" }, "今天没硬货，一成都懒得出。")];
+      }
+      return ords.map(function (o) {
+        var size = hide ? "•••" : (o.betSize != null ? o.betSize : "");
+        var bet = "「" + (o.match || o.lotaId || "") + "」 " + (o.pickLabel || o.pick || "") + " " + size + (o.odds != null ? " @ " + o.odds : "");
+        var tail = "", cls = "";
+        if (o.settledAt) {
+          if (o.hit) { tail = " 中了！"; cls = "dsd-tav-res-ok"; }
+          else if (o.profit === 0) { tail = " 走水。"; cls = "dsd-tav-res-run"; }
+          else { tail = " 栽了。"; cls = "dsd-tav-res-bad"; }
+        } else {
+          tail = " 待开。"; cls = "dsd-tav-res-run";
+        }
+        var reason = o.reason ? ("（" + snippet(o.reason, 42) + "）") : "";
+        return h("div", { className: "dsd-tav-line" }, bet + " " + reason, h("span", { className: cls }, tail));
+      });
+    }
+    function tavNow() {
+      var d = new Date();
+      var p = function (n) { return String(n).padStart(2, "0"); };
+      return p(d.getHours()) + ":" + p(d.getMinutes());
+    }
+    // ── 酒馆聊天记录持久化（localStorage，按足球日分桶）──
+    // 切 tab / 刷新页面组件会卸载重挂，本地 state 会丢；聊天记录落 localStorage，
+    // 挂载时恢复 + 跨实例事件同步（在途轮次的回复由旧实例写入也能被新实例收到）。
+    var TAV_LOG_EVENT = "ds-tavern-log-updated";
+    function tavLogKey() { return "ds-tavern-log:" + footballDayBj(); }
+    function tavReadLog() {
+      try {
+        var v = localStorage.getItem(tavLogKey());
+        if (!v) return null;
+        var arr = JSON.parse(v);
+        return Array.isArray(arr) ? arr : null;
+      } catch (e) { return null; }
+    }
+    function tavWriteLog(arr) {
+      try {
+        // 只存轻量字段：dog 对象（含订单列表）不落 localStorage，渲染时按名字重新挂上。
+        var slim = (arr || []).slice(-120).map(function (m) {
+          return { id: m && m.id, role: m && m.role, name: m && m.name, text: m && m.text, time: m && m.time };
+        });
+        localStorage.setItem(tavLogKey(), JSON.stringify(slim));
+      } catch (e) {}
+    }
+    function tavAppendLog(items) {
+      var cur = tavReadLog() || [];
+      var next = cur.concat(items || []).slice(-120);
+      tavWriteLog(next);
+      try { window.dispatchEvent(new Event(TAV_LOG_EVENT)); } catch (e) {}
+      return next;
+    }
+    function tavDogText(d, day, hide) {
+      var meta = metaFor(d.name, d);
+      return h("div", null,
+        h("div", { className: "dsd-tav-verb" }, tavVerb(d.name) + "："),
+        meta.tagline ? h("div", { className: "dsd-tav-tagline" }, "“" + meta.tagline + "”") : null,
+        h("div", null, tavLineNodes(tavOrders(d, day), hide)));
+    }
+    function tavReplyDog(dogs, day, text, lastName) {
+      var pool = dogs.filter(function (d) { return tavOrders(d, day).length; });
+      if (!pool.length) pool = dogs;
+      if (!pool.length) return null;
+      var words = String(text || "").split(/[\s,，。.！!？?、]/).map(function (w) { return w.trim(); }).filter(Boolean);
+      for (var i = 0; i < pool.length; i++) {
+        var hit = tavOrders(pool[i], day).some(function (o) {
+          var m = o.match || "";
+          return words.some(function (w) { return w.length >= 2 && m.indexOf(w) >= 0; });
+        });
+        if (hit) return pool[i];
+      }
+      var idx = pool.findIndex(function (d) { return d.name === lastName; });
+      return pool[(idx + 1) % pool.length];
+    }
+    function tavReplyText(d, day) {
+      var quip = TAV_QUIP[d.name] || "哈，有意思。";
+      var ords = tavOrders(d, day);
+      if (ords.length) {
+        var o = ords[0];
+        return quip + " 我刚下的「" + (o.match || "") + "」" + (o.pickLabel || "") + (o.betSize != null ? " " + o.betSize : "") + "，你要不要跟？";
+      }
+      return quip;
+    }
+    function Tavern(props) {
+      var hideMoney = props && props.hideMoney;
+      var dataState = React.useState(null);
+      var data = dataState[0], setData = dataState[1];
+      var errState = React.useState(null);
+      var error = errState[0], setError = errState[1];
+      var loadState = React.useState(true);
+      var loading = loadState[0], setLoading = loadState[1];
+      var inputState = React.useState("");
+      var input = inputState[0], setInput = inputState[1];
+      // 聊天记录从 localStorage 恢复：切 tab / 刷新页面不丢对话。
+      var msgsState = React.useState(function () { return tavReadLog(); });
+      var msgs = msgsState[0], setMsgs = msgsState[1];
+      var typingState = React.useState(false);
+      var typing = typingState[0], setTyping = typingState[1];
+      var llmBusyState = React.useState(false);
+      var llmBusy = llmBusyState[0], setLlmBusy = llmBusyState[1];
+      var chatRef = React.useRef(null);
+      var lastDogRef = React.useRef("");
+
+      // 统一追加入口：先写 localStorage 再 setMsgs，保证卸载中的旧实例写入不丢；
+      // 并广播事件，让新挂载的实例同步（覆盖「发消息后立刻切走」的在途回复）。
+      function pushMsgs(items) {
+        setMsgs(tavAppendLog(items));
+      }
+      React.useEffect(function () {
+        function sync() { var log = tavReadLog(); if (log) setMsgs(log); }
+        window.addEventListener(TAV_LOG_EVENT, sync);
+        return function () { window.removeEventListener(TAV_LOG_EVENT, sync); };
+      }, []);
+
+      function load() {
+        setLoading(true);
+        fetch("/ds-dashboard")
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res && res.error) setError(res.error);
+            else { setData(res); setError(null); }
+          })
+          .catch(function (e) { setError(String((e && e.message) || e)); })
+          .finally(function () { setLoading(false); });
+      }
+      React.useEffect(function () { load(); }, []);
+      React.useEffect(function () {
+        document.documentElement.classList.add("dsd-tavern-active");
+        return function () { document.documentElement.classList.remove("dsd-tavern-active"); };
+      }, []);
+      React.useEffect(function () {
+        if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+      }, [msgs, typing]);
+      React.useEffect(function () {
+        if (!data || msgs != null) return;
+        var d = (data.todayMatches && data.todayMatches.day) || footballDayBj();
+        var c = (data.todayMatches && data.todayMatches.count != null) ? data.todayMatches.count : null;
+        var arr = (data.dogs || []).slice().sort(function (a, b) { return b.fullCapital - a.fullCapital; });
+        var decided = arr.filter(function (x) { return tavOrders(x, d).length; });
+        var skipped = arr.filter(function (x) { return !tavOrders(x, d).length; });
+        var ord = decided.concat(skipped);
+        var init = [{ id: "boss", role: "dog", name: "酒馆老板", text: "欢迎光临深夜酒馆。今晚" + (c == null ? "牌局" : c + " 场") + "，各位，开牌吧。", time: tavNow() }];
+        ord.forEach(function (x) { init.push({ id: "dog-" + x.name, role: "dog", name: x.name, dog: x, time: tavNow() }); });
+        pushMsgs(init);
+      }, [data]);
+
+      if (loading) return h("div", { className: "dsd-tav-empty" }, "酒馆打烊中…");
+      if (error) return h("div", { className: "dsd-tav-empty" }, "⚠️ " + error);
+      if (!data) return null;
+      var day = (data.todayMatches && data.todayMatches.day) || footballDayBj();
+      var dogs = (data.dogs || []).slice().sort(function (a, b) { return b.fullCapital - a.fullCapital; });
+      var count = (data.todayMatches && data.todayMatches.count != null) ? data.todayMatches.count : null;
+
+      function sendCompose() {
+        var t = String(input || "").trim();
+        if (!t || llmBusy || typing) return;
+        setInput("");
+        genRound(t);
+      }
+      function onKey(e) { if (e.key === "Enter") { e.preventDefault(); sendCompose(); } }
+
+      function findDog(name) {
+        return (data && data.dogs || []).filter(function (d) { return d.name === name; })[0] || null;
+      }
+      function genRound(userText) {
+        if (llmBusy || typing) return;
+        // onClick 会把事件对象传进来：只接受字符串，否则视为「吵一轮」。
+        var text = typeof userText === "string" ? String(userText).trim() : "";
+        var currentDay = day;
+        var dogCols = (data && data.dogs || []).slice().sort(function (a, b) { return b.fullCapital - a.fullCapital; });
+        var dogsPayload = dogCols.map(function (d) {
+          return { name: d.name, tagline: metaFor(d.name, d).tagline || "" };
+        });
+        var slate = ((data && data.todayMatches && data.todayMatches.matches) || []).map(function (s) {
+          return { home: s.home || "", away: s.away || "", league: s.league || "", time: s.time || "" };
+        });
+        var picks = {};
+        dogCols.forEach(function (d) {
+          picks[d.name] = tavOrders(d, currentDay).map(function (o) {
+            return {
+              match: o.match || "", pick: o.pickLabel || o.pick || "",
+              betSize: o.betSize, odds: o.odds, settled: o.settled, hit: o.hit, profit: o.profit,
+            };
+          });
+        });
+        // 历史上下文：带上此前轮次（含过去的客人发言），但当前这条客人发言单独走 user_text。
+        var history = (msgs || []).slice(-10)
+          .map(function (m) { return { name: m.name || "", text: m.text || "" }; })
+          .filter(function (m) { return m.text; });
+        if (text) {
+          pushMsgs([{ id: "me-" + Date.now(), role: "user", name: "你", text: text, time: tavNow() }]);
+        }
+
+        setTyping(true);
+        setLlmBusy(true);
+        fetch("/ds-tavern", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ day: currentDay, dogs: dogsPayload, slate: slate, picks: picks, history: history, user_text: text }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res && res.ok && Array.isArray(res.messages)) {
+              var items = (res.messages).map(function (x, i) {
+                return { id: "llm-" + Date.now() + "-" + i, role: "dog", name: x.name, dog: findDog(x.name), text: x.text, time: tavNow() };
+              });
+              pushMsgs(items);
+            } else {
+              var msg = (res && res.error) ? res.error : "这轮没吵起来，酒馆太安静了。";
+              pushMsgs([{ id: "llm-err-" + Date.now(), role: "dog", name: "酒馆老板", text: "⚠️ " + msg, time: tavNow() }]);
+            }
+          })
+          .catch(function (e) {
+            pushMsgs([{ id: "llm-err-" + Date.now(), role: "dog", name: "酒馆老板", text: "⚠️ " + String((e && e.message) || e), time: tavNow() }]);
+          })
+          .finally(function () { setTyping(false); setLlmBusy(false); });
+      }
+
+      return h("div", { className: "dsd-tavern" },
+        h("div", { className: "dsd-tavern-bg" }),
+        h("div", { className: "dsd-tavern-veil" }),
+        h("div", { className: "dsd-tavern-inner" },
+          h("div", { className: "dsd-tav-head" },
+            h("div", null,
+              h("div", { className: "dsd-tav-title" }, "🍶 深夜酒馆"),
+              h("div", { className: "dsd-tav-sub" }, (count == null ? "今日" : "今日 " + count + " 场") + " · 纯聊天，不出单")),
+            h("div", { className: "dsd-tav-head-right" },
+              h("button", { className: "dsd-tav-gen", onClick: function () { genRound(); }, disabled: llmBusy || typing }, llmBusy ? "吵着呢…" : "🎲 让狗们吵一轮"),
+              h("span", { className: "dsd-tav-day" }, day + " · 北京"))),
+          h("div", { className: "dsd-tav-body" },
+            h("div", { className: "dsd-tav-chat", ref: chatRef },
+              (msgs || []).map(function (m) {
+                var isYou = m.role === "user";
+                // localStorage 恢复的消息没有 dog 对象（JSON 序列化丢引用），渲染时按名字重新挂上。
+                var dogObj = m.dog || findDog(m.name);
+                var meta = isYou
+                  ? { emoji: "🧍", c1: "#8a8a8a", c2: "#555" }
+                  : (dogObj ? metaFor(dogObj.name, dogObj) : { emoji: "🍶", c1: "#8a5a2b", c2: "#4d2f14" });
+                return h("div", { key: m.id, className: "dsd-tav-msg" + (isYou ? " you" : "") },
+                  h("div", { className: "dsd-tav-avatar" }, Avatar({ meta: meta, size: 52 })),
+                  h("div", { className: "dsd-tav-bubble" },
+                    h("div", { className: "dsd-tav-name" }, m.name, (!isYou && dogObj) ? h("span", { className: "dsd-scope" }, scopeLabel(dogObj.scope)) : null),
+                    (dogObj && !m.text) ? tavDogText(dogObj, day, hideMoney)
+                    : h("div", { className: "dsd-tav-line" }, m.text),
+                    h("div", { className: "dsd-tav-time" }, m.time)));
+              }),
+              typing ? h("div", { className: "dsd-tav-msg" },
+                h("div", { className: "dsd-tav-avatar" }, Avatar({ meta: { emoji: "🍺", c1: "#8a5a2b", c2: "#4d2f14" }, size: 52 })),
+                h("div", { className: "dsd-tav-bubble" }, h("span", { className: "dsd-tav-typing" }, "有个家伙正叼着杯子上桌…"))) : null),
+            h("div", { className: "dsd-tav-compose" },
+              h("input", { className: "dsd-tav-line-input", value: input, placeholder: "跟狗们聊聊…（酒馆只聊天，要单去斗狗场点「⚡ 分析」）", onChange: function (e) { setInput(e.target.value); }, onKeyDown: onKey }),
+              h("button", { className: "dsd-tav-line-send", onClick: sendCompose, disabled: llmBusy || typing }, "发话")))));
     }
 
     function Dashboard(props) {
@@ -1415,6 +1806,17 @@ window.__ModuleLoader__.load({
             inject: function (sessionId) { return { sessionId: sessionId }; },
           },
           function (props) { return h(Dashboard, props || {}); });
+      });
+      slots.inject("conversation.view", function () {
+        return slots.register(
+          {
+            name: "conversation.view",
+            id: "ds-tavern",
+            order: 30,
+            label: "🍶 酒馆",
+            inject: function (sessionId) { return { sessionId: sessionId }; },
+          },
+          function (props) { return h(Tavern, props || {}); });
       });
       slots.inject("conversation.session.header.utilities", function () {
         return slots.register(

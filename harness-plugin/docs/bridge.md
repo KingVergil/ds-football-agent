@@ -30,7 +30,7 @@ dsh 侧固定 argv 直接 spawn（`spawn(pythonBin, ["-m","src.bridge"], {cwd: e
 `<engineRoot>/.env` → `~/.env`）> `~/.zshrc` / `~/.bashrc`（仅非 Windows 兜底）**
 注入子进程 env（低优先级只填空缺，不覆盖已有环境变量）。
 
-## func 白名单（8 个）
+## func 白名单（9 个）
 
 | func | 必填入参 | 说明 |
 |---|---|---|
@@ -42,10 +42,22 @@ dsh 侧固定 argv 直接 spawn（`spawn(pythonBin, ["-m","src.bridge"], {cwd: e
 | `status` | dog | 资金/待结算/因子状态/资金曲线/上次退役 |
 | `refresh` | dog, day | 刷新订单组（退未开赛、保留已开赛） |
 | `reset` | dog, opts.reset_mode(soft/full), opts.capital | 重置（soft 保留记忆 / full 清空） |
+| `tavern` | opts(day/dogs/slate/picks/history/user_text) | 酒馆纯聊天：各狗按人设对话/互怼，绝不调 analyze、绝不出单 |
 
 双端校验：dsh 侧 spawn 前校验 func 白名单 / 狗存在（roles 目录）/ 日期格式与区间 ≤60 天；
 python 侧入口再校验一遍。写操作（analyze/settle/induction/review/refresh/reset）
 同狗串行 + 在途去重（HTTP 409）。
+
+### 酒馆对话模式（tavern）
+
+`POST /ds-tavern` → `func=tavern`，一轮同步返回 `{messages}`：
+
+- **纯聊天、禁分析**：桥内不调用 analyze、不写任何订单；`picks` 里已有的今日下注
+  只作为聊天话题注入提示词；
+- 客人发言走 `user_text`，被点名的狗按人设直接回应；客人喊「来一单 / 今晚买什么」时，
+  各狗也只按人设回应（调侃 / 劝客人去斗狗场点「⚡ 分析」），提示词明确禁止声称刚下单、
+  禁止编造 `picks` 之外的下注；
+- 出单入口只有斗狗场「⚡ 分析」（`func=analyze`），酒馆与其完全隔离。
 
 ## dsh web 入口
 

@@ -474,6 +474,16 @@ if __name__ == "__main__":
 
     cmd = sys.argv[1]
 
+    # ── 独立命令: 回填北单数据缓存 (goal_line + 开奖sp) ──
+    if cmd == "beidan":
+        from src.data_manager import DataManager
+        days = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 60
+        dm = DataManager()
+        print(f"[beidan] 回填过去 {days} 天北单缓存 ...")
+        written = dm.refresh_beidan_history(days)
+        print(f"[beidan] 完成: {len(written)} 个足球日, 共 {sum(written.values())} 场")
+        sys.exit(0)
+
     # ── 独立命令（不需要 agent 参数）──
     if cmd == "dashboard":
         import json, re

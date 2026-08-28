@@ -6,7 +6,7 @@
 
 stdin: 单行 JSON 请求
     {
-      "func": "prepare|analyze|settle|factor-induction|factor-review|status|refresh|reset",
+      "func": "prepare|analyze|settle|factor-induction|factor-review|status|refresh|reset|tavern",
       "dog": "梭哈2狗",                 # analyze/settle/induction/review/status/refresh/reset 必填
       "day": "YYYY-MM-DD",              # prepare/analyze/settle/refresh 必填；factor-review 可用 end/start
       "start": "YYYY-MM-DD", "end": "YYYY-MM-DD",
@@ -91,6 +91,11 @@ def _need(req: dict, key: str, label: str = None) -> str:
 def _role_dir() -> Path:
     from src.role_registry import ROLES_DIR
     return ROLES_DIR
+
+
+def _is_parlay_dog(dog: str) -> bool:
+    """串关狗判定：角色目录存在 parlay.json（北单 8串1 / 7串1 双狗）。"""
+    return (_role_dir() / dog / "parlay.json").exists()
 
 
 def _ensure_dog(dog: str) -> None:
@@ -211,6 +216,29 @@ def _order_views(agent, orders: list[dict]) -> list[dict]:
     return out
 
 
+def _parlay_order_views(orders: list[dict]) -> list[dict]:
+    """北单串关订单视图：以 slip_id 聚合为一张票，带完整腿（goal_line+胜平负+赔率）。"""
+    from collections import OrderedDict
+    slips: dict[str, dict] = OrderedDict()
+    for o in orders or []:
+        sid = o.get("slip_id") or o.get("id") or ""
+        if not sid:
+            continue
+        s = slips.setdefault(sid, {
+            "slip_id": sid,
+            "ticket": o.get("slip_type") or o.get("ticket_type") or "",
+            "bet_type": o.get("bet_type", ""),
+            "combos_count": o.get("combos_count") or 0,
+            "ticket_legs": o.get("ticket_legs") or [],
+            "legs": o.get("legs") or [],
+            "total_stake": 0.0,
+            "orders": [],
+        })
+        s["total_stake"] += float(o.get("bet_size") or 0)
+        s["orders"].append(o)
+    return list(slips.values())
+
+
 # ── func 实现 ──────────────────────────────────────────────
 
 def _do_prepare(req: dict) -> dict:
@@ -222,6 +250,12 @@ def _do_prepare(req: dict) -> dict:
     if mode not in ("live", "replay"):
         raise BridgeError(f"prepare mode 必须是 live/replay: {mode!r}")
     jingcai_only = bool(opts.get("jingcai_only", True))
+    beidan_only = bool(opts.get("beidan_only", False))
+    if beidan_only:
+        jingcai_only = False
+    beidan_only = bool(opts.get("beidan_only", False))
+    if beidan_only:
+        jingcai_only = False
 
     from src.environment import get_football_day, football_day_calendar_dates
     from src.data_manager import DataManager
@@ -251,7 +285,18 @@ def _do_prepare(req: dict) -> dict:
         and m.get("home_name", "?") not in ("", "?")
         and m.get("away_name", "?") not in ("", "?")
         and (not jingcai_only or m.get("jingcai_number"))
+        and (not beidan_only or m.get("beidan_number"))
     ]
+
+    # 回放多窗口：返回去重后的候选列表（lota_id + match_time），由 harness 按智能窗口分批分析
+    seen_lids: set[str] = set()
+    matches_view = []
+    for m in sorted(candidates, key=lambda x: str(x.get("match_time", ""))):
+        lid = m.get("lota_id")
+        if lid in seen_lids:
+            continue
+        seen_lids.add(lid)
+        matches_view.append({"lota_id": lid, "match_time": str(m.get("match_time", ""))[:16]})
 
     ok = fail = 0
     warnings = []
@@ -280,11 +325,86 @@ def _do_prepare(req: dict) -> dict:
         "window": f"{window_start[:10]} 12:01 → {(date.fromisoformat(day) + timedelta(days=1)).isoformat()} 12:00",
         "calendar_dates": cal_dates,
         "candidates": len(candidates),
+        "matches": matches_view,
         "prefetched_ok": ok,
         "failed": fail,
         "matches_fetched": fetched_dates,
         "features_prefetched": ok,
         "warnings": warnings,
+    }
+
+
+def _do_prepare_range(req: dict) -> dict:
+    """回放前全量预取（非因子数据）：一次范围拉取写满 start~end 足球日比赛缓存 +
+    预取特征/标签。之后逐日 prepare 只读已备好的缓存，保证回放全程数据一致，
+    不会出现"跑到某天缓存缺失→临时拉取返回空→0 场"的问题。"""
+    start = _need(req, "start")
+    end = _need(req, "end")
+    if not _valid_date(start) or not _valid_date(end) or start > end:
+        raise BridgeError(f"日期范围无效: {start}~{end}")
+    opts = req.get("opts") or {}
+    jingcai_only = bool(opts.get("jingcai_only", True))
+
+    from src.data_manager import DataManager
+    from src.tools import compact_fet_to_tags, save_tagged_sections
+    from src.environment import get_football_day
+
+    dm = DataManager()
+    _progress("范围拉取比赛缓存", detail=f"{start} ~ {end}")
+    # 与 live prepare 同口径：按日历日逐个强制刷新（避免 refresh_matches_range 的
+    # 足球日分桶与逐日读取的日历键控不一致导致写错文件）
+    written = {}
+    cd = date.fromisoformat(start)
+    end_cd = date.fromisoformat(end) + timedelta(days=1)
+    while cd <= end_cd:
+        key = cd.isoformat()
+        ms = dm.refresh_matches_cache(key, with_jc_odds=jingcai_only) or []
+        written[key] = len(ms)
+        cd += timedelta(days=1)
+
+    days = []
+    total_candidates = total_fail = 0
+    warnings = []
+    d = date.fromisoformat(start)
+    end_d = date.fromisoformat(end)
+    while d <= end_d:
+        day = d.isoformat()
+        window_start, window_end = get_football_day(d)
+        all_matches = []
+        for cd in (day, (d + timedelta(days=1)).isoformat()):
+            all_matches += dm.get_cached_matches(cd, lottery_type="all")
+        candidates = [
+            m for m in all_matches
+            if window_start <= str(m.get("match_time", ""))[:16] <= window_end
+            and m.get("lota_id")
+            and m.get("home_name", "?") not in ("", "?")
+        and m.get("away_name", "?") not in ("", "?")
+        and (not jingcai_only or m.get("jingcai_number"))
+        and (not beidan_only or m.get("beidan_number"))
+    ]
+        ok = fail = 0
+        for m in candidates:
+            lid = m["lota_id"]
+            data = dm.get_compact_fet(lid)
+            if not data:
+                fail += 1
+                warnings.append(f"{day} {lid} compact-fet 缺失")
+                continue
+            sections = compact_fet_to_tags(lid, data)
+            if sections:
+                save_tagged_sections(lid, sections)
+            ok += 1
+        total_candidates += len(candidates)
+        total_fail += fail
+        days.append({"day": day, "candidates": len(candidates),
+                     "prefetched_ok": ok, "failed": fail})
+        d += timedelta(days=1)
+
+    return {
+        "start": start, "end": end, "jingcai_only": jingcai_only,
+        "range_written": written, "days": days,
+        "total_candidates": total_candidates, "total_failed": total_fail,
+        "warnings": warnings[:20],
     }
 
 
@@ -298,14 +418,44 @@ def _do_analyze(req: dict) -> dict:
     live = bool(opts.get("live", False))
     prefetched = bool(opts.get("prefetched", False))
     jingcai_only = bool(opts.get("jingcai_only", True))
+    beidan_only = bool(opts.get("beidan_only", False))
+    if beidan_only:
+        jingcai_only = False
     skip_llm = bool(opts.get("skip_llm", False))
+    window = opts.get("window")
+    if window is not None and not isinstance(window, dict):
+        raise BridgeError(f"window 必须是对象: {window!r}")
+    if window is not None and not window.get("match_ids"):
+        raise BridgeError("window 需要非空 match_ids")
+
+    if _is_parlay_dog(dog):
+        from src.beidan_parlay_dog import BeidanParlayDog
+        pdog = BeidanParlayDog(user=dog)
+        _progress("分析中（北单串关 · LLM 决策）" if not skip_llm else "分析中（北单串关 · 演示模式）",
+                  detail=f"{dog} {day}")
+        result = pdog.analyze(day, live=live, use_llm=not skip_llm)
+        return {
+            "user": dog,
+            "date": day,
+            "parlay": True,
+            "matches_count": result.get("matches_count", 0),
+            "legs_selected": result.get("legs_selected", 0),
+            "tickets": result.get("tickets", []),
+            "llm_used": result.get("llm_used", False),
+            "orders": _parlay_order_views(result.get("orders", [])),
+            "placed": result.get("placed", 0),
+            "capital": pdog._get_capital(),
+            "session_path": result.get("session_path", ""),
+            "llm_skipped": skip_llm,
+        }
 
     agent = _agent(dog)
     # 回放（live=false）同样需要 LLM 决策：node_call_llm 在 rt.provider 为空时直接返回空响应
     if not skip_llm:
         _provider(agent)
     _progress("分析中（LLM 决策）" if not skip_llm else "分析中（演示模式·跳过 LLM）", detail=f"{dog} {day}")
-    result = agent.analyze(day, live=live, jingcai_only=jingcai_only, prefetched=prefetched)
+    result = agent.analyze(day, live=live, jingcai_only=jingcai_only,
+                           prefetched=prefetched, window=window, beidan_only=beidan_only)
     _progress("分析写盘完成", detail=f"{dog} {day}")
     return {
         "user": dog,
@@ -328,7 +478,27 @@ def _do_settle(req: dict) -> dict:
         raise BridgeError(f"日期格式错误: {day}")
     _ensure_dog(dog)
     opts = req.get("opts") or {}
+
+    if _is_parlay_dog(dog):
+        from src.beidan_parlay_dog import BeidanParlayDog
+        pdog = BeidanParlayDog(user=dog)
+        _progress("结算中（北单串关）", detail=f"{dog} {day}")
+        s = pdog.settle(day, reflect=not bool(opts.get("skip_llm")))
+        return {
+            "user": dog,
+            "day": day,
+            "parlay": True,
+            "settlement": s,
+            "capital": pdog._get_capital(),
+            "stats": _role_of(dog).stats(),
+        }
+
     agent = _agent(dog)
+    # 结算后反思（归因 → 更新因子表现与 last_seen 有效期）需要 LLM：
+    # 与 _do_analyze 对齐，否则 node_reflect 因 rt.provider 为空被跳过，
+    # 回放/看板桥接结算从不更新因子有效期（2026-08-25 修复）。
+    if not opts.get("skip_llm"):
+        _provider(agent)
     _progress("结算中", detail=f"{dog} {day}")
     s = agent.settle(day, jingcai_only=bool(opts.get("jingcai_only", False)))
     # live 狗结算后落「结算后/因子前」检查点（沙箱回放复制用；沙箱内由 replay.js 管检查点）
@@ -495,8 +665,137 @@ def _do_reset(req: dict) -> dict:
     }
 
 
+def _do_tavern(req: dict) -> dict:
+    """LLM 多狗酒馆（纯聊天模式）：老板主持，各狗按人设聊天/互怼。
+
+    ⚠️ 酒馆禁止启动分析/出单：本函数绝不调用 analyze、绝不写任何订单。
+    客人要单时各狗只按人设回应（可调侃、可劝客人去斗狗场点「⚡ 分析」）。
+
+    opts: {
+      day: "YYYY-MM-DD",
+      dogs: [{name, tagline}],        // 出场顺序
+      slate: [{home, away, league, time}],
+      picks: {name: [{match,pick,betSize,odds,settled,hit,profit}]},  // 今日已有下注（仅作聊天话题）
+      history: [{name, text}],        // 上一轮，用于延续
+      user_text: "客人的话",          // 本轮客人发言（有则回应客人）
+    }
+    """
+    from src.role_registry import ROLES_DIR
+    from src.providers.deepseek import DeepSeekProvider
+
+    opts = req.get("opts") or {}
+    day = str(opts.get("day") or "")
+    dogs = opts.get("dogs") or []
+    slate = opts.get("slate") or []
+    picks = opts.get("picks") or {}
+    history = opts.get("history") or []
+    user_text = str(opts.get("user_text") or "").strip()
+
+    def _persona(name):
+        try:
+            p = ROLES_DIR / name / "persona.md"
+            if not p.exists() and os.environ.get("DS_ROLES_ROOT"):
+                p = ROLES_DIR / "persona.md"
+            txt = p.read_text(encoding="utf-8") if p.exists() else ""
+            return txt[:600]
+        except Exception:
+            return ""
+
+    def _pick_text(name):
+        plist = picks.get(name) or []
+        if not plist:
+            return "今天没出手。"
+        parts = []
+        for o in plist[:3]:
+            m = o.get("match") or ""
+            pick = o.get("pick") or o.get("pickLabel") or ""
+            size = o.get("betSize")
+            odds = o.get("odds")
+            if o.get("settled"):
+                res = "中了" if o.get("hit") else ("走水" if o.get("profit") == 0 else "栽了")
+            else:
+                res = "待开"
+            parts.append("「%s」%s%s%s——%s" % (
+                m, pick, (" %s" % size) if size is not None else "",
+                (" @ %s" % odds) if odds is not None else "", res))
+        return "；".join(parts)
+
+    lines = []
+    if day:
+        lines.append("【今晚档期 · 足球日 %s】" % day)
+    if slate:
+        lines.append("场次：")
+        for s in slate[:20]:
+            lines.append("  - %s %s vs %s" % (
+                s.get("league") or "", s.get("home") or "", s.get("away") or ""))
+    lines.append("【各狗今日下注（只作聊天话题，酒馆内不会新增任何单）】")
+    for d in dogs:
+        name = d.get("name") if isinstance(d, dict) else d
+        lines.append("- %s：%s" % (name, _pick_text(name)))
+    lines.append("【出场角色（名号 + 人设）】")
+    for d in dogs:
+        name = d.get("name") if isinstance(d, dict) else d
+        tag = d.get("tagline") if isinstance(d, dict) else ""
+        lines.append("· %s（%s）：%s" % (name, tag or "招牌", _persona(name)))
+    if history:
+        lines.append("【上一轮对话（请自然延续）】")
+        for h in history[-12:]:
+            who = h.get("name") or ""
+            lines.append("%s：%s" % ("客人" if who == "你" else who, h.get("text") or ""))
+    if user_text:
+        lines.append("【客人的话（务必回应）】%s" % user_text)
+
+    system = (
+        "你是「深夜酒馆」的老板，主持一场赌狗深夜酒局。下面是今天真实的比赛、各位今日下注、"
+        "每位角色的名号与人设"
+        + ("、客人刚才说的话" if user_text else "")
+        + "。请代入每位角色，按各自人设说话：聊天、抬杠、调侃都行，像老朋友在酒桌上。\n"
+        "规则：\n"
+        "1. 每只狗只说一句，力度要足，有人味，可损对手可自嘲。\n"
+        "2. 有【客人的话】时：被点名的狗必须直接回应客人的问题，其他狗可插嘴，至少 2 只狗开口。\n"
+        "3. 没有【客人的话】时：开一轮，让它们就真实场次吵起来，至少 3-5 只狗开口，别冷场。\n"
+        "4. 本酒馆只聊天、绝不下单：客人就算喊「来一单」「今晚买什么」，也只按人设回应（可调侃、可劝他去斗狗场点「⚡ 分析」），不许声称自己刚下了单。\n"
+        "5. 禁止编造【各狗今日下注】之外的下注（那里没列你的单=你今天没出手），禁止替客人下单，禁止重复人设原文。\n"
+        "6. 只输出本轮对话，每行严格为：狗名: 内容\n"
+        "7. 不要旁白、不要说明。\n\n" + "\n".join(lines)
+    )
+
+    provider = DeepSeekProvider()
+    raw = provider.call(
+        system,
+        [{"role": "user", "content": ("开一轮，回应客人。" if user_text else "开一轮，让它们吵起来。")}],
+        temperature=1.05,
+        thinking=False,
+    )
+    raw = re.sub(r'\[thinking\].*?\[/thinking\]\s*', '', raw, flags=re.DOTALL).strip()
+
+    known = set()
+    for d in dogs:
+        known.add(d.get("name") if isinstance(d, dict) else d)
+
+    messages = []
+    for ln in raw.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        m = re.match(r'^([^：:]{1,20})[:：](.+)$', ln)
+        if not m:
+            continue
+        name = m.group(1).strip()
+        text = m.group(2).strip()
+        if not text or not name:
+            continue
+        if known and name not in known and name != "酒馆老板":
+            continue
+        messages.append({"name": name, "text": text})
+    if not messages:
+        messages.append({"name": "酒馆老板", "text": raw[:400]})
+    return {"messages": messages}
+
+
 FUNCS = {
     "prepare": _do_prepare,
+    "prepare-range": _do_prepare_range,
     "analyze": _do_analyze,
     "settle": _do_settle,
     "factor-induction": _do_induction,
@@ -504,6 +803,7 @@ FUNCS = {
     "status": _do_status,
     "refresh": _do_refresh,
     "reset": _do_reset,
+    "tavern": _do_tavern,
 }
 
 

@@ -1,5 +1,9 @@
 # 因子生产/消费链路梳理与激活计划（2026-08-05）
 
+> 2026-08-27 补充：因子生产并行化（按天并行挖掘 → 串行 reduce）的设计见
+> [`factor_parallelism_plan.md`](factor_parallelism_plan.md)；北单串关落地计划见
+> [`beidan_factor_parallel_plan.md`](beidan_factor_parallel_plan.md)。
+
 ## 执行状态（2026-08-05 全部落地）
 
 | 阶段 | 内容 | 状态 | commit |

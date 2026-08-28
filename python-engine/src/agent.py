@@ -41,6 +41,7 @@ class AgentState(TypedDict, total=False):
     day_date: str
     live: bool
     jingcai_only: bool  # 只拉竞彩比赛，减少数量加速测试
+    beidan_only: bool   # 只拉北单比赛（与 jingcai_only 互斥）
     prefetched: bool    # 数据已由外部预取（prefetch 命令），跳过强制刷新
     capital: float
 
@@ -128,6 +129,8 @@ def node_fetch_matches(state: AgentState) -> AgentState:
     """从 DataManager 获取足球日比赛"""
     rt = _rt(state)
     day_date = state["day_date"]
+    win = state.get("window") or {}
+    win_ids = set(win.get("match_ids") or [])
 
     print(f"  🔍 拉取比赛...", end=" ", flush=True)
     d = date.fromisoformat(day_date)
@@ -172,6 +175,17 @@ def node_fetch_matches(state: AgentState) -> AgentState:
     # 竞彩过滤：只保留有 jingcai_number 的比赛
     if state.get("jingcai_only"):
         matches = [m for m in matches if m.get("jingcai_number")]
+    # 北单过滤：只保留有 beidan_number 的比赛（与竞彩互斥）
+    if state.get("beidan_only"):
+        matches = [m for m in matches if m.get("beidan_number")]
+
+    # 回放多窗口：当日竞彩 >10 场时按窗口（match_ids 白名单）分批分析，
+    # 每批只让 LLM 看到该窗口内的比赛（订单去重/预算仍按整日共用）。
+    if win_ids:
+        before = len(matches)
+        matches = [m for m in matches if m.get("lota_id") in win_ids]
+        if len(matches) != before:
+            print(f"  🪟 窗口过滤: {before} 场 → {len(matches)} 场")
 
     # live 模式：当 now 仍落在该足球日窗口内时，保留全部比赛（含已开赛）。
     # 已开赛比赛标注 _live_started=True，供 prompt & place_orders 使用：
@@ -337,6 +351,21 @@ def node_build_prompt(state: AgentState) -> AgentState:
     if api_failed_count:
         print(f"  🔒 过滤 {api_failed_count} 场无特征数据比赛，剩余 {len(clean_safe)} 场进入 LLM")
 
+    # ── live 近场保护：未来（未开赛）场次 >10 时，只保留「未开赛 + N 小时内开赛」的比赛 ──
+    # 防止 live 分析一次押太多/押到数小时后的场次；未来场次 ≤10 时全放（客户急着看全量）。
+    # 注意：这是 live 模式的安全护栏，不是波次启动时间表（波次窗口由外部编排传 window，
+    # 见 harness windows.js / replay.js）；回放（历史日期）无 _live_started 标记不触发。
+    in_live_window = any("_live_started" in m for m in clean_safe)
+    now_str = _now_bj()
+    future_matches = [m for m in clean_safe if m.get("match_time", "") > now_str]
+    if in_live_window and len(future_matches) > 10:
+        focus_hours = 6 if state.get("beidan_only") else 3
+        cutoff = (datetime.now(_BEIJING_TZ) + timedelta(hours=focus_hours)).strftime("%Y-%m-%d %H:%M:%S")
+        focus = [m for m in clean_safe if now_str < m.get("match_time", "") <= cutoff]
+        print(f"  🎯 live 近场保护: 未来 {len(future_matches)} 场 → {focus_hours}h 内未开赛 {len(focus)} 场"
+              f"（窗口 {now_str} ~ {cutoff}）")
+        clean_safe = focus
+
     # ── 阶段2: 按 active 因子的 slugs 扩展每场数据段 ──
     # PromptBuilder 会把 factors[].slugs 追加进该场 sections（默认 7 段 + 因子 slugs）。
     # 用独立 FactorMemory 实例读取，不改动主 memory 的加载状态（角色因子段是否注入另议）。
@@ -390,6 +419,23 @@ def node_build_prompt(state: AgentState) -> AgentState:
 
     # ── train mode: 注入已标注的比赛结果 ──
     labels_text = _load_labels_for_matches(match_tasks) if match_tasks else ""
+
+    # 回放/模拟：因子评估基准时间 = 当日（避免按真实当前时间误判休眠/窗口）
+    if rt.role and hasattr(rt.role.memory, "as_of"):
+        try:
+            rt.role.memory.as_of = (
+                datetime.strptime(day_date, "%Y-%m-%d") if day_date and not state.get("live") else None
+            )
+        except ValueError:
+            rt.role.memory.as_of = None
+
+    # ── 行为设定：当前分析窗口（本次输出的比赛数）少于阈值时不强制下单（skip_when_matches_lt）──
+    if rt.role and getattr(rt.role, "skip_when_matches_lt", 0) > 0:
+        win_cnt = len(clean_safe)
+        if win_cnt < rt.role.skip_when_matches_lt:
+            sp += (f"\n\n📏 行为设定：当前窗口输出 {win_cnt} 场"
+                   f"（<{rt.role.skip_when_matches_lt} 场），取消强制下单要求——"
+                   f"信号不够强直接 skip，不必凑单。")
 
     result = rt.builder.build(
         system_prompt=sp,
@@ -1042,6 +1088,11 @@ def run_reflect(settled: list[dict], day_date: str, role,
 
     # 人设 + 因子定义（与分析 prompt 对齐）
     persona_text = role.persona_text() if role else ""
+    if role and hasattr(role.memory, "as_of"):
+        try:
+            role.memory.as_of = datetime.strptime(day_date, "%Y-%m-%d") if day_date else None
+        except ValueError:
+            role.memory.as_of = None
     factor_desc_text = role.memory.factors.factor_desc_text() if role else ""
 
     reflect_prompt = f"""你是量化足球博彩分析师。你的任务是从已结算比赛中**发现可复用的投注因子**。
@@ -1516,14 +1567,21 @@ def node_factor_review(state: AgentState) -> AgentState:
 ## 评估原则
 你的任务不是评估因子"赢了几次"，而是判断**因子的市场假设是否还成立**。
 
+⚠️ **正负双向保留原则（硬约束）**：正回报和负回报的因子都是信号——
+稳定亏损、命中率低但方向一致的因子（每单平均回报显著为负）是**反向信号**
+（反买/规避），必须保留 `active` 继续进 prompt；**不要因为亏损就退役**。
+只有**无信息噪声**（命中率≈50%、|每单平均回报|≈0、来回摇摆）或
+已被完全替代且不构成任何方向信号的因子才允许 `retire`。
+
 对每个因子，依次考量：
 1. 这个因子的核心假设是什么？（从定义推断）
 2. 近7天的反思中，这个假设是否被反复证伪？
 3. 这个定价低效是否已被市场修正（信号已被博彩公司定价进去）？
 4. 这个因子是否已被新发现的更精细因子完全替代？
+5. 如果它在亏：是稳定地反向（→保留为反向信号），还是无方向噪声（→可退役）？
 
 判断结论三档：
-- `retire`: 假设已被证伪，或市场已修正，或被更好因子完全替代
+- `retire`: 假设已被证伪 **且无任何方向信息（噪声）**，或已被更好因子完全替代且不构成反向信号
 - `dormant`: 逻辑可能有效，但近期无触发场景，暂时休眠
 - `active`: 保留继续使用（不需要列出，只列需要变更的）
 
@@ -1770,13 +1828,15 @@ class Agent:
             rt.role.save()
 
     def analyze(self, day_date: str, live: bool = False, jingcai_only: bool = False,
-                prefetched: bool = False) -> dict:
+                prefetched: bool = False, window: dict | None = None,
+                beidan_only: bool = False) -> dict:
         """分析一天 → 返回 orders。
 
         live=True 时：
           1. 先 refresh_orders（退回未开赛订单，保留已开赛）
           2. 再调用 LLM 分析下单
         prefetched=True 时：比赛列表/compact-fet/tags 已由外部预取，跳过强制刷新。
+        window: 回放多窗口（当日竞彩 >10 场）时传 {"match_ids": [...]}，只分析窗口内比赛。
         """
         # live 模式：自动刷新当天订单
         if live:
@@ -1790,7 +1850,9 @@ class Agent:
                 "day_date": day_date,
                 "live": live,
                 "jingcai_only": jingcai_only,
+                "beidan_only": beidan_only,
                 "prefetched": prefetched,
+                "window": window,
             }
             # live 模式：禁止 get_compact_fet 回退过期缓存（旧赔率进提示词）
             DataManager().set_live_mode(live)

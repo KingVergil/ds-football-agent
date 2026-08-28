@@ -7,6 +7,7 @@ DeepSeek API Provider
 """
 
 import os
+import time
 import requests
 
 from ..base_llm import BaseLLMProvider
@@ -86,27 +87,38 @@ class DeepSeekProvider(BaseLLMProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        try:
-            resp = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self.timeout,
-            )
-            data = resp.json()
+        # 网络/限流/5xx 重试（2 次退避）；一次超时不至于丢整天分析
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                resp = requests.post(
+                    "https://api.deepseek.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts - 1:
+                    time.sleep(4 * (attempt + 1))
+                    continue
+                data = resp.json()
 
-            if "choices" in data:
-                msg = data["choices"][0]["message"]
-                thinking = msg.get("reasoning_content", "")
-                content = msg.get("content", "")
-                if thinking:
-                    return f"[thinking]\n{thinking}\n[/thinking]\n\n{content}"
-                return content
+                if "choices" in data:
+                    msg = data["choices"][0]["message"]
+                    thinking = msg.get("reasoning_content", "")
+                    content = msg.get("content", "")
+                    if thinking:
+                        return f"[thinking]\n{thinking}\n[/thinking]\n\n{content}"
+                    return content
 
-            raise RuntimeError(f"[DeepSeek] API 返回异常: {str(data)[:400]}")
+                raise RuntimeError(f"[DeepSeek] API 返回异常: {str(data)[:400]}")
 
-        except requests.RequestException as e:
-            raise RuntimeError(f"[DeepSeek] 请求失败: {e}") from e
+            except requests.RequestException as e:
+                if attempt < max_attempts - 1:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                raise RuntimeError(
+                    f"[DeepSeek] 请求失败（重试 {max_attempts} 次后仍失败）: {e}"
+                ) from e

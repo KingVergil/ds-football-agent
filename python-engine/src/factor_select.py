@@ -25,6 +25,11 @@ SHRINK_ALPHA = 2.0
 SHRINK_BETA = 2.0
 # 主列表上限（相对截断，可按因子库规模调整）
 FACTOR_MAX_MAIN = 12
+# 设计（2026-08-24 对齐用户原意）：正回报与负回报因子都进主区——
+# 正=顺向信号，负=反向/反买/规避信号；只有 |加权回报| < 阈值（0 回报附近）的噪声不展示。
+FACTOR_MAX_MAIN_POS = 8
+FACTOR_MAX_MAIN_NEG = 4
+FACTOR_NOISE_W_RETURN = 0.10
 # 样本少于该值 → 标 ⚠️样本少（不确定性警告）
 FACTOR_SMALL_SAMPLE = 5
 
@@ -46,12 +51,19 @@ def factor_profile(stats: dict, now: datetime | None = None) -> dict | None:
     无历史 → 返回 None。
     """
     now = now or datetime.now()
+    now_d = now.date()
     hist = stats.get("history") or []
+    if not hist:
+        return None
+    # 只保留 as_of 之前的历史，防止预加载因子库/并行挖掘时未来样本泄漏
+    hist = [
+        h for h in hist
+        if (h.get("date", "") or "")[:10] <= now_d.isoformat()
+    ]
     if not hist:
         return None
     hist_sorted = sorted(hist, key=lambda h: h.get("date", ""))
     recent = hist_sorted[-FACTOR_SAMPLE_WINDOW:]
-    now_d = now.date()
 
     weights = []
     for h in recent:
@@ -97,7 +109,8 @@ def factor_profile(stats: dict, now: datetime | None = None) -> dict | None:
 
     dormant = False
     last_age_days = None
-    last_seen = stats.get("last_seen") or ""
+    # 休眠判定只看 as_of 之前最近一次触发，避免未来 last_seen 误判休眠
+    last_seen = hist_sorted[-1].get("date", "") or stats.get("last_seen") or ""
     if last_seen:
         try:
             last_age_days = (

@@ -83,6 +83,7 @@ class Role:
         self.scope: str = "jc"  # 日常比赛范围：jc/beidan/all
         self.enabled: bool = True  # 是否进全量默认列表（False=观察期）
         self.status: str = "live"  # live（线上在用）/ sandbox（沙箱待转正）/ archived（归档）
+        self.skip_when_matches_lt: int = 0  # 行为设定：当日竞彩窗口少于该场次时不强制下单（0=不启用）
         self.memory = AgentMemory(role_name=name)
         self.created_at = _now()
         self.orders = []  # 订单统一存 role.json，不再单独落盘
@@ -145,6 +146,7 @@ class Role:
         r.scope = data.get("scope", "jc") if data.get("scope") in ("jc", "beidan", "all") else "jc"
         r.enabled = bool(data.get("enabled", True))
         r.status = data.get("status") or ("live" if r.enabled else "sandbox")
+        r.skip_when_matches_lt = int(data.get("skip_when_matches_lt") or 0)
 
         # 加载订单：优先从 role.json，兼容旧格式迁移
         r.orders = data.get("orders", [])
@@ -544,9 +546,10 @@ def _agent_memory_refresh_from_role(self, role: "Role") -> None:
     self.losses.max_single_loss = min((o.get("profit", 0) for o in losses), default=0)
     self.losses._loaded = True
 
-    # Slug memory + reflections — load from disk
+    # Slug memory + reflections + factors — load from disk
     self.slugs.load()
     self.reflections.load()
+    self.factors.load()
 
 
 AgentMemory.refresh_from_role = _agent_memory_refresh_from_role
