@@ -26,6 +26,7 @@ from typing import Optional
 
 from .beidan_settlement import (
     BEIDAN_RETURN_RATE,
+    _round2,
     parlay_combinations,
     parse_ticket_spec,
     settle_parlay_combo,
@@ -106,16 +107,17 @@ class BeidanParlayDog(ChuanGuanDog):
     # 数据
     # ═══════════════════════════════════════════
 
-    def _beidan_matches(self, day_date: str, live: bool = False) -> list[dict]:
-        """读取足球日窗口内、带 beidan_info 的北单场次。"""
-        d = date.fromisoformat(day_date)
-        start, end = get_football_day(d)
-        out: list[dict] = []
-        for cd in football_day_calendar_dates(d):
-            out.extend(self._dm.get_cached_beidan_matches(cd) or [])
+    def _filter_beidan_matches(self, matches: list[dict], start: str, end: str,
+                               only_upcoming: bool = False) -> list[dict]:
+        """去重并只保留窗口内、带 beidan_info 的北单场次。
+
+        only_upcoming=True（live 分析）时，已开赛（match_time <= 当前时间）的
+        场次直接排除，避免把已开球比赛的赔率选进新票。
+        """
         seen: set[str] = set()
         result: list[dict] = []
-        for m in out:
+        now = _now_bj() if only_upcoming else ""
+        for m in matches or []:
             lid = m.get("lota_id") or ""
             if not m.get("beidan_info"):
                 continue
@@ -123,9 +125,93 @@ class BeidanParlayDog(ChuanGuanDog):
                 continue
             if not (start <= m.get("match_time", "") <= end):
                 continue
+            if only_upcoming and m.get("match_time", "") <= now:
+                continue
             seen.add(lid)
             result.append(m)
         return result
+
+    def _prepare_beidan_data(self, day_date: str) -> list[str]:
+        """按「北单准备」流程重刷比赛缓存，并预取 compact-fet / tags。
+
+        返回 warnings；用于 live 分析刷新拿不到比赛时兜底，避免直接 0 场。
+        比赛缓存与 compact-fet 均走 DataManager 调度器（跨进程单飞），
+        与竞彩狗的 prefetch 共享同一套日期锁 / 按场锁。
+        """
+        d = date.fromisoformat(day_date)
+        start, end = get_football_day(d)
+        warnings: list[str] = []
+        all_matches: list[dict] = []
+        for cd in football_day_calendar_dates(d):
+            prep = self._dm.prepare_matches(
+                cd, live=True, with_beidan_odds=True, owner=f"{self.user}:prepare"
+            )
+            all_matches.extend(prep.get("matches") or [])
+
+        candidates = self._filter_beidan_matches(all_matches, start, end,
+                                                 only_upcoming=True)
+        if not candidates:
+            warnings.append(f"{day_date} 北单数据获取失败（准备流程也未拿到比赛）")
+            return warnings
+
+        feats = self._dm.prepare_features(
+            [m.get("lota_id", "") for m in candidates],
+            with_tags=True, owner=f"{self.user}:prepare",
+        )
+        ok = feats.get("fetched", 0) + feats.get("cached", 0)
+        fail = feats.get("failed", 0)
+        by_lid = {m.get("lota_id", ""): m for m in candidates}
+        for lid in feats.get("failed_lids", []):
+            m = by_lid.get(lid) or {}
+            warnings.append(
+                f"{lid} {m.get('home_name', '?')} vs "
+                f"{m.get('away_name', '?')} compact-fet 缺失"
+            )
+
+        print(
+            f"[beidan] 准备北单流程完成：候选 {len(candidates)} 场，"
+            f"compact-fet 预取 {ok}/{len(candidates)}"
+        )
+        if fail:
+            warnings.append(f"北单 compact-fet 预取失败 {fail} 场")
+        return warnings
+
+    def _beidan_matches(self, day_date: str, live: bool = False) -> tuple[list[dict], list[str]]:
+        """读取足球日窗口内、带 beidan_info 的北单场次。
+
+        统一从 matches/<date>.json 后过滤（北单 = beidan_number 非空）；
+        live 或缓存缺失 beidan_info 时按需刷新北单赔率，避免依赖过期的 beidan 历史缓存；
+        live 模式额外排除已开赛场次（不回放时已开球的不进新票）。
+        """
+        d = date.fromisoformat(day_date)
+        start, end = get_football_day(d)
+        out: list[dict] = []
+        warnings: list[str] = []
+        for cd in football_day_calendar_dates(d):
+            # 走调度器：同日期跨进程单飞 + 5 分钟新鲜窗口 + beidan_info 完整性判定；
+            # 刷新返回全量比赛 → 再按北单编号过滤，避免非北单场次混入串关选项
+            prep = self._dm.prepare_matches(
+                cd, live=live, with_beidan_odds=True, owner=f"{self.user}:analyze"
+            )
+            ms = [m for m in prep.get("matches") or [] if m.get("beidan_number")]
+            if not ms:
+                # 迁移期 legacy beidan/<date>.json 兜底
+                ms = self._dm.get_cached_beidan_matches(cd) or []
+            out.extend(ms or [])
+
+        result = self._filter_beidan_matches(out, start, end, only_upcoming=live)
+        if live and not result:
+            warnings.append(f"{day_date} live 刷新未拿到北单比赛，转走准备北单流程获取数据")
+            warnings.extend(self._prepare_beidan_data(day_date))
+            cached: list[dict] = []
+            for cd in football_day_calendar_dates(d):
+                cached.extend(self._dm.get_cached_beidan_matches(cd) or [])
+            result = self._filter_beidan_matches(cached, start, end,
+                                                 only_upcoming=live)
+
+        if not result:
+            warnings.append(f"{day_date} 窗口内无北单比赛（可能缓存缺失或当天无场次）")
+        return result, warnings
 
     def _beidan_odds(self, match: dict) -> dict:
         """北单让球胜平负赔率（goal_line + h/d/a）。
@@ -361,19 +447,17 @@ class BeidanParlayDog(ChuanGuanDog):
                 alpha_data = self._load_alpha_data(day_date)
             except Exception as e:
                 print(f"  ⚠️ alpha 数据加载失败（不影响分析）: {e}")
-        sec_budget = max(
-            300,
-            min(self.SECTIONS_TOKEN_BUDGET,
-                self.SECTIONS_TOTAL_BUDGET // max(len(matches), 1)),
-        )
-
         lines = []
         match_info_parts = []
+        match_features: dict[str, str] = {}
         for m in matches:
-            bi = m.get("beidan_info") or {}
             o = m["_beidan_odds"]
-            sec = self._match_sections_text(m, budget=sec_budget,
+            # 全量数据段，不截断（1M 上下文足够）
+            sec = self._match_sections_text(m, budget=None,
                                             extra_slugs=factor_slugs)
+            lid = m.get("lota_id") or ""
+            if lid and sec:
+                match_features[lid] = sec
             alpha_txt = ""
             if alpha_data:
                 leans = {"H": 0, "D": 0, "A": 0}
@@ -410,6 +494,14 @@ class BeidanParlayDog(ChuanGuanDog):
                 "## 你自己的因子库（结算反思产出，供选腿参考；方向型因子支持的方向可做单选）\n"
                 + factor_text + "\n"
             )
+        factor_cue_block = (
+            "## 🧭 因子性质判断（重要：用之前先判断，不要按名字/关键词套）\n"
+            "- **用每个因子前，先读它的描述判断性质**：\n"
+            "- ① 它给出**明确可下注方向**（主/客/平某一侧）→ 可作**单选方向**，但**仍需离散/资金/盘口同向**。\n"
+            "- ② 它只**提示风险/波动/爆冷、需要防冷或全包** → 只能进**全包/防冷**，**绝不拿去单选**。\n"
+            "- 🔄反向（负回报）→ 一律规避或全包，绝不单选。\n"
+            "- 判断依据是「用它会给你一个方向，还是只提醒你小心」。**读描述语义判断，不要按因子名套用**。\n\n"
+        )
         alpha_block = ""
         if alpha_data and alpha_data.get("qualified_factors"):
             qf_lines = "\n".join(
@@ -448,12 +540,38 @@ class BeidanParlayDog(ChuanGuanDog):
 ## 人设
 {persona}
 {factor_block}
+{factor_cue_block}
 {alpha_block}
 
 ## {day_date} 北单可投注场次（含让球线 goal_line）
 {matches_text}
 """
         user_msg = f"分析以上 {len(matches)} 场北单比赛并输出串关决策。"
+        from .prompt_builder import count_tokens
+        tokens_in = count_tokens(system)
+        data_tokens = count_tokens(matches_text)
+        mem_tokens = count_tokens(factor_block) + count_tokens(alpha_block)
+        user_tokens = count_tokens(user_msg)
+        token_breakdown = {
+            "sys": max(0, tokens_in - data_tokens - mem_tokens - user_tokens),
+            "mem": mem_tokens,
+            "tools": 0,
+            "data": data_tokens,
+            "user": user_tokens,
+        }
+        # 对齐 agent 的 build_prompt 工具调用记录（复盘用）
+        try:
+            rt = self._runtime()
+            if rt.session:
+                rt.session.tool_call("build_prompt", {
+                    "match_count": len(matches),
+                    "ticket": cfg["ticket"],
+                    "single_legs": cfg["single_legs"],
+                    "cover_legs": cfg["cover_legs"],
+                }, f"{tokens_in} tokens")
+        except Exception:
+            pass
+
         try:
             response = provider.call(
                 system,
@@ -466,6 +584,21 @@ class BeidanParlayDog(ChuanGuanDog):
             return None, None
         if not response:
             return None, None
+
+        # 记录 LLM 调用（对齐 agent node_call_llm / 父类 chuan_guan_dog 的 llm_call）
+        try:
+            rt = self._runtime()
+            if rt.session:
+                rt.session.llm_call(
+                    system_prompt=system,
+                    response=response,
+                    tokens_in=tokens_in,
+                    tokens_out=count_tokens(response),
+                    token_breakdown=token_breakdown,
+                    match_features=match_features,
+                )
+        except Exception:
+            pass
 
         try:
             data = _json.loads(self._extract_json(str(response)))
@@ -569,7 +702,9 @@ class BeidanParlayDog(ChuanGuanDog):
         session = self._begin_session("analyze", day_date)
         try:
             role = self._ensure_role()
-            matches = self._beidan_matches(day_date, live=live)
+            matches, data_warnings = self._beidan_matches(day_date, live=live)
+            if live:
+                matches = self._live_clean_matches(matches)
             llm_used = False
             if use_llm:
                 singles, covers = self._select_legs_llm(matches, day_date)
@@ -613,30 +748,34 @@ class BeidanParlayDog(ChuanGuanDog):
                     continue
                 slip_id = _uid("slip_")
                 bet_type = self.BET_TYPE
-                for idx, (combo, combo_odds) in enumerate(
-                        zip(slip["combos"], slip["sub_odds"]), 1):
-                    order = {
-                        "id": _uid("ord_"),
-                        "slip_id": slip_id,
-                        "slip_type": slip["ticket_type"],
-                        "slip_index": idx,
-                        "combos_count": slip["combos_count"],
-                        "ticket_legs": list(slip["legs"]),
-                        "predict_id": "",
-                        "lota_id": combo[0]["lota_id"] if combo else "",
-                        "bet_type": bet_type,
-                        "ticket_type": slip["sub_ticket"],
-                        "pick": "+".join(l.get("pick", "") for l in combo),
-                        "odds": combo_odds,
-                        "bet_size": self.UNIT_STAKE,
-                        "legs": list(combo),
-                        "created_at": _now_bj(),
-                        "settled_at": None,
-                    }
-                    orders.append(order)
-                    if not dry_run:
-                        role.place_order(order)
-                    placed += 1
+                # 一张票 = 一条 slip 级订单：k 条腿（含 picks 列表）存一次；
+                # 笛卡尔积组合不再落盘，结算时现算（见 settle()）。
+                combo_odds = slip["sub_odds"] or []
+                order = {
+                    "id": _uid("ord_"),
+                    "slip_id": slip_id,
+                    "slip_type": slip["ticket_type"],
+                    "slip_index": 1,
+                    "combos_count": slip["combos_count"],
+                    "unit_stake": self.UNIT_STAKE,
+                    "total_stake": _round2(slip_cost),
+                    "ticket_legs": list(slip["legs"]),
+                    "predict_id": "",
+                    "lota_id": slip["legs"][0]["lota_id"] if slip["legs"] else "",
+                    "bet_type": bet_type,
+                    "ticket_type": slip["sub_ticket"],
+                    "pick": f"{slip['ticket_type']} x{slip['combos_count']}注",
+                    "odds": max(combo_odds) if combo_odds else 0.0,
+                    "bet_size": self.UNIT_STAKE,
+                    "legs": list(slip["legs"]),
+                    "created_at": _now_bj(),
+                    "settled_at": None,
+                }
+                orders.append(order)
+                if not dry_run:
+                    role.withdraw(slip_cost)
+                    role.save_order(order)
+                placed += 1
 
             return {
                 "date": day_date,
@@ -649,6 +788,7 @@ class BeidanParlayDog(ChuanGuanDog):
                 "placed": placed if not dry_run else len(orders),
                 "dry_run": dry_run,
                 "skipped": skipped,
+                "warnings": data_warnings,
                 "session_path": str(session._path),
             }
         finally:
@@ -660,6 +800,20 @@ class BeidanParlayDog(ChuanGuanDog):
 
     def _fetch_beidan_results(self, day_date: Optional[str],
                               lids: set[str]) -> dict[str, dict]:
+        """结算前先通过 beidan/sp 接口把开奖 result/spvalue 合并进本地缓存，再读回。
+
+        走 DataManager.prepare_beidan_sp：同一 sp_date 跨进程单飞，
+        并发结算（多只北单狗）只拉一次线上，窗口内重复结算直接读本地。
+        """
+        if day_date:
+            try:
+                # settle 的 day_date 是窗口结束日（起始日 + 1）；beidan/sp 按足球日起始日键控，故 -1 天
+                sp_date = (date.fromisoformat(day_date) - timedelta(days=1)).isoformat()
+                prep = self._dm.prepare_beidan_sp(sp_date, owner=f"{self.user}:settle")
+                if prep.get("warning"):
+                    print(f"  ⚠️ {prep['warning']}")
+            except Exception as e:
+                print(f"  ⚠️ 开奖SP拉取失败（继续用本地缓存）: {e}")
         return self._dm.get_cached_beidan_results(lids)
 
     def _settle_one(self, role: Role, order: dict,
@@ -683,6 +837,45 @@ class BeidanParlayDog(ChuanGuanDog):
         role.save()
         return {"hit": res.get("hit"), "profit": res.get("profit", 0.0)}
 
+    def _judge_ticket_legs(self, ticket_legs: list[dict],
+                           beidan_map: dict[str, dict]) -> Optional[dict]:
+        """只判一次：根据 ticket_legs 判断整张 8串1 的腿级结果。
+
+        单选腿命中才可能中奖；全包腿（H/D/A）天然覆盖，故只需判断单选腿是否打出。
+        返回 {leg_map, single_hit, sp_product}；缺失开奖或未到结算时点返回 None。
+        """
+        from .beidan_settlement import VOID_SP, settle_leg
+
+        leg_map: dict[str, dict] = {}
+        for leg in ticket_legs:
+            lid = leg.get("lota_id") or ""
+            info = beidan_map.get(lid)
+            if info is None:
+                return None
+            picks = leg.get("picks") or ([leg.get("pick")] if leg.get("pick") else [])
+            probe = picks[0] if picks else "H"
+            sl = settle_leg(probe, info)
+            if not sl.get("ready"):
+                return None
+            leg_map[lid] = sl
+
+        single_hit = True
+        for leg in ticket_legs:
+            picks = leg.get("picks") or ([leg.get("pick")] if leg.get("pick") else [])
+            if len(picks) == 1:
+                sl = leg_map[leg.get("lota_id")]
+                if not sl.get("hit"):
+                    single_hit = False
+                    break
+
+        sp_product = 1.0
+        for leg in ticket_legs:
+            sl = leg_map[leg.get("lota_id")]
+            sp_product *= VOID_SP if sl.get("push") else sl.get("sp", 0.0)
+
+        return {"leg_map": leg_map, "single_hit": single_hit,
+                "sp_product": sp_product}
+
     def settle(self, day_date: str = None, reflect: bool = True) -> dict:
         session = self._begin_session("settle", day_date or "all")
         try:
@@ -690,34 +883,97 @@ class BeidanParlayDog(ChuanGuanDog):
             unsettled = [o for o in role.get_orders()
                          if not o.get("settled_at")
                          and o.get("bet_type") == self.BET_TYPE]
+            if not unsettled:
+                summary = {"settled": 0, "hit": 0, "miss": 0, "push": 0,
+                           "pnl": 0.0, "slips_any_hit": 0, "slips_total": 0}
+                session.settlement(summary)
+                return summary
+
             lids = {lid for o in unsettled for lid in self._leg_ids(o)}
             beidan_map = self._fetch_beidan_results(day_date, lids)
 
             summary = {"settled": 0, "hit": 0, "miss": 0, "push": 0, "pnl": 0.0,
                        "slips_any_hit": 0, "slips_total": 0}
             settled_orders: list[dict] = []
+            total_return = 0.0
+
+            # 每张票 = 一条 slip 级 order。组合不落盘：settle 时用 parlay_combinations
+            # 现算每注（每腿单选），再逐注走 settle_parlay_combo 判定与派彩。
             for o in unsettled:
-                result = self._settle_one(role, o, beidan_map)
-                if result is None:
+                legs = o.get("legs") or []
+                ticket_legs = o.get("ticket_legs") or legs
+                spec = parse_ticket_spec(o.get("slip_type") or o.get("ticket_type"))
+                combos = parlay_combinations(legs, spec) if spec else []
+                if not combos:
                     continue
+                unit_stake = float(o.get("bet_size") or self.UNIT_STAKE)
+                combos_count = int(o.get("combos_count") or len(combos))
+                total_stake = _round2(float(o.get("total_stake")
+                                           or unit_stake * len(combos)))
+
+                # 先判整票腿级结果（ready 才可结算；同时回填每腿 actual/sp/push）
+                judged = self._judge_ticket_legs(ticket_legs, beidan_map)
+                if judged is None:
+                    continue  # 未到结算时点，整票跳过
+                leg_map = judged["leg_map"]
+                for l in legs:
+                    sl = leg_map.get(l.get("lota_id"))
+                    if not sl:
+                        continue
+                    l["actual"] = sl.get("actual")
+                    l["sp"] = sl.get("sp")
+                    l["push"] = sl.get("push", False)
+                    l["hit"] = bool(sl.get("hit"))
+
+                # 票级 SP 连乘（用于快照/展示；串1 下即中奖注的 SP 连乘）
+                sp_product = 1.0
+                for l in legs:
+                    sp_product *= float(l.get("sp") or 1.0)
+
+                slip_return = 0.0
+                hit_combos = 0
+                all_void = True
+                slip_ready = True
+                for combo in combos:
+                    r = settle_parlay_combo(combo, beidan_map, unit_stake)
+                    if not r.get("ready"):
+                        slip_ready = False
+                        break
+                    slip_return += r.get("return_amount", 0.0)
+                    if r.get("hit"):
+                        hit_combos += 1
+                    if not r.get("all_void"):
+                        all_void = False
+                if not slip_ready:
+                    continue  # 组合内某腿未开奖 → 整票跳过
+
+                slip_hit = hit_combos > 0
+                slip_return = _round2(slip_return)
+                slip_pnl = _round2(slip_return - total_stake)
+                o["settled_at"] = _now_bj()
+                o["sp_product"] = round(sp_product, 6)
+                o["settlement_rate"] = BEIDAN_RETURN_RATE
+                o["hit"] = slip_hit
+                o["push"] = all_void
+                o["all_void"] = all_void
+                o["return_amount"] = slip_return
+                o["profit"] = slip_pnl
+                settled_orders.append(o)
+                total_return += slip_return
                 summary["settled"] += 1
-                if o.get("hit"):
+                summary["slips_total"] += 1
+                if slip_hit:
                     summary["hit"] += 1
-                elif o.get("all_void"):
-                    summary["push"] += 1
+                    summary["slips_any_hit"] += 1
                 else:
                     summary["miss"] += 1
-                summary["pnl"] += result["profit"]
-                settled_orders.append(o)
+                summary["pnl"] = _round2(summary["pnl"] + slip_pnl)
 
-            by_slip: dict[str, list[dict]] = {}
-            for o in settled_orders:
-                by_slip.setdefault(o.get("slip_id", ""), []).append(o)
-            summary["slips_total"] = len(by_slip)
-            summary["slips_any_hit"] = sum(
-                1 for os in by_slip.values() if any(x.get("hit") for x in os)
-            )
-            summary["pnl"] = round(summary["pnl"], 2)
+            if total_return:
+                role.deposit(total_return)
+            role.save()
+
+            summary["pnl"] = _round2(summary["pnl"])
             if reflect and settled_orders:
                 try:
                     self._reflect_settled(role, settled_orders, day_date)
@@ -730,43 +986,117 @@ class BeidanParlayDog(ChuanGuanDog):
 
     def _reflect_settled(self, role: Role, settled_orders: list[dict],
                          day_date: Optional[str]) -> None:
-        """北单串关腿级 flatten 反思：把 8 腿子单拆成每腿一个样本，
-        再走 agent.py node_reflect/run_reflect（不修改 agent.py）。"""
+        """北单串关反思：把 8 串 1 子单按「每场比赛」去重成一个样本，
+        显式标出「单选/全包 类型 + 实际中奖方向 actual + 开奖SP」，
+        再走 agent.py node_reflect/run_reflect（不修改 agent.py）。
+
+        修复点：
+        1. 去重：leg_samples 由"每注每腿"改为"每场一条"，杜绝同一场比赛被
+           combo 重复刷屏，使「高波动全包候选」能真正覆盖多场高 SP，而非全被
+           单场最高 SP 的分身占满。
+        2. 露真实结果：每条样本带 actual(实际方向) / sp_value(开奖SP) /
+           role(单选/全包)，供反思与「全包低SP拖累」判断使用。
+        """
         if not settled_orders:
             return
-        leg_samples: list[dict] = []
+
+        # 跨 slip 判断每场是单选还是全包：某场只要在任意一张票中被单选，
+        # 就以「单选」视角归因（单选看 pick 是否命中）；否则视为全包。
+        # （同一次 settle 可能同时结算多张票，不同票里同一场可能是单选/全包，
+        #   必须按 slip_id 分开建 role 映射，不能只看第一张票。）
+        slip_role: dict[str, dict[str, str]] = {}
+        for o in settled_orders:
+            sid = o.get("slip_id") or o.get("id")
+            if sid in slip_role:
+                continue
+            m: dict[str, str] = {}
+            for tl in (o.get("ticket_legs") or []):
+                lid = tl.get("lota_id")
+                if not lid:
+                    continue
+                picks = tl.get("picks") or ([tl["pick"]] if tl.get("pick") else [])
+                m[lid] = "单选" if len(picks) == 1 else "全包"
+            slip_role[sid] = m
+
+        all_lids: set[str] = set()
+        single_lids: set[str] = set()
+        leg_single_pick: dict[str, str] = {}
+        for o in settled_orders:
+            sid = o.get("slip_id") or o.get("id")
+            for tl in (o.get("ticket_legs") or []):
+                lid = tl.get("lota_id")
+                if not lid:
+                    continue
+                all_lids.add(lid)
+                if slip_role.get(sid, {}).get(lid) == "单选":
+                    single_lids.add(lid)
+                    picks = tl.get("picks") or ([tl["pick"]] if tl.get("pick") else [])
+                    leg_single_pick.setdefault(lid, picks[0] if picks else "")
+        leg_role: dict[str, str] = {
+            lid: ("单选" if lid in single_lids else "全包") for lid in all_lids
+        }
+
+        seen: dict[str, dict] = {}
         for o in settled_orders:
             for leg in o.get("legs", []):
                 lid = leg.get("lota_id")
-                if not lid:
+                if not lid or lid in seen:
                     continue
                 sp = float(leg.get("sp", 0.0) or 0.0)
+                actual = leg.get("actual") or ""
+                pick = leg.get("pick", "")
+                role_label = leg_role.get(lid, "全包")
+                if role_label == "单选":
+                    # 单选取该场在票中的单选方向（可能与 leg 的 pick 一致）
+                    pick = leg_single_pick.get(lid, pick)
                 if leg.get("push"):
                     profit = 0.0
-                elif leg.get("hit"):
-                    profit = round(2.0 * sp * BEIDAN_RETURN_RATE - 2.0, 2)
+                    hit = None
+                elif role_label == "单选":
+                    hit = (pick == actual)
+                    profit = round(2.0 * sp * BEIDAN_RETURN_RATE - 2.0, 2) if hit else -2.0
                 else:
-                    profit = -2.0
-                leg_samples.append({
-                    "id": f"leg_{o.get('id', '')}_{lid}",
+                    # 全包腿天然覆盖，命中视为 True；利润用开奖 SP 衡量该腿价值
+                    hit = True
+                    profit = round(2.0 * sp * BEIDAN_RETURN_RATE - 2.0, 2)
+                seen[lid] = {
+                    "id": f"leg_{lid}",
                     "lota_id": lid,
                     "bet_type": "北单腿",
-                    "pick": leg.get("pick", ""),
+                    "pick": pick,
+                    "actual": actual,
+                    "role": role_label,
+                    "sp_value": sp,
                     "odds": sp,
                     "bet_size": 2.0,
                     "profit": profit,
-                    "hit": leg.get("hit"),
+                    "hit": hit,
                     "reason": (f"{leg.get('home_name', '')} vs "
-                               f"{leg.get('away_name', '')} 让{leg.get('goal_line')}"),
-                })
+                               f"{leg.get('away_name', '')} 让{leg.get('goal_line')} "
+                               f"| 类型:{role_label} | 实际:{actual or '?'} | "
+                               f"开奖SP:{sp:.2f}"),
+                }
+        leg_samples = list(seen.values())
         if not leg_samples:
             return
-        # 额外按开奖 SP 排序，选 SP 最高的几个，作为「高波动全包」因子归纳候选
+
+        # 高波动全包候选：按开奖 SP 降序，取 TOP-N 个【不同场次】做候选
         leg_samples.sort(key=lambda x: -float(x.get("odds") or 0.0))
         for i, s in enumerate(leg_samples):
-            if i < self.REFLECT_HIGH_SP_TOP:
+            if i < self.REFLECT_HIGH_SP_TOP and s.get("role") == "全包":
                 s["reason"] = (f"【高波动全包候选 SP={s.get('odds', 0):.2f}】 "
                                + s.get("reason", ""))
+
+        # 全包腿开奖SP分布（低SP占比 -> 拖累维度），由 run_reflect 注入反思 prompt
+        covers = [s for s in leg_samples if s.get("role") == "全包"]
+        if covers:
+            sps = sorted(float(s.get("odds") or 0.0) for s in covers)
+            low_n = sum(1 for x in sps if x < 3.0)
+            leg_samples[0]["cover_sp_summary"] = (
+                f"本单全包腿({len(sps)}场)开奖SP: {', '.join(f'{x:.2f}' for x in sps)}；"
+                f"其中 {low_n}/{len(sps)} 场 <3.0（低值）。"
+            )
+
         from .agent import _rt, node_reflect
         rt = _rt({"user": self.user})
         if rt.provider is None:
@@ -774,7 +1104,15 @@ class BeidanParlayDog(ChuanGuanDog):
             self.set_provider(DeepSeekProvider())
         rt.role = role
         rt.last_settled_orders = leg_samples
-        node_reflect({"user": self.user, "day_date": day_date or ""})
+        node_reflect({
+            "user": self.user,
+            "day_date": day_date or "",
+            "reflect_extra": {
+                "extra_by_sp": True,
+                "extra_max": self.REFLECT_HIGH_SP_TOP,
+                "parlay_emphasis": True,
+            },
+        })
 
     # ═══════════════════════════════════════════
     # 状态 / 回测
@@ -804,6 +1142,14 @@ class BeidanParlayDog(ChuanGuanDog):
         role.orders = []
         role.save()
         return {"capital": role.capital, "orders": len(role.orders)}
+
+    def compact(self) -> dict:
+        """把 role.orders 压缩为 slip 级（一张票一条，8 条腿存一次），并落盘。"""
+        role = self._ensure_role()
+        before = len(role.orders)
+        role.orders = compact_slip_orders(role.orders)
+        role.save()
+        return {"before": before, "after": len(role.orders)}
 
     def backtest(self, start_date: str, end_date: str,
                  max_picks: int = None, tickets: list[str] = None) -> dict:
@@ -845,21 +1191,113 @@ class BeidanParlayDog(ChuanGuanDog):
 # CLI
 # ═══════════════════════════════════════════
 
+def compact_slip_orders(orders: list[dict]) -> list[dict]:
+    """把旧版「每注一条 order」压缩成「每票一条 slip order」。
+
+    旧版（展开组合）会把一张 8串1 拆成 3^5=243 条 order，每条都重复存储
+    ticket_legs/legs 的完整腿信息，导致 role.json 无限膨胀到几十 MB。
+    此函数按 slip_id 归并为一张票：k 条腿（含 picks 列表）只存一次，
+    组合不再落盘（settle 现算），并从各注回填腿级结算结果/票级汇总。
+    """
+    from collections import OrderedDict
+
+    groups: dict[str, list[dict]] = OrderedDict()
+    for o in orders or []:
+        sid = o.get("slip_id") or o.get("id") or ""
+        if sid:
+            groups.setdefault(sid, []).append(o)
+        else:
+            groups.setdefault(o.get("id") or f"_k{len(groups)}", []).append(o)
+
+    out: list[dict] = []
+    for sid, grp in groups.items():
+        first = grp[0]
+        ticket_legs = list(first.get("ticket_legs") or first.get("legs") or [])
+        unit = float(first.get("bet_size") or first.get("unit_stake") or 2.0)
+        combos_count = int(first.get("combos_count") or len(grp))
+
+        # 回填腿级结果：从任意已结算注的 legs 取 actual/sp/push/hit 按 lota_id 归并
+        by_lid: dict[str, dict] = {}
+        for o in grp:
+            for l in (o.get("legs") or []):
+                lid = l.get("lota_id") or ""
+                if lid and lid not in by_lid:
+                    by_lid[lid] = dict(l)
+        for l in ticket_legs:
+            lid = l.get("lota_id") or ""
+            src = by_lid.get(lid)
+            if not src:
+                continue
+            for k in ("actual", "sp", "push", "hit"):
+                if k in src and src[k] is not None:
+                    l[k] = src[k]
+
+        settled_at = ""
+        for o in grp:
+            sa = o.get("settled_at") or ""
+            if sa and sa > settled_at:
+                settled_at = sa
+        hit = any(bool(o.get("hit")) for o in grp)
+        all_void = bool(grp) and all(bool(o.get("all_void")) for o in grp)
+        return_amount = _round2(sum(float(o.get("return_amount") or 0.0) for o in grp))
+        profit = _round2(sum(float(o.get("profit") or 0.0) for o in grp))
+        sp_product = 1.0
+        for l in ticket_legs:
+            sp_product *= float(l.get("sp") or 1.0)
+
+        out.append({
+            "id": first.get("id") or _uid("ord_"),
+            "slip_id": sid,
+            "slip_type": first.get("slip_type") or first.get("ticket_type") or "",
+            "slip_index": 1,
+            "combos_count": combos_count,
+            "unit_stake": unit,
+            "total_stake": _round2(float(first.get("total_stake") or unit * combos_count)),
+            "ticket_legs": ticket_legs,
+            "predict_id": first.get("predict_id", ""),
+            "lota_id": (ticket_legs[0]["lota_id"] if ticket_legs
+                        else (first.get("lota_id") or "")),
+            "bet_type": first.get("bet_type", ""),
+            "ticket_type": first.get("ticket_type") or first.get("slip_type") or "",
+            "pick": first.get("pick", ""),
+            "odds": first.get("odds", 0.0),
+            "bet_size": first.get("bet_size", unit),
+            "legs": ticket_legs,
+            "created_at": first.get("created_at", ""),
+            "settled_at": settled_at or None,
+            "hit": hit,
+            "all_void": all_void,
+            "return_amount": return_amount,
+            "profit": profit,
+            "settlement_rate": first.get("settlement_rate"),
+            "sp_product": round(sp_product, 6),
+        })
+    return out
+
+
 def _fmt_order(o: dict) -> str:
     legs = o.get("legs", [])
+    def _leg_pick(l: dict) -> str:
+        picks = l.get("picks") or ([l.get("pick")] if l.get("pick") else [])
+        return "/".join(picks)
+
+    def _leg_hc(l: dict) -> str:
+        v = l.get("goal_line")
+        return str(v) if isinstance(v, (int, float)) else ""
+
     leg_txt = " + ".join(
-        f"{l.get('home_name','?')}vs{l.get('away_name','?')} {l.get('pick','')}"
-        f"({l.get('goal_line','') if isinstance(l.get('goal_line'), (int, float)) else ''})"
+        f"{l.get('home_name','?')}vs{l.get('away_name','?')} {_leg_pick(l)}"
+        f"({_leg_hc(l)})"
         for l in legs
     )
     slip = o.get("slip_type", "")
-    tag = f"[{slip} 第{o.get('slip_index',1)}注]" if slip else f"[{o.get('ticket_type','串关')}]"
-    return f"{tag} {o.get('ticket_type','北单串关')} 买 {leg_txt} | 总赔率 {o.get('odds',0):.2f} 投注 {o.get('bet_size',0):.2f}"
+    tag = f"[{slip} {o.get('combos_count','')}注]" if slip else f"[{o.get('ticket_type','串关')}]"
+    return f"{tag} {o.get('ticket_type','北单串关')} 买 {leg_txt} | 总赔率 {o.get('odds',0):.2f} 投注 {o.get('total_stake', o.get('bet_size',0)):.2f}"
 
 
 def main(argv: list[str] = None) -> int:
     p = argparse.ArgumentParser(prog="beidan_parlay_dog", description="北单串关狗")
-    p.add_argument("action", choices=["analyze", "settle", "pending", "status", "reset", "backtest"])
+    p.add_argument("action", choices=["analyze", "settle", "pending", "status", "reset", "compact", "backtest"])
     p.add_argument("day", nargs="?", default=None, help="YYYY-MM-DD（足球日起始日，默认当天）")
     p.add_argument("end", nargs="?", default=None, help="backtest 结束日 YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="只预览不落单")
@@ -903,6 +1341,9 @@ def main(argv: list[str] = None) -> int:
     elif args.action == "reset":
         r = dog.reset()
         print(f"♻️ 已重置: 资金 {r['capital']:.2f} | 订单 {r['orders']}")
+    elif args.action == "compact":
+        r = dog.compact()
+        print(f"♻️ 已压缩: {r['before']} -> {r['after']} 条 (slip 级)")
     elif args.action == "backtest":
         if not args.day or not args.end:
             print("用法: python -m src.beidan_parlay_dog backtest <start> <end> [--picks 2] [--tickets 6串1]")

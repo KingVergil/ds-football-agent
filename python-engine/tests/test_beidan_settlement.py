@@ -20,6 +20,7 @@ from src.beidan_settlement import (
     settle_parlay_combo,
 )
 from src.beidan_parlay_dog import BeidanParlayDog
+from src.beidan_parlay_dog import compact_slip_orders
 
 
 # ═══════════════════════════════════════════
@@ -196,6 +197,130 @@ def test_goal_line_consistent_with_official_result():
         assert actual == expected
         checked += 1
     assert checked > 0
+
+
+# ═══════════════════════════════════════════
+# 北单串关狗：一张票 = 一条 slip 级订单（不再按 combo 膨胀落盘）
+# ═══════════════════════════════════════════
+
+def _mk_match(lid: str, home: str, away: str) -> dict:
+    return {
+        "lota_id": lid,
+        "home_name": home,
+        "away_name": away,
+        "league_name": "测试联赛",
+        "match_time": "2026-08-20 20:00:00",
+        "beidan_number": lid[-1],
+        "beidan_info": {"goal_line": 0, "home_odds": 2.0, "draw_odds": 3.0,
+                        "away_odds": 4.0},
+    }
+
+
+def test_analyze_writes_slip_level_order():
+    """analyze 落盘应为「一张票一条 slip 级 order」，组合不再逐注展开。"""
+    dog = BeidanParlayDog(user="pytest_beidan_slip")
+    dog.reset()
+    matches = [_mk_match("L1", "A", "B"), _mk_match("L2", "C", "D")]
+    dog._beidan_matches = lambda day, live: (matches, [])
+
+    a = dog.analyze("2026-08-20", tickets=["2串1"], max_picks=2, live=False)
+
+    # 2 腿 × 2 选 = 4 注，但只应产生 1 条 slip 级订单
+    assert a["placed"] == 1
+    assert len(a["orders"]) == 1
+    o = a["orders"][0]
+    assert o["slip_type"] == "2串1"
+    assert o["combos_count"] == 4
+    assert o["total_stake"] == 8.0
+    assert o["bet_size"] == 2.0
+    assert len(o["legs"]) == 2
+    # 腿保留 picks 列表（不落盘展开后的单选 combo）
+    assert all(l.get("picks") == ["H", "D"] for l in o["legs"])
+
+    # 角色 JSON 里也只有这一条（而非 4 条）
+    role = dog._ensure_role()
+    assert len(role.get_orders()) == 1
+
+
+def test_settle_slip_level_uses_sp_and_65pct():
+    """settle 在 slip 级订单上按现算组合结算：命中注返回 unit×SP连乘×65%。"""
+    dog = BeidanParlayDog(user="pytest_beidan_settle_slip")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [
+        {"lota_id": "L1", "picks": ["H", "D"], "odds": {"H": 2.0, "D": 3.0},
+         "goal_line": 0.0, "home_name": "A", "away_name": "B"},
+        {"lota_id": "L2", "picks": ["A"], "odds": {"A": 2.5},
+         "goal_line": 0.0, "home_name": "C", "away_name": "D"},
+    ]
+    order = {
+        "id": "o1", "slip_id": "s1", "slip_type": "2串1", "slip_index": 1,
+        "combos_count": 2, "unit_stake": 2.0, "total_stake": 4.0,
+        "ticket_legs": list(legs), "predict_id": "", "lota_id": "L1",
+        "bet_type": dog.BET_TYPE, "ticket_type": "2串1", "pick": "x",
+        "odds": 6.0, "bet_size": 2.0, "legs": list(legs),
+        "created_at": "2026-08-20 12:00:00", "settled_at": None,
+    }
+    role.orders.append(order)
+    role.save()
+
+    beidan_map = {
+        "L1": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"},
+        "L2": {"result": "0", "spvalue": 3.0, "score": "0:1", "goal_line": "0"},
+    }
+    dog._fetch_beidan_results = lambda day, lids: beidan_map
+
+    s = dog.settle("2026-08-20", reflect=False)
+
+    assert s["settled"] == 1
+    assert s["hit"] == 1
+    assert s["pnl"] == 3.8
+    o = role.get_orders()[0]
+    assert o["return_amount"] == 7.8
+    assert o["profit"] == 3.8
+    assert o["hit"] is True
+    assert o["sp_product"] == 6.0
+    assert o["settlement_rate"] == BEIDAN_RETURN_RATE
+    assert [l["sp"] for l in o["legs"]] == [2.0, 3.0]
+
+
+def test_compact_slip_orders_reduces_to_one_slip():
+    """旧式逐注 orders → 每 slip 压缩成一条 slip 级 order，并汇总结算。"""
+    legs = [
+        {"lota_id": "L1", "picks": ["H", "D"], "odds": {"H": 2.0, "D": 3.0},
+         "goal_line": 0.0, "home_name": "A", "away_name": "B"},
+        {"lota_id": "L2", "picks": ["A"], "odds": {"A": 2.5},
+         "goal_line": 0.0, "home_name": "C", "away_name": "D"},
+    ]
+    old = []
+    for i, (p1, p2) in enumerate([("H", "A"), ("D", "A")]):
+        combo = [dict(legs[0], pick=p1, sp=2.0, actual="H"),
+                 dict(legs[1], pick=p2, sp=3.0, actual="A")]
+        win = (i == 0)
+        old.append({
+            "id": f"ord_{i}", "slip_id": "s1", "slip_type": "2串1",
+            "slip_index": i + 1, "combos_count": 2,
+            "ticket_legs": list(legs), "bet_type": "北单串关",
+            "ticket_type": "2串1", "pick": f"{p1}+{p2}", "odds": 6.0,
+            "bet_size": 2.0, "legs": combo, "lota_id": "L1",
+            "created_at": "2026-08-20 12:00:00",
+            "settled_at": "2026-08-20 23:00:00",
+            "hit": win, "all_void": False,
+            "return_amount": (2.0 * 2.0 * 3.0 * 0.65) if win else 0.0,
+            "profit": (2.0 * 2.0 * 3.0 * 0.65 - 2.0) if win else -2.0,
+            "sp_product": 6.0, "settlement_rate": 0.65,
+        })
+
+    compacted = compact_slip_orders(old)
+    assert len(compacted) == 1
+    o = compacted[0]
+    assert o["slip_id"] == "s1"
+    assert o["combos_count"] == 2
+    assert o["total_stake"] == 4.0
+    assert len(o["legs"]) == 2
+    assert o["hit"] is True
+    # 腿级结果回填到 ticket_legs
+    assert {l["lota_id"]: l["sp"] for l in o["legs"]} == {"L1": 2.0, "L2": 3.0}
 
 
 if __name__ == "__main__":

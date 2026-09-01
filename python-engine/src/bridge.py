@@ -39,6 +39,7 @@ import os
 import re
 import shutil
 import sys
+import time
 import traceback
 from datetime import date, timedelta
 from pathlib import Path
@@ -46,6 +47,11 @@ from pathlib import Path
 # 模块加载时的真实 stdout —— redirect_stdout 只替换 sys.stdout，
 # NDJSON 事件必须走这个保存的引用，保证永远不被内部 print 污染。
 _OUT = sys.stdout
+
+
+# compact-fet 逐场拉取节流：串行连打会在短时间冲到 20+ rps，触发 nginx 按 IP 限流。
+# 每场之间 sleep 一下，把速率压到 ~3 rps（可调，0.2~0.5 秒/场）。
+COMPACT_FET_SLEEP_SECONDS = 0.3
 
 
 class BridgeError(Exception):
@@ -234,7 +240,8 @@ def _parlay_order_views(orders: list[dict]) -> list[dict]:
             "total_stake": 0.0,
             "orders": [],
         })
-        s["total_stake"] += float(o.get("bet_size") or 0)
+        # slip 级 order 已带 total_stake（= combos×unit）；竞彩仍按 bet_size 累加
+        s["total_stake"] += float(o.get("total_stake") or o.get("bet_size") or 0)
         s["orders"].append(o)
     return list(slips.values())
 
@@ -270,12 +277,21 @@ def _do_prepare(req: dict) -> dict:
 
     all_matches = []
     fetched_dates = []
+    warnings: list[str] = []
     for i, cd in enumerate(cal_dates):
         _progress("拉取比赛缓存", done=i, total=len(cal_dates), detail=cd)
-        ms = dm.get_cached_matches(cd, lottery_type="all")
+        cached_ms = dm.get_cached_matches(cd, lottery_type="all")
+        ms = cached_ms
         if mode == "live" or not ms:
-            ms = dm.refresh_matches_cache(cd, with_jc_odds=jingcai_only) or []
-            fetched_dates.append(cd)
+            refreshed = dm.refresh_matches_cache(
+                cd, with_jc_odds=jingcai_only, with_beidan_odds=beidan_only
+            ) or []
+            if refreshed:
+                ms = refreshed
+                fetched_dates.append(cd)
+            elif mode == "live":
+                warnings.append(f"{cd} live 刷新比赛为空，回退本地缓存")
+                ms = cached_ms
         all_matches += ms
 
     candidates = [
@@ -299,8 +315,8 @@ def _do_prepare(req: dict) -> dict:
         matches_view.append({"lota_id": lid, "match_time": str(m.get("match_time", ""))[:16]})
 
     ok = fail = 0
-    warnings = []
     for m in candidates:
+        time.sleep(COMPACT_FET_SLEEP_SECONDS)
         lid = m["lota_id"]
         data = dm.get_compact_fet(lid)
         if not data:
@@ -316,12 +332,14 @@ def _do_prepare(req: dict) -> dict:
     if mode == "live" and fail:
         warnings.append(f"live 预取失败 {fail} 场（LLM 看不到对应赔率段）")
     if not candidates:
-        warnings.append("窗口内无竞彩比赛（可能缓存缺失或当天无竞彩场次）")
+        scope_label = "北单" if beidan_only else "竞彩"
+        warnings.append(f"窗口内无{scope_label}比赛（可能缓存缺失或当天无{scope_label}场次）")
 
     return {
         "day": day,
         "mode": mode,
         "jingcai_only": jingcai_only,
+        "beidan_only": beidan_only,
         "window": f"{window_start[:10]} 12:01 → {(date.fromisoformat(day) + timedelta(days=1)).isoformat()} 12:00",
         "calendar_dates": cal_dates,
         "candidates": len(candidates),
@@ -344,6 +362,9 @@ def _do_prepare_range(req: dict) -> dict:
         raise BridgeError(f"日期范围无效: {start}~{end}")
     opts = req.get("opts") or {}
     jingcai_only = bool(opts.get("jingcai_only", True))
+    beidan_only = bool(opts.get("beidan_only", False))
+    if beidan_only:
+        jingcai_only = False
 
     from src.data_manager import DataManager
     from src.tools import compact_fet_to_tags, save_tagged_sections
@@ -358,7 +379,9 @@ def _do_prepare_range(req: dict) -> dict:
     end_cd = date.fromisoformat(end) + timedelta(days=1)
     while cd <= end_cd:
         key = cd.isoformat()
-        ms = dm.refresh_matches_cache(key, with_jc_odds=jingcai_only) or []
+        ms = dm.refresh_matches_cache(
+            key, with_jc_odds=jingcai_only, with_beidan_odds=beidan_only
+        ) or []
         written[key] = len(ms)
         cd += timedelta(days=1)
 
@@ -384,6 +407,7 @@ def _do_prepare_range(req: dict) -> dict:
     ]
         ok = fail = 0
         for m in candidates:
+            time.sleep(COMPACT_FET_SLEEP_SECONDS)
             lid = m["lota_id"]
             data = dm.get_compact_fet(lid)
             if not data:
@@ -444,6 +468,7 @@ def _do_analyze(req: dict) -> dict:
             "llm_used": result.get("llm_used", False),
             "orders": _parlay_order_views(result.get("orders", [])),
             "placed": result.get("placed", 0),
+            "warnings": result.get("warnings", []),
             "capital": pdog._get_capital(),
             "session_path": result.get("session_path", ""),
             "llm_skipped": skip_llm,
@@ -464,6 +489,7 @@ def _do_analyze(req: dict) -> dict:
         "prompt_tokens": result.get("prompt_tokens", 0),
         "orders": _order_views(agent, result.get("orders", [])),
         "placed": result.get("placed", 0),
+        "warnings": result.get("warnings", []),
         "capital": agent._get_capital(),
         "session_path": result.get("session_path", ""),
         "llm_response": (result.get("llm_response") or "")[:800],
