@@ -1,5 +1,5 @@
 """
-北单串关狗 — 长串（6+ 串）+ 每腿 1~3 选（默认双选）+ 开奖SP结算。
+bc狗 — 长串（6+ 串）+ 每腿 1~3 选（默认双选）+ 开奖SP结算。
 
 在竞彩串关狗（chuan_guan_dog.ChuanGuanDog）骨架之上派生：
   - 数据：data/beidan/*.json 的 beidan_info（goal_line + 胜平负赔率 + result + spvalue）
@@ -46,7 +46,7 @@ def _now_bj(fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
 
 
 class BeidanParlayDog(ChuanGuanDog):
-    """北单让球胜平负长串狗（独立角色/资金/订单，默认 user=北单串关狗）。"""
+    """北单让球胜平负长串狗（独立角色/资金/订单，默认 user=bc狗）。"""
 
     STAKE_PCT = 5.0              # 每张票占用资金比例（%）
     PICK_N = 8                   # 参与排序选腿的最大场数
@@ -71,7 +71,7 @@ class BeidanParlayDog(ChuanGuanDog):
     ]
     DECIDE_PRIORITY = ["8串1", "7串1", "6串1", "5串1", "4串1", "3串1", "2串1"]
 
-    def __init__(self, user: str = "北单串关狗", capital: float = START_CAPITAL):
+    def __init__(self, user: str = "bc狗", capital: float = START_CAPITAL):
         super().__init__(user=user, capital=capital)
         self._dm = DataManager()
         self._max_picks = self.MAX_PICKS
@@ -1544,7 +1544,7 @@ def _fmt_order(o: dict) -> str:
 
 
 def main(argv: list[str] = None) -> int:
-    p = argparse.ArgumentParser(prog="beidan_parlay_dog", description="北单串关狗")
+    p = argparse.ArgumentParser(prog="beidan_parlay_dog", description="bc狗")
     p.add_argument("action", choices=["analyze", "settle", "pending", "status", "reset", "compact", "backtest"])
     p.add_argument("day", nargs="?", default=None, help="YYYY-MM-DD（足球日起始日，默认当天）")
     p.add_argument("end", nargs="?", default=None, help="backtest 结束日 YYYY-MM-DD")
@@ -1555,7 +1555,7 @@ def main(argv: list[str] = None) -> int:
                    help="统一模式每腿最多选项数 1/2/3（不传则用默认 8串1:5全包+3单选）")
     p.add_argument("--stake-pct", type=float, default=None,
                    help="北单每注固定 2 元，此参数仅兼容保留，不参与计算")
-    p.add_argument("--user", default="北单串关狗", help="角色名（独立资金/订单）")
+    p.add_argument("--user", default="bc狗", help="角色名（独立资金/订单）")
     args = p.parse_args(argv)
 
     dog = BeidanParlayDog(user=args.user)

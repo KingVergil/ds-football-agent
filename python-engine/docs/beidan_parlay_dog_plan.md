@@ -1,8 +1,8 @@
-# 北单串关狗 后续开发文档
+# bc狗 后续开发文档
 
 > 状态：开发计划（数据链路已打通，狗已实现 `src/beidan_parlay_dog.py`，因子测试回测开发中）
 > 日期：2026-08-27
-> 目标：在 `chuan_guan_dog.py`（竞彩串关狗）基础上，派生一只**北单串关狗**，主打长串（6+串）+ 每腿 1~2 个选项（双选），并以北单**开奖SP**结算。
+> 目标：在 `chuan_guan_dog.py`（竞彩串关狗）基础上，派生一只**bc狗**，主打长串（6+串）+ 每腿 1~2 个选项（双选），并以北单**开奖SP**结算。
 > 因子测试的并行回放计划见 [`beidan_factor_parallel_plan.md`](beidan_factor_parallel_plan.md)，通用因子并行化设计见 [`factor_parallelism_plan.md`](factor_parallelism_plan.md)。
 
 ---
@@ -19,7 +19,7 @@ deepseek_lota v2-api /predictions/api/v2/matches/?is_beidan=true
 ds_agents src/data_manager.py
         │  DataManager.refresh_beidan_history(days=60) → data/beidan/{足球日}.json
         ▼
-北单串关狗（本计划，待开发）
+bc狗（本计划，待开发）
 ```
 
 - **关联键**：`lota_id` → `BeidanMatch.lota_id` → `beidan_id`（`期号_场次`）→ `BeidanOdds`（最新让球胜平负）+ `BeidanDraw`（开奖sp）。
@@ -32,7 +32,7 @@ ds_agents src/data_manager.py
 
 ## 二、北单 vs 竞彩（串关差异）
 
-| 维度 | 竞彩串关狗（已有 `chuan_guan_dog`） | 北单串关狗（本计划） |
+| 维度 | 竞彩串关狗（已有 `chuan_guan_dog`） | bc狗（本计划） |
 |---|---|---|
 | 数据源 | `matches` 缓存 + `jc_hhad` | `beidan` 缓存 + `beidan_info` |
 | 赔率类型 | 固定奖（jc_hhad 胜平负赔率） | **开奖SP**（浮动奖，赛后定） |
@@ -85,7 +85,7 @@ ds_agents src/data_manager.py
 3. **双选腿**：`_score_leg` 改为允许每腿保留 1~2 个高概率项（`TOP2` 或按隐式概率阈值 `MIN_CONF` 卡），返回 `picks` 列表；`MIN_ODDS/MAX_ODDS` 过滤沿用。
 4. **组票（双选串）**：`_build_slips` 支持 `legs[i]['picks']` 多值，`N串1` 用笛卡尔积展开子单，`N过M` 先取 `C(N,M)` 腿组合再对每组合做笛卡尔积；每子单 `odds` = 所选各腿 `spvalue`（未开奖用当前赔率占位）连乘。
 5. **结算**：`_settle_one` 判定条件 `leg['pick'] in {leg_hit_options}`（其中 `leg_hit_options` 由 `beidan_info.result_des` 归一），命中奖金 = `bet_size × prod(spvalue of used legs)`；`draw/走水` 北单一般无，仍需处理 `status` 异常。
-6. **资金/仓位**：复用 `ChuanGuanDog` 的 `_martingale_stake`/`ROR` 逻辑与 `Role`（`data/roles/北单串关狗/`，独立角色/资金/订单）。
+6. **资金/仓位**：复用 `ChuanGuanDog` 的 `_martingale_stake`/`ROR` 逻辑与 `Role`（`data/roles/bc狗/`，独立角色/资金/订单）。
 7. **回测口径**：北单回测必须用**开奖sp**（`spvalue`）而非开赛前赔率，否则中奖奖金失真；`backtest` 需要「先 analyze(选腿) → 赛后再 settle(用开奖result+sp)」的时序。
 8. **数据补全**：对 `beidan_info` 为空（`lota_id` 未关联）的场次，检查 `BeidanMatch.lota_id` 是否需要后台回填（`predictions/management/commands/beidan_match_fix.py` 已有类似逻辑）。
 

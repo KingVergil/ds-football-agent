@@ -140,7 +140,7 @@ def _fmt_result(r: dict) -> str:
 
 def run_mine(args) -> int:
     days = _date_range(args.start, args.end)
-    dogs = [d.strip() for d in args.dogs.split(",") if d.strip()] or ["北单串关狗"]
+    dogs = [d.strip() for d in args.dogs.split(",") if d.strip()] or ["bc狗"]
     tasks = [(d, dog) for d in days for dog in dogs]
     if args.resume:
         tasks = [(d, dog) for d, dog in tasks
@@ -218,7 +218,7 @@ def run_backtest(args) -> int:
     run_root = Path(args.run_root or (TEST_ROOT / "runs" / (
         "baseline" if args.baseline else "factor")))
     days = _date_range(args.start, args.end)
-    dog_name = getattr(args, "dog", None) or "北单串关狗"
+    dog_name = getattr(args, "dog", None) or "bc狗"
     reflect = str(args.reflect).strip().lower() in ("1", "true", "yes")
 
     os.environ["DS_ROLES_ROOT"] = str(run_root / "roles")
@@ -264,7 +264,7 @@ def run_backtest(args) -> int:
 
 def run_serial(start: str, end: str) -> int:
     from src.beidan_parlay_dog import BeidanParlayDog
-    dog = BeidanParlayDog(user="北单串关狗_因子测试", capital=5000.0)
+    dog = BeidanParlayDog(user="bc狗_因子测试", capital=5000.0)
     dog.reset(5000.0)
     print(f"{'日期':<12} {'下单':>4} {'结算':>4} {'中':>3} {'挂':>3} {'PnL':>9} {'资金':>9} {'因子':>4}")
     for d in _date_range(start, end):
@@ -345,7 +345,7 @@ def run_batch(args) -> int:
     from concurrent.futures import ProcessPoolExecutor
     days = _date_range(args.start, args.end)
     K = int(args.batch)
-    dog_name = getattr(args, "dog", None) or "北单串关狗"
+    dog_name = getattr(args, "dog", None) or "bc狗"
     capital = 5000.0
     factor_memory: dict[str, dict] = {}
     print(f"P1b batch: {len(days)} days | batch={K} | workers={args.workers}")
@@ -413,7 +413,7 @@ def main() -> int:
     m.add_argument("--end", default="2026-07-31")
     m.add_argument("--workers", type=int, default=6)
     m.add_argument("--resume", action="store_true")
-    m.add_argument("--dogs", default="北单串关狗",
+    m.add_argument("--dogs", default="bc狗",
                    help="逗号分隔的狗名（并行跑多只狗）")
 
     r = sub.add_parser("reduce")
@@ -428,14 +428,14 @@ def main() -> int:
     b.add_argument("--run-root", default=None)
     b.add_argument("--baseline", action="store_true")
     b.add_argument("--reflect", default="false")
-    b.add_argument("--dog", default="北单串关狗")
+    b.add_argument("--dog", default="bc狗")
 
     k = sub.add_parser("batch")
     k.add_argument("--start", default="2026-07-01")
     k.add_argument("--end", default="2026-07-12")
     k.add_argument("--batch", type=int, default=4)
     k.add_argument("--workers", type=int, default=4)
-    k.add_argument("--dog", default="北单串关狗")
+    k.add_argument("--dog", default="bc狗")
 
     args = p.parse_args()
     if args.cmd == "mine":

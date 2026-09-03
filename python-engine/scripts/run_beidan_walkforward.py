@@ -1,12 +1,12 @@
 """
-北单串关狗 walk-forward 串行回放（和 agent 狗一样的天循环）。
+bc狗 walk-forward 串行回放（和 agent 狗一样的天循环）。
 
 每天: analyze(LLM) → settle + factor reflect
 每 N 天(默认7): 因子去重(dedup)
 资金跨天滚动，模拟真实破产/回撤。
 
 用法:
-  python scripts/run_beidan_walkforward.py --dog 北单串关狗 --start 2026-06-28 --end 2026-08-26
+  python scripts/run_beidan_walkforward.py --dog bc狗 --start 2026-06-28 --end 2026-08-26
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def _date_range(start: str, end: str) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dog", default="北单串关狗")
+    ap.add_argument("--dog", default="bc狗")
     ap.add_argument("--start", default="2026-06-28")
     ap.add_argument("--end", default="2026-08-26")
     ap.add_argument("--capital", type=float, default=5000.0)

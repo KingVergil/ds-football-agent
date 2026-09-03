@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 WF_ROOT = ROOT / "data" / "beidan_walkforward"
-DOGS = ["北单串关狗", "北单双选串关狗"]
+DOGS = ["bc狗", "北单双选串关狗"]
 EXTEND_DAY = "2026-08-27"
 
 

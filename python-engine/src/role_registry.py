@@ -31,7 +31,7 @@ DATA = ROOT / "data"
 ROLES_DIR = Path(os.environ.get("DS_ROLES_ROOT") or DATA / "roles")
 
 DEFAULT_AGENTS = ["alpha2狗", "alpha狗", "梭哈2狗", "梭哈3狗", "平局狗", "跟风狗", "均注狗"]
-EXTRA_AGENTS = ["串关2狗"]  # 参与结算/归纳，不进默认分析全量
+EXTRA_AGENTS = ["串关2狗", "bc狗"]  # 参与结算/归纳，不进默认分析全量（按需按钮触发）
 FALLBACK_ALPHA = {"alpha2狗", "alpha狗", "均注狗"}
 
 
@@ -86,6 +86,17 @@ def role_status(name: str) -> str:
         if d.get("name") == name and d.get("status") in ("live", "sandbox", "archived"):
             return d["status"]
     return "live"
+
+
+def role_scope(name: str) -> str:
+    """角色玩法 scope：竞彩(jc) / 北单(beidan)。缺省回退 jc。"""
+    role = _read_json(ROLES_DIR / name / f"{name}.json")
+    if role and isinstance(role, dict) and role.get("scope"):
+        return role["scope"]
+    for d in registry_dogs():
+        if d.get("name") == name and d.get("scope"):
+            return d["scope"]
+    return "jc"
 
 
 def live_agents() -> list[str]:

@@ -1,5 +1,5 @@
 """
-北单串关狗：一轮 LLM 分析 → 下单 → 结算（临时沙箱角色，不碰线上角色）。
+bc狗：一轮 LLM 分析 → 下单 → 结算（临时沙箱角色，不碰线上角色）。
 
 运行（需要联网调 DeepSeek）:
   /Users/cjy/miniconda3/bin/python scripts/run_beidan_llm_round.py [足球日]

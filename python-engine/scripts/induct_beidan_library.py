@@ -29,13 +29,13 @@ def main() -> int:
         e = dict(e)
         e["_name"] = name
         entries[name] = e
-    role_of = {name: "北单串关狗" for name in entries}
+    role_of = {name: "bc狗" for name in entries}
 
     from src.factor_induction import induct_scope
     from src.providers.deepseek import DeepSeekProvider
 
     provider = None if args.dry_run else DeepSeekProvider()
-    res = induct_scope("北单串关狗", entries, role_of, provider, args.limit,
+    res = induct_scope("bc狗", entries, role_of, provider, args.limit,
                        dry_run=args.dry_run)
     print(f"归纳结果: merged={res['merged']} llm_calls={res['llm_calls']} "
           f"fac_created={res['fac_created']} 剩余={len(entries)}")

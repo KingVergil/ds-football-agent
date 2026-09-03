@@ -185,7 +185,7 @@ def test_end_to_end_analyze_settle_uses_sp_and_65pct():
 def test_goal_line_consistent_with_official_result():
     """抽样证明官方 result 与 score+goal_line 推导一致（结算依据可靠）。"""
     dog = BeidanParlayDog(user="pytest_beidan_goal")
-    matches = dog._beidan_matches("2026-08-20")
+    matches, _ = dog._beidan_matches("2026-08-20")
     checked = 0
     for m in matches:
         bi = m.get("beidan_info") or {}
@@ -200,7 +200,7 @@ def test_goal_line_consistent_with_official_result():
 
 
 # ═══════════════════════════════════════════
-# 北单串关狗：一张票 = 一条 slip 级订单（不再按 combo 膨胀落盘）
+# bc狗：一张票 = 一条 slip 级订单（不再按 combo 膨胀落盘）
 # ═══════════════════════════════════════════
 
 def _mk_match(lid: str, home: str, away: str) -> dict:
@@ -268,7 +268,7 @@ def test_settle_slip_level_uses_sp_and_65pct():
         "L1": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"},
         "L2": {"result": "0", "spvalue": 3.0, "score": "0:1", "goal_line": "0"},
     }
-    dog._fetch_beidan_results = lambda day, lids: beidan_map
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: beidan_map
 
     s = dog.settle("2026-08-20", reflect=False)
 

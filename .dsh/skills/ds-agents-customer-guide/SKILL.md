@@ -5,7 +5,7 @@ description: 面向客户的 ds_agents 使用引导。适用于 dsh 会话里用
 
 # ds_agents 客户使用引导
 
-本系统是足球投注分析平台（8 只正式狗 + 串关2狗）。执行入口只有两条：
+本系统是足球投注分析平台（7 只单关狗 + 深度足球狗/梭哈北单狗/跟风北单狗 + bc狗）。执行入口只有两条：
 「斗狗场」看板表单（`POST /ds-run`、`POST /ds-replay`）与 dsh 工具
 （`lota_*` 只读工具、`ds_replay`、`ds_create_dog` 等）。不要用 bash / 文件操作
 复刻固定流（薄壳约束）。
@@ -41,8 +41,10 @@ description: 面向客户的 ds_agents 使用引导。适用于 dsh 会话里用
 - 引擎解释器必须是 miniconda python（含 langgraph）；homebrew python3 会报
   `ModuleNotFoundError: No module named 'langgraph'`（dsh 配置里 `pythonBin` 指向 miniconda）。
 - API 密钥客户自配（`DEEPSEEK_API_KEY` 环境变量 / `.env`），系统不内置。
-- 狗列表：`alpha2狗 alpha狗 梭哈2狗 梭哈3狗 平局狗 跟风狗 均注狗 深度足球狗`
-  （+ `串关2狗` 3串1 独立角色，参与结算不进默认分析）。
+- 狗列表（live）：`alpha2狗 alpha狗 梭哈2狗 梭哈3狗 平局狗 跟风狗 均注狗`（7 只单关）
+  + `深度足球狗 梭哈北单狗 跟风北单狗`（注册表单关）+ `bc狗`（北单 8串1 独立角色）。
+- `bc狗` 由 `roles/bc狗/parlay.json` 标记：斗狗场「⚡ 分析 / 🧾 结算」会分流到
+  `src.beidan_parlay_dog`，用北单开奖 `result + spvalue` 结算；「🧬 归纳 / 🪦 Review」走其 `factor_memory.json`。
 - 回放沙箱写入 `replays/sandboxes/<狗>_<MMDD>/workspace`，线上零影响；
   转正 = 备份线上 → 整目录替换 → 注册表翻 live；放弃 = 删沙箱、线上不动。
 

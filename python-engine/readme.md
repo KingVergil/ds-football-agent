@@ -22,8 +22,10 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 ### `analyze` — 分析比赛并下单
 
 ```bash
-./batch_agents.sh analyze live          # 当前足球日
-./batch_agents.sh analyze 2026-07-22    # 指定日期
+python dsfootball_cli.py prefetch <day> --jingcai        # 先预取（analyze 前）→ 再逐狗分析
+python dsfootball_cli.py agent <狗> analyze <day> --prefetched --jingcai   # 单只狗；批量为斗狗场「⚡ 分析」
+python -m src.chuan_guan_dog analyze <day> --tickets 3串1                 # 串关2狗
+python -m src.beidan_parlay_dog analyze <day>                             # bc狗
 ```
 
 **运行时机**：尽量在比赛开赛前 1 小时内跑。例如当天有 18:30 / 22:00 / 01:00 三波比赛：
@@ -37,8 +39,9 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 ### `settle` — 结算已完成比赛
 
 ```bash
-./batch_agents.sh settle 2026-07-21    # 结算指定日期
-./batch_agents.sh settle live          # 结算所有已完场的未结算订单
+python dsfootball_cli.py agent <狗> settle <day> --jingcai   # 单只狗；批量为斗狗场「🧾 结算」
+python -m src.chuan_guan_dog settle <day>                    # 串关2狗
+python -m src.beidan_parlay_dog settle <day>                 # bc狗
 ```
 
 **核心原则**：
@@ -46,20 +49,20 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 - 结算会遍历**所有未结算订单**，只结算其中已完场（`state == 6`）的比赛；未开赛/进行中的比赛自动跳过，无需等到第二天
 - 同一天可以边分析边结算（滚仓）：结算后余额立即返还，下一次 `analyze` 会按当前余额重新折算仓位，不会重复扣减
 - 分析时遇**已开赛**比赛：不下单、不扣钱，金额只计入当日预算占用（影响本波折算比例），已开赛且已有未结算订单的场次直接维持原仓
-- 结算只结算订单，**不会自动跑因子归纳**；需要归纳时单独跑 `./batch_agents.sh factor-induction`
+- 结算只结算订单，**不会自动跑因子归纳**；需要归纳时单独跑 `python dsfootball_cli.py factor-induction`
 
 ### `dashboard` — 刷新数据并打开看板
 
 ```bash
-./batch_agents.sh dashboard
+python dsfootball_cli.py dashboard
 ```
 
-拉取最新数据后自动打开 `lota_data/dashboard.html`。
+拉取最新数据后自动打开 `data/dashboard.html`。
 
 ### `factor-review` — 退役因子
 
 ```bash
-./batch_agents.sh factor-review 2026-07-21
+python dsfootball_cli.py agent <狗> factor-review 2026-07-21   # 逐狗；批量为斗狗场「🪦 Review」
 ```
 
 **运行频率**：每周一次，或连黑后立即执行。用于检查因子表现并退役失效因子。
@@ -77,16 +80,16 @@ python -m pip install -r requirements.txt   # requests + langgraph（Python 3.10
 ### 实盘日常
 
 ```
-20:00  → ./batch_agents.sh analyze live   （第一波，靠近赛前）
-22:30  → ./batch_agents.sh analyze live   （第二波，数据更新后）
-赛后   → ./batch_agents.sh settle live     （结算已完场比赛，余额返还后可滚仓下一波）
+20:00  → 斗狗场「⚡ 分析」（第一波，靠近赛前）
+22:30  → 斗狗场「⚡ 分析」（第二波，数据更新后）
+赛后   → 斗狗场「🧾 结算」（结算已完场比赛，余额返还后可滚仓下一波）
 ```
 
 ### 回测
 
 ```bash
-./batch_agents.sh analyze 2026-07-20
-./batch_agents.sh settle 2026-07-20
+python dsfootball_cli.py agent <狗> analyze 2026-07-20 --prefetched --jingcai
+python dsfootball_cli.py agent <狗> settle 2026-07-20 --jingcai
 ```
 
 ## 关键注意事项

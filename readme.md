@@ -159,7 +159,7 @@ node harness-plugin/scripts/install.mjs \
 初始化完成后：
 
 - `status=live` 的狗进入全量默认列表（`python -m src.role_registry live`），
-  斗狗场逐狗按钮与 `./batch_agents.sh` 群体操作都会带上它；
+  斗狗场逐狗按钮（及逐狗 CLI）都会带上它；
 - 人设/limits/scope 后续可在斗狗场编辑狗（`PATCH /ds-dogs/<name>`），资金与订单不受影响；
 - 删除狗只移注册表（`DELETE /ds-dogs/<name>`），历史订单/因子/资金保留；
 - 公开仓库**不携带任何狗数据**：本地没有 `roles/<狗>/` 就不会出现在任何列表/群体操作里。
@@ -179,18 +179,18 @@ node harness-plugin/scripts/install.mjs \
 | 回放 | 「跑回放」/ `ds_replay` 工具 |
 | 数据/状态问答 | 「<狗> 余额多少」「今天有哪些竞彩比赛」 |
 
-命令行批量（`python-engine/`）：
+逐狗命令行（`python-engine/`；批量操作统一走斗狗场按钮）：
 
 ```bash
-./batch_agents.sh analyze live        # 全部 live 狗分析（足球当日）
-./batch_agents.sh settle live         # 全部 live 狗结算
-./batch_agents.sh status              # 全部状态
-./batch_agents.sh dashboard           # 刷新数据并打开看板
-./batch_agents.sh factor-induction    # 因子归纳
+python dsfootball_cli.py prefetch <day> --jingcai                          # 分析前预取
+python dsfootball_cli.py agent <狗> analyze <day> --prefetched --jingcai   # 单狗分析；批量用「⚡ 分析」
+python dsfootball_cli.py agent <狗> settle <day> --jingcai                # 单狗结算；批量用「🧾 结算」
+python dsfootball_cli.py agent <狗> status                                # 某狗状态
+python dsfootball_cli.py dashboard                                         # 刷新数据并打开看板
+python dsfootball_cli.py factor-induction                                  # 因子归纳
 ```
 
-> `batch_agents.sh` 是 macOS/Linux 脚本；Windows 用户用等价命令
-> （`python dsfootball_cli.py dashboard` 等）或直接在斗狗场点按钮，无需 shell。
+> `./batch_agents.sh` 已停用，不再作为入口；一律用上面的 python CLI 或斗狗场按钮（Windows/macOS 通用，无需 shell）。
 
 > 群体操作（analyze/settle/factor）只作用于本地 `status=live` 的角色；
 > 公开仓库零狗时它们自然为空操作，创建狗后自动生效。
@@ -216,7 +216,7 @@ python-engine/             # Python 引擎（入库）
 ├─ src/data_manager.py     # 数据获取层（Lota API，需 LOTA_API_KEY）
 ├─ src/place_orders.py / settle.py / factor_*.py  # 下单/结算/因子
 ├─ src/role_registry.py    # 角色注册表（live/all/alpha/sync）
-├─ dsfootball_cli.py / batch_agents.sh   # CLI 批量操作
+├─ dsfootball_cli.py                     # CLI 逐狗操作
 ├─ data/                   # 运行时数据（私有，不入库）
 └─ docs/                   # 架构/格式文档
 

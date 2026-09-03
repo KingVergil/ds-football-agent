@@ -16,3 +16,5 @@ description: 因子归纳/退役的执行入口是斗狗场（dashboard）的「
 2. 归纳结果看任务记录：合并数 / 补定义数 / LLM 判重次数；退役结果含 活跃/退役/休眠 计数与
    本周期变化（cycle_changes）。
 3. 半交互回放暂停时，你的职责是起草「下一轮方向建议」供用户编辑（这是唯一 LLM 触达点）。
+4. `bc狗` 同样纳入归纳/退役：`factor-induction` 读其 `factor_memory.json`
+   （`alpha_mode=true`，走 alpha 归并口径）；`factor-review` 走通用退役评估。
