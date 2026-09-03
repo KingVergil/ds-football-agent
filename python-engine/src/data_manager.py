@@ -13,11 +13,18 @@ import json
 import os
 import re
 import time
+import contextlib
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 
 import requests
+
+try:
+    import fcntl  # POSIX 跨进程文件锁（macOS/Linux）
+except ImportError:  # 非 POSIX 环境退化为无锁（仅提示一次）
+    fcntl = None
 
 from .tools import (
     _SECTION_RULES,
@@ -25,6 +32,7 @@ from .tools import (
     extract_odds,
     compact_fet_to_tags as _compact_fet_to_tags,
 )
+from .beidan_settlement import handicap_result as _beidan_handicap_result, result_code_to_pick as _beidan_result_code_to_pick
 
 
 # ═══════════════════════════════════════════════
@@ -32,6 +40,22 @@ from .tools import (
 # ═══════════════════════════════════════════════
 
 BASE_URL = "http://deepdata.lota.tv/predictions/api/v2"
+
+# ── 离线开关 ──
+# 置 True 后 _get() 直接短路（不联网），所有 fetch_*/refresh_*/prepare_* 自动
+# 回退到本地缓存。用于 walkforward 回放等「只用本地已拉好的缓存」场景，
+# 避免回放把共享 data/ 缓存覆盖 / 污染。
+_OFFLINE = False
+
+
+def set_offline(flag: bool = True) -> None:
+    """全局开关：True = 禁止一切对外 HTTP（只读本地缓存）。"""
+    global _OFFLINE
+    _OFFLINE = bool(flag)
+
+
+def is_offline() -> bool:
+    return _OFFLINE
 
 # 数据根目录
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -43,9 +67,11 @@ TAGS_DIR = Path(__file__).parent.parent / "data" / "tags"
 PREDICTS_DIR = Path(__file__).parent.parent / "data" / "predicts"
 ORDERS_DIR = Path(__file__).parent.parent / "data" / "orders"
 BEIDAN_DIR = DATA_ROOT / "beidan"
+BEIDAN_SP_DIR = DATA_ROOT / "beidan_sp"
 
 # 确保目录存在
-for d in [MATCHES_DIR, FEATURES_DIR, TAGS_DIR, PREDICTS_DIR, ORDERS_DIR, BEIDAN_DIR]:
+for d in [MATCHES_DIR, FEATURES_DIR, TAGS_DIR, PREDICTS_DIR, ORDERS_DIR,
+          BEIDAN_DIR, BEIDAN_SP_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -88,19 +114,124 @@ def _atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _get(path: str, params: dict = None) -> dict | list | None:
-    url = f"{BASE_URL}{path}"
+# ═══════════════════════════════════════════════
+# 跨进程调度（多狗并发取数）
+# ═══════════════════════════════════════════════
+
+_LOCKS_DIR = DATA_ROOT / ".dm_locks"
+_STATE_PATH = DATA_ROOT / ".dm_state.json"
+
+
+def _sanitize_lock_name(name: str) -> str:
+    return re.sub(r"[^0-9A-Za-z_.-]", "_", name)
+
+
+@contextlib.contextmanager
+def _file_lock(name: str, timeout: float = 300.0):
+    """跨进程互斥锁（fcntl.flock，按资源名）。
+
+    多只狗是独立进程，进程内单例管不到并发 → 用锁文件做单飞：
+    同一资源（日历日 / lota_id）同时只有一个进程去线上拉，其余进程
+    等锁后直接读本地缓存。timeout 内拿不到锁则退化为阻塞等待，
+    避免因上游慢导致并发进程直接放弃协调。
+    """
+    _LOCKS_DIR.mkdir(parents=True, exist_ok=True)
+    fh = open(_LOCKS_DIR / f"{_sanitize_lock_name(name)}.lock", "w")
     try:
-        resp = requests.get(url, headers=_headers(), params=params, timeout=30)
-        if resp.status_code == 403:
-            raise LotaAPIError(403, "Lota API key 过期或超限")
-        if resp.status_code != 200:
-            print(f"[lota] {url} → {resp.status_code}")
-            return None
-        return resp.json()
-    except requests.RequestException as e:
-        print(f"[lota] {url} → {e}")
+        if fcntl is not None:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+                        break
+                    time.sleep(0.2)
+        yield
+    finally:
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+        fh.close()
+
+
+def _load_dm_state() -> dict:
+    if _STATE_PATH.exists():
+        try:
+            data = json.loads(_STATE_PATH.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_dm_state(state: dict) -> None:
+    _atomic_write_text(_STATE_PATH, json.dumps(state, ensure_ascii=False, indent=2))
+
+
+def _record_dm_state(section: str, key: str, entry: dict) -> None:
+    """更新共享状态文件（加状态锁，避免多资源并发写互相覆盖）。"""
+    with _file_lock("dm-state", timeout=30):
+        st = _load_dm_state()
+        st.setdefault(section, {})[key] = entry
+        _save_dm_state(st)
+
+# 最近一次 API 调用的失败信息（status: int|None；None 表示网络/连接异常）。
+# 成功调用会重置为 None。用于让「回填北单缓存」区分「上游 502/断网」与「确实无数据」，
+# 避免把宕机前的好缓存覆盖成空/半截结果。
+_last_api_error: Optional[dict] = None
+
+# 瞬态状态码：502/503/504（网关/负载均衡抖动）与 429（限流）值得重试。
+_TRANSIENT_STATUS = {429, 502, 503, 504}
+
+
+def _get(path: str, params: dict = None, retries: int = 3) -> dict | list | None:
+    """GET 请求。瞬态 502/503/504/429 与连接错误会指数退避重试。
+
+    各调用方语义不变：失败仍返回 None（依赖方据此回退本地缓存）；
+    403 视为 fatal（立刻抛 LotaAPIError）。重试耗尽后把失败写入 _last_api_error。
+    """
+    global _last_api_error
+    if _OFFLINE:
+        # 离线：不做任何网络请求，直接当作拉取失败，让依赖方回退本地缓存。
+        _last_api_error = {"status": None, "msg": "[offline] 已禁用网络请求"}
         return None
+    url = f"{BASE_URL}{path}"
+    _last_api_error = None
+    last_err: Optional[dict] = None
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, headers=_headers(), params=params, timeout=30)
+            if resp.status_code == 403:
+                raise LotaAPIError(403, "Lota API key 过期或超限")
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code in _TRANSIENT_STATUS and attempt < retries - 1:
+                last_err = {
+                    "status": resp.status_code,
+                    "msg": f"{url} → {resp.status_code}",
+                }
+                time.sleep(min(2 ** attempt, 8))  # 1s / 2s / 4s
+                continue
+            msg = f"{url} → {resp.status_code}"
+            print(f"[lota] {msg}")
+            _last_api_error = {"status": resp.status_code, "msg": msg}
+            return None
+        except requests.RequestException as e:
+            last_err = {"status": None, "msg": f"{url} → {e}"}
+            if attempt < retries - 1:
+                time.sleep(min(2 ** attempt, 8))
+                continue
+            print(f"[lota] {last_err['msg']}")
+            _last_api_error = last_err
+            return None
+    # 理论到不了这里；防御：把最后一次瞬态错误也记录下来
+    _last_api_error = last_err
+    return None
 
 
 # ═══════════════════════════════════════════════
@@ -240,17 +371,20 @@ class DataManager:
     # ═══════════════════════════════════════════
 
     def fetch_matches_by_date(self, date_str: str, lottery_type: str = "jingcai",
-                              is_jingcai: bool = False) -> list[dict]:
+                              is_jingcai: bool = False, is_beidan: bool = False) -> list[dict]:
         """API 查询某日比赛列表。
 
         is_jingcai=True 时附带竞彩让球胜平负数据（jc_hhad，含 goal_line/赔率），
         默认 False 不多打 spdex 库。
+        is_beidan=True 时附带北单让球胜平负/开奖数据（beidan_info，含 goal_line/赔率/result/sp）。
         """
         params = {"date": date_str}
         if lottery_type and lottery_type != "all":
             params["type"] = lottery_type
         if is_jingcai:
             params["is_jingcai"] = "true"
+        if is_beidan:
+            params["is_beidan"] = "true"
         data = _get("/matches", params)
         if not data:
             return []
@@ -260,6 +394,19 @@ class DataManager:
         else:
             matches = result if isinstance(result, list) else []
         return matches if isinstance(matches, list) else []
+
+    def fetch_beidan_matches_by_date(self, date_str: str) -> list[dict]:
+        """从 v2-api 拉取单个日历日的北单比赛（带 beidan_info: goal_line+开奖sp）."""
+        return self.fetch_matches_by_date(date_str, lottery_type="all", is_beidan=True)
+
+    def fetch_beidan_sp(self, date_str: str) -> dict[str, dict]:
+        """从 v2-api 拉取某足球日的北单开奖 SP（data.results: {lota_id: {result, spvalue, score, ...}}）。"""
+        data = _get("/beidan/sp", {"date": date_str})
+        if not data:
+            return {}
+        result = data.get("data") or {}
+        results = result.get("results") if isinstance(result, dict) else {}
+        return results if isinstance(results, dict) else {}
 
     def _fetch_all_matches(self, params: dict) -> list[dict]:
         """分页拉取 matches 全量结果（服务器 limit 默认 500，超出会被截断）。"""
@@ -331,6 +478,27 @@ class DataManager:
             if m.get("jingcai_number")
         ]
 
+    def _merge_preserved_odds(self, ms: list[dict], date_str: str,
+                              with_jc_odds: bool, with_beidan_odds: bool) -> None:
+        """把旧缓存里未重抓的赔率字段补回 ms（原地），避免刷新一种盘口冲掉另一种。
+
+        仅当对应盘口本次不刷新时才有意义；旧行在 matches/<date>.json 中不存在则跳过。
+        """
+        if with_jc_odds and with_beidan_odds:
+            return
+        old_map = {
+            m.get("lota_id"): m
+            for m in self.get_cached_matches(date_str, lottery_type="all")
+        }
+        for m in ms:
+            om = old_map.get(m.get("lota_id"))
+            if not om:
+                continue
+            if not with_jc_odds and m.get("jc_hhad") is None and om.get("jc_hhad") is not None:
+                m["jc_hhad"] = om["jc_hhad"]
+            if not with_beidan_odds and m.get("beidan_info") is None and om.get("beidan_info") is not None:
+                m["beidan_info"] = om["beidan_info"]
+
     def save_matches_cache(self, date_str: str, matches: list[dict]) -> None:
         """写入比赛列表缓存（缩进格式，与仓库现有文件一致）"""
         _atomic_write_text(
@@ -338,14 +506,20 @@ class DataManager:
             json.dumps(matches, ensure_ascii=False, indent=2),
         )
 
-    def refresh_matches_cache(self, date_str: str, with_jc_odds: bool = False) -> list[dict]:
-        """刷新某日比赛缓存（全量），可选叠加竞彩让球(goal_line/赔率)到 jc_hhad。
+    def refresh_matches_cache(self, date_str: str, with_jc_odds: bool = False,
+                              with_beidan_odds: bool = False) -> list[dict]:
+        """刷新某日比赛缓存（全量），可选叠加竞彩让球到 jc_hhad、北单让球/开奖到 beidan_info。
 
-        服务器 is_jingcai=true 只返回竞彩场次子集，因此这里先拉全量比赛，
-        再单独拉竞彩子集，按 lota_id 把 jc_hhad 合并进全量缓存，
-        避免覆盖掉非竞彩比赛。
+        服务器 is_jingcai=true / is_beidan=true 只返回对应子集，因此先拉全量比赛，
+        再单独拉对应子集，按 lota_id 把 jc_hhad / beidan_info 合并进全量缓存，
+        避免覆盖掉非对应类型的比赛。未请求重抓的赔率类型保留旧缓存的字段
+        （避免只刷 beidan 时把已有 jc_hhad 冲掉，反之亦然）。
         """
         ms = self.fetch_matches_by_date(date_str, lottery_type="all")
+        if not ms:
+            return ms
+        self._merge_preserved_odds(ms, date_str, with_jc_odds, with_beidan_odds)
+
         if ms and with_jc_odds:
             jc_ms = self.fetch_matches_by_date(date_str, lottery_type="all", is_jingcai=True)
             jc_hhad_map = {
@@ -356,17 +530,29 @@ class DataManager:
                 lid = m.get("lota_id")
                 if lid in jc_hhad_map:
                     m["jc_hhad"] = jc_hhad_map[lid]
-        if ms:
-            self.save_matches_cache(date_str, ms)
+
+        if ms and with_beidan_odds:
+            beidan_ms = self.fetch_beidan_matches_by_date(date_str)
+            beidan_map = {
+                m.get("lota_id"): m.get("beidan_info")
+                for m in beidan_ms if m.get("lota_id") and m.get("beidan_info") is not None
+            }
+            for m in ms:
+                lid = m.get("lota_id")
+                if lid in beidan_map:
+                    m["beidan_info"] = beidan_map[lid]
+
+        self.save_matches_cache(date_str, ms)
         return ms
 
     def refresh_matches_range(self, start_date: str, end_date: str,
-                              with_jc_odds: bool = False) -> dict:
+                              with_jc_odds: bool = False,
+                              with_beidan_odds: bool = False) -> dict:
         """按足球日起始日批量刷新 [start_date, end_date] 的比赛缓存。
 
         一次范围拉取（分页），按足球日窗口 [D 12:01, D+1 12:00] 切分写盘到 D.json。
-        with_jc_odds=True 时额外拉一次竞彩子集（is_jingcai=true），
-        按 lota_id 把 jc_hhad(goal_line/赔率) 合并进全量缓存。
+        with_jc_odds=True 时额外拉一次竞彩子集，with_beidan_odds=True 时额外拉一次北单子集，
+        分别把 jc_hhad / beidan_info 按 lota_id 合并进全量缓存；未重抓的类型保留旧字段。
 
         Returns: {date_str: 场数}
         """
@@ -380,6 +566,12 @@ class DataManager:
         )
         if not all_ms:
             return {}
+
+        # 保留旧缓存里未重抓的赔率字段（分桶后按 D.json 逐日回填）
+        for cd in {start_date, end_date}:
+            day_ms = [m for m in all_ms if (m.get("match_time") or "")[:10] == cd]
+            if day_ms:
+                self._merge_preserved_odds(day_ms, cd, with_jc_odds, with_beidan_odds)
 
         if with_jc_odds:
             jc_ms = self.fetch_matches_by_date_range(
@@ -396,6 +588,20 @@ class DataManager:
                 lid = m.get("lota_id")
                 if lid in jc_hhad_map:
                     m["jc_hhad"] = jc_hhad_map[lid]
+
+        if with_beidan_odds:
+            beidan_ms = self.fetch_beidan_matches_by_date_range(
+                start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            )
+            beidan_map = {
+                m.get("lota_id"): m.get("beidan_info")
+                for m in beidan_ms if m.get("lota_id") and m.get("beidan_info") is not None
+            }
+            for m in all_ms:
+                lid = m.get("lota_id")
+                if lid in beidan_map:
+                    m["beidan_info"] = beidan_map[lid]
 
         # 按足球日切分: [D 12:01, D+1 12:00] 的比赛 → D.json
         buckets: dict[str, list[dict]] = {}
@@ -430,8 +636,8 @@ class DataManager:
             "is_beidan": "true",
         })
 
-    def get_cached_beidan_matches(self, date_str: str) -> list[dict]:
-        """本地缓存: 某足球日的北单比赛（含 beidan_info）."""
+    def _read_legacy_beidan(self, date_str: str) -> list[dict]:
+        """读过渡期的 legacy beidan/<date>.json（北单子集，含 beidan_info）。"""
         path = BEIDAN_DIR / f"{date_str}.json"
         if path.exists():
             try:
@@ -441,52 +647,115 @@ class DataManager:
                 pass
         return []
 
+    def get_cached_beidan_matches(self, date_str: str) -> list[dict]:
+        """本地缓存: 某足球日的北单比赛（含 beidan_info）。
+
+        统一从 matches/<date>.json 读取（北单是比赛列表子集，按 beidan_number 后过滤）。
+        若统一缓存里旧数据尚未带 beidan_info，则用 legacy beidan/<date>.json 补全。
+        """
+        ms = [
+            m for m in self.get_cached_matches(date_str, lottery_type="all")
+            if m.get("beidan_number")
+        ]
+        if not ms:
+            return self._read_legacy_beidan(date_str)
+        by_id = {m.get("lota_id"): m for m in ms}
+        filled = False
+        for lm in self._read_legacy_beidan(date_str):
+            lid = lm.get("lota_id")
+            if lid in by_id and not by_id[lid].get("beidan_info") and lm.get("beidan_info"):
+                by_id[lid]["beidan_info"] = lm["beidan_info"]
+                filled = True
+        return ms
+
     def refresh_beidan_cache(self, start_date: str, end_date: str) -> dict:
-        """按足球日 [D 12:01, D+1 12:00] 切分并写入 beidan 缓存. 返回 {date_str: 场数}."""
+        """把日期范围内的北单比赛（含 beidan_info）合并进统一 matches/<date>.json 缓存。
+
+        不再单独写 beidan/<date>.json（避免重复存比赛）；按比赛 match_time 的日历日分桶，
+        upsert 到对应 matches/<cd>.json：已有行保留 jc_hhad 等字段，仅更新 beidan_info；
+        缺失行（旧日期无 matches 缓存）则以北单完整行补入。
+        上游 502/断网时 fetch 会返回空或半截结果：一律不写缓存（保留宕机前的旧缓存），并抛错。
+
+        Returns: {日历日: 北单场数}
+        """
         start_dt = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(hours=12, minutes=1)
         end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1, hours=12)
         ms = self.fetch_beidan_matches_by_date_range(
             start_dt.strftime("%Y-%m-%d %H:%M:%S"),
             end_dt.strftime("%Y-%m-%d %H:%M:%S"),
         )
+        if _last_api_error:
+            err = _last_api_error
+            raise LotaAPIError(
+                err.get("status") or 502,
+                f"北单数据源上游异常（{err.get('msg', '')}），已中止刷新，保留现有比赛缓存",
+            )
         if not ms:
             return {}
-        buckets: dict[str, list[dict]] = {}
+
+        # 按 match_time 的日历日分桶（与 matches/<date>.json 键一致）
+        buckets: dict[str, list[dict]] = defaultdict(list)
         for m in ms:
             mt = m.get("match_time", "")
-            if len(mt) < 16:
+            if len(mt) < 10:
                 continue
-            try:
-                mdt = datetime.strptime(mt[:16], "%Y-%m-%d %H:%M")
-            except ValueError:
+            buckets[mt[:10]].append(m)
+
+        # backfill 窗口会跨到 end_date+1 的凌晨（属于 end_date 足球日），需一并写入
+        cal_end = (datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        written: dict[str, int] = {}
+        for cd in sorted(buckets):
+            if not (start_date <= cd <= cal_end):
                 continue
-            if mdt < start_dt or mdt > end_dt:
-                continue
-            d = (mdt - timedelta(hours=12, minutes=1)).date().isoformat()
-            buckets.setdefault(d, []).append(m)
-        written = {}
-        for d in sorted(buckets):
-            if not (start_date <= d <= end_date):
-                continue
-            buckets[d].sort(key=lambda x: x.get("match_time", ""))
-            _atomic_write_text(
-                BEIDAN_DIR / f"{d}.json",
-                json.dumps(buckets[d], ensure_ascii=False, indent=2),
-            )
-            written[d] = len(buckets[d])
+            path = MATCHES_DIR / f"{cd}.json"
+            if path.exists():
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                    existing = raw if isinstance(raw, list) else (raw.get("matches") or [])
+                except Exception:
+                    existing = []
+            else:
+                existing = []
+            by_id = {m.get("lota_id"): m for m in existing if m.get("lota_id")}
+            for m in buckets[cd]:
+                lid = m.get("lota_id") or ""
+                if not lid:
+                    continue
+                row = by_id.get(lid)
+                if row is None:
+                    by_id[lid] = dict(m)
+                else:
+                    jc = row.get("jc_hhad")
+                    row.clear()
+                    row.update(m)
+                    if jc is not None and row.get("jc_hhad") is None:
+                        row["jc_hhad"] = jc
+                by_id[lid]["beidan_info"] = m.get("beidan_info")
+            merged = sorted(by_id.values(), key=lambda x: str(x.get("match_time", "")))
+            self.save_matches_cache(cd, merged)
+            written[cd] = sum(1 for x in merged if x.get("beidan_number"))
         return written
 
     def refresh_beidan_history(self, days: int = 60) -> dict:
-        """回填过去 days 天的北单缓存（含 goal_line + 开奖sp），写入 beidan/*.json."""
+        """回填过去 days 天的北单缓存（含 goal_line + 开奖sp），合并进统一 matches/*.json."""
         today = datetime.now().date()
         start = (today - timedelta(days=days)).strftime("%Y-%m-%d")
         end = today.strftime("%Y-%m-%d")
         return self.refresh_beidan_cache(start, end)
 
     def get_cached_beidan_match(self, lota_id: str) -> Optional[dict]:
-        """从 beidan 缓存目录按 lota_id 查找单场北单比赛（含 beidan_info）。"""
+        """按 lota_id 查找单场北单比赛（含 beidan_info）。优先统一 matches 缓存，回退 legacy。"""
         if not lota_id:
             return None
+        for path in sorted(MATCHES_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                matches = data if isinstance(data, list) else data.get("matches", [])
+                for m in matches:
+                    if m.get("lota_id") == lota_id and m.get("beidan_number"):
+                        return m
+            except Exception:
+                continue
         for path in sorted(BEIDAN_DIR.glob("*.json")):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -499,10 +768,22 @@ class DataManager:
         return None
 
     def get_cached_beidan_results(self, lota_ids: set[str]) -> dict[str, dict]:
-        """批量返回 {lota_id: beidan_info}，单次扫描 beidan 缓存目录。"""
+        """批量返回 {lota_id: beidan_info}。优先统一 matches 缓存，缺失再回退 legacy beidan。"""
         result: dict[str, dict] = {}
         if not lota_ids:
             return result
+        for path in sorted(MATCHES_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            matches = data if isinstance(data, list) else data.get("matches", [])
+            for m in matches:
+                lid = m.get("lota_id")
+                if lid in lota_ids and m.get("beidan_info") and lid not in result:
+                    result[lid] = m["beidan_info"]
+            if len(result) >= len(lota_ids):
+                return result
         for path in sorted(BEIDAN_DIR.glob("*.json")):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -511,11 +792,115 @@ class DataManager:
             matches = data if isinstance(data, list) else data.get("matches", [])
             for m in matches:
                 lid = m.get("lota_id")
-                if lid in lota_ids and m.get("beidan_info"):
+                if lid in lota_ids and m.get("beidan_info") and lid not in result:
                     result[lid] = m["beidan_info"]
             if len(result) >= len(lota_ids):
                 break
         return result
+
+    def save_beidan_sp_cache(self, sp_date: str, sp_map: dict[str, dict]) -> None:
+        """把某足球日的原始开奖 SP 持久化到独立缓存，避免比赛缓存轮换导致开奖丢失。"""
+        if not sp_map:
+            return
+        _atomic_write_text(
+            BEIDAN_SP_DIR / f"{sp_date}.json",
+            json.dumps(sp_map, ensure_ascii=False, indent=2),
+        )
+
+    def get_beidan_sp_cache(self, sp_date: str) -> dict[str, dict]:
+        """读取某足球日的原始开奖 SP 缓存。"""
+        path = BEIDAN_SP_DIR / f"{sp_date}.json"
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def merge_beidan_sp(self, sp_map: dict[str, dict]) -> dict:
+        """把开奖 SP 合并进本地 beidan_info（按 lota_id 更新 matches/ 与 beidan/ 缓存）。
+
+        合并前做合理性校验：官方 result 与 score+goal_line 推导方向矛盾（脏值）的场次
+        只标记 result_suspect，不合并 result/spvalue，结算时按未开奖跳过，避免按脏值结错账。
+
+        Returns: {"updated": 成功合并场数, "dirty": 被判脏值并标记的场数}
+        """
+        if not sp_map:
+            return {"updated": 0, "dirty": 0}
+        updated = 0
+        dirty = 0
+        for d in (MATCHES_DIR, BEIDAN_DIR):
+            for path in sorted(d.glob("*.json")):
+                try:
+                    u, dd = self._merge_sp_into_file(path, sp_map)
+                    updated += u
+                    dirty += dd
+                except Exception:
+                    continue
+        return {"updated": updated, "dirty": dirty}
+
+    def _beidan_result_suspect(self, sp: dict, goal_line) -> bool:
+        """官方开奖 result 是否与 score+goal_line 推导方向矛盾（脏值）。
+
+        背景：上游 /beidan/sp 曾把「未开奖」页面的赛前赔率误抓成开奖 SP
+        （如桑普多利亚 vs 尤维斯塔比亚：库里 result=3/sp=1.82，实际应为 result=0/sp=10.89）。
+        仅当 result、score、goal_line 均可得且推导方向与官方结果不一致时判为可疑。
+        """
+        raw = sp.get("result")
+        score = sp.get("score")
+        if raw is None or str(raw).strip() == "" or str(raw).strip() == "*":
+            return False
+        if not score or ":" not in str(score):
+            return False
+        try:
+            actual = _beidan_result_code_to_pick(str(raw).strip())
+            derived = _beidan_handicap_result(str(score), goal_line)
+        except Exception:
+            return False
+        return bool(actual and derived and actual != derived)
+
+    def _merge_sp_into_file(self, path: Path, sp_map: dict[str, dict]
+                            ) -> tuple[int, int]:
+        """把 sp_map 合并进单个缓存文件。
+
+        Returns: (updated, dirty) —— 正常合并场数 / 被判脏值仅标记的场数。
+        """
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return 0, 0
+        if isinstance(data, list):
+            matches = data
+        elif isinstance(data, dict):
+            matches = data.get("matches")
+        else:
+            return 0, 0
+        if not isinstance(matches, list):
+            return 0, 0
+        updated = 0
+        dirty = 0
+        for m in matches:
+            if not isinstance(m, dict):
+                continue
+            sp = sp_map.get(m.get("lota_id"))
+            if not sp:
+                continue
+            bi = m.get("beidan_info") or {}
+            if self._beidan_result_suspect(sp, bi.get("goal_line")):
+                # 脏值：标记可疑，不合并 result/spvalue，结算将按未开奖跳过
+                bi["result_suspect"] = True
+                m["beidan_info"] = bi
+                dirty += 1
+                continue
+            for k in ("result", "result_des", "spvalue", "score", "draw_datetime"):
+                if sp.get(k) is not None:
+                    bi[k] = sp[k]
+            m["beidan_info"] = bi
+            updated += 1
+        if updated:
+            _atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
+        return updated, dirty
 
 
     def get_cached_match(self, lota_id: str) -> Optional[dict]:
@@ -535,6 +920,11 @@ class DataManager:
         return None
     
     def refresh_score_match(self, lota_id: str) -> Optional[dict]:
+        """通过 API 查询单场比赛最新比分/状态（跨进程单飞，见 _refresh_score_match_impl）。"""
+        with _file_lock(f"score:{lota_id}", timeout=300):
+            return self._refresh_score_match_impl(lota_id)
+
+    def _refresh_score_match_impl(self, lota_id: str) -> Optional[dict]:
         """
         通过 API 查询单场比赛最新比分/状态，更新写回 matches + features 缓存。
         仅对已完场(state==6)的比赛请求 API。返回 API match dict 或 None。
@@ -803,10 +1193,14 @@ class DataManager:
         )
 
     # live / upcoming 比赛的 compact-fet 缓存有效期（秒）
-    COMPACT_FET_CACHE_TTL = 120
+    # 15 分钟：避免频繁重复拉取同一场未开赛赔率，降低上游限流风险。
+    COMPACT_FET_CACHE_TTL = 15 * 60
+    # 临近开赛时缩短 TTL，避免 15 分钟窗口内的盘口移动被旧缓存掩盖
+    NEAR_KICKOFF_MINUTES = 60
+    NEAR_KICKOFF_TTL = 2 * 60
 
     # negative cache（_api_failed）有效期：超时后允许重试，避免瞬时故障永久跳过
-    NEGATIVE_CACHE_TTL = 600  # 10 分钟
+    NEGATIVE_CACHE_TTL = 720  # 12 分钟
 
     def get_compact_fet(self, lota_id: str, refresh: bool = False) -> Optional[dict]:
         """
@@ -842,12 +1236,12 @@ class DataManager:
                 if not self._is_match_upcoming(cached):
                     return cached
 
-                # 未开赛 → 检查 TTL（默认 2 分钟）
+                # 未开赛 → 检查 TTL（临近开赛自动缩短）
                 cached_at = cached.get("_cached_at", "")
                 if cached_at:
                     try:
                         ct = datetime.fromisoformat(cached_at)
-                        if (datetime.now() - ct).total_seconds() < self.COMPACT_FET_CACHE_TTL:
+                        if (datetime.now() - ct).total_seconds() < self._compact_fet_ttl(cached):
                             return cached
                     except Exception:
                         pass
@@ -908,6 +1302,19 @@ class DataManager:
         except ValueError:
             return True
 
+    def _compact_fet_ttl(self, cached: dict) -> int:
+        """未开赛 compact-fet 的缓存 TTL：临近开赛时缩短。"""
+        mt = self._parse_match_time_from_fet(cached)
+        if mt:
+            try:
+                kickoff = datetime.strptime(mt, "%Y-%m-%d %H:%M")
+                mins = (kickoff - datetime.now()).total_seconds() / 60
+                if 0 < mins <= self.NEAR_KICKOFF_MINUTES:
+                    return self.NEAR_KICKOFF_TTL
+            except Exception:
+                pass
+        return self.COMPACT_FET_CACHE_TTL
+
     @staticmethod
     def _parse_match_time_from_fet(feat: dict) -> str:
         """从 compact-fet 文本提取比赛时间 (YYYY-MM-DD HH:MM)"""
@@ -916,6 +1323,25 @@ class DataManager:
             return ""
         m = re.search(r'时间[：:]\s*([\d\-:\s]+)', fet_text)
         return m.group(1).strip()[:16] if m else ""
+
+    def has_usable_compact_fet(self, lota_id: str) -> bool:
+        """compact-fet 是否「可用」：存在、非失败桩、且有实际可读内容。
+
+        live 分析用：仅「拉得到」还不够，必须是「拉得到且内容有效」，
+        否则把空/旧/失败桩数据放进 prompt 会误导分析和出单（所有狗统一）。
+        """
+        if not lota_id:
+            return False
+        cached = self.get_cached_compact_fet(lota_id)
+        if not cached or cached.get("_api_failed"):
+            return False
+        fet_text = cached.get("compact_fet") or ""
+        if fet_text.strip():
+            return True
+        match = cached.get("match") or (cached.get("data") or {}).get("match") or {}
+        if match and (match.get("home_name") or match.get("away_name")):
+            return True
+        return False
 
     def get_compact_fet_text(self, lota_id: str) -> str:
         """获取 compact-fet 文本（用于 tag 提取）"""
@@ -1004,6 +1430,419 @@ class DataManager:
         (TAGS_DIR / f"{lota_id}.json").write_text(
             json.dumps(payload, ensure_ascii=False), encoding="utf-8"
         )
+
+    # ═══════════════════════════════════════════
+    # 数据准备与调度（多狗并发取数）
+    # ═══════════════════════════════════════════
+
+    # live 模式下比赛缓存的“新鲜窗口”：窗口内直接用本地，避免多狗重复打线上。
+    # 窗口外（或缓存缺失）才在锁内单飞去线上刷新。
+    MATCHES_CACHE_MAX_AGE = 5 * 60
+
+    # 北单开奖 SP 的“新鲜窗口”：开奖后 SP 已定稿，窗口内重复结算直接读本地。
+    BEIDAN_SP_CACHE_MAX_AGE = 10 * 60
+
+    def prepare_matches(self, date_str: str, live: bool = False,
+                        with_jc_odds: bool = False, with_beidan_odds: bool = False,
+                        max_age_seconds: Optional[int] = None,
+                        owner: str = "") -> dict:
+        """协调式拉取某日历日比赛列表（跨进程单飞）。
+
+        规则:
+          - 缓存满足「本地就绪」→ 直接本地（source=local）：
+              * 非 live → 只要缓存存在即可
+              * live → 刷新时间在 max_age_seconds 内
+              * 请求了竞彩/北单盘口时，对应场次必须已带 jc_hhad / beidan_info
+                （避免竞彩 prefetch 写过的基础缓存缺北单盘口被误判为就绪）
+          - 否则在「该日期的互斥锁」内线上刷新；并发的其它进程等锁后
+            读到刚写好的缓存 → 自动变 local，不重复打线上
+          - 线上刷新为空/失败 → 回退本地缓存并附 warning
+
+        Returns:
+            {"date", "matches", "count", "source": "online"|"local"|"none",
+             "warning": str|None}
+        """
+        max_age = max_age_seconds if max_age_seconds is not None else self.MATCHES_CACHE_MAX_AGE
+        with _file_lock(f"matches:{date_str}", timeout=600):
+            cached = self.get_cached_matches(date_str, lottery_type="all")
+            if self._prepare_ready(date_str, cached, live, with_jc_odds,
+                                   with_beidan_odds, max_age):
+                return {"date": date_str, "matches": cached, "count": len(cached),
+                        "source": "local", "warning": None}
+
+            ms = self.refresh_matches_cache(
+                date_str, with_jc_odds=with_jc_odds, with_beidan_odds=with_beidan_odds
+            )
+            if ms:
+                _record_dm_state("matches", date_str, {
+                    "source": "online",
+                    "at": datetime.now().isoformat(),
+                    "count": len(ms),
+                    "by": owner or "",
+                    "live": live,
+                    "jc_odds": with_jc_odds,
+                    "beidan": with_beidan_odds,
+                })
+                return {"date": date_str, "matches": ms, "count": len(ms),
+                        "source": "online", "warning": None}
+            if cached:
+                return {"date": date_str, "matches": cached, "count": len(cached),
+                        "source": "local",
+                        "warning": f"{date_str} 线上拉取为空/失败，回退本地缓存"}
+            return {"date": date_str, "matches": [], "count": 0,
+                    "source": "none", "warning": f"{date_str} 线上拉取为空"}
+
+    def _prepare_ready(self, date_str: str, cached: list[dict], live: bool,
+                       with_jc_odds: bool, with_beidan_odds: bool,
+                       max_age_seconds: int) -> bool:
+        """本地缓存是否已满足准备就绪（新鲜度 + 盘口完整性）。"""
+        if not cached:
+            return False
+        if live and not self._matches_cache_fresh(date_str, max_age_seconds):
+            return False
+        if with_jc_odds:
+            jc = [m for m in cached if m.get("jingcai_number")]
+            if jc and not all(m.get("jc_hhad") for m in jc):
+                return False
+        if with_beidan_odds:
+            bd = [m for m in cached if m.get("beidan_number")]
+            # 北单狗跑某天却没有任何北单行 → 视为未就绪，线上确认（与旧 live 语义一致）
+            if not bd:
+                return False
+            if not all(m.get("beidan_info") for m in bd):
+                return False
+        return True
+
+    def _matches_cache_fresh(self, date_str: str, max_age_seconds: int) -> bool:
+        path = MATCHES_DIR / f"{date_str}.json"
+        if not path.exists():
+            return False
+        try:
+            age = time.time() - path.stat().st_mtime
+        except OSError:
+            return False
+        return age <= max_age_seconds
+
+    def _compact_fet_status(self, cached: Optional[dict]) -> str:
+        """compact-fet 缓存状态: fresh / stale / negative / missing"""
+        if not cached:
+            return "missing"
+        if cached.get("_api_failed"):
+            cached_at = cached.get("_cached_at", "")
+            if cached_at:
+                try:
+                    ct = datetime.fromisoformat(cached_at)
+                    if (datetime.now() - ct).total_seconds() < self.NEGATIVE_CACHE_TTL:
+                        return "negative"  # 失败桩仍有效，不重试
+                except Exception:
+                    pass
+            return "stale"
+        # 已完场 / 已开赛 → 赔率锁定，缓存永久有效
+        if self._is_match_finished(cached):
+            return "fresh"
+        if not self._is_match_upcoming(cached):
+            return "fresh"
+        cached_at = cached.get("_cached_at", "")
+        if cached_at:
+            try:
+                ct = datetime.fromisoformat(cached_at)
+                if (datetime.now() - ct).total_seconds() < self._compact_fet_ttl(cached):
+                    return "fresh"
+            except Exception:
+                pass
+        return "stale"
+
+    def prepare_features(self, lota_ids: list[str], with_tags: bool = False,
+                         owner: str = "") -> dict:
+        """协调式预取 compact-fet（可选附带 tags），按 lota_id 跨进程单飞。
+
+        同一场同时只有一个进程去线上拉；其余进程等锁后读到同一份本地缓存。
+        TTL 规则沿用 get_compact_fet（完场永久 / 已开赛锁定 / 未开赛 15 分钟）。
+
+        Returns:
+            {"total", "cached", "fetched", "failed", "failed_lids": [...]}
+        """
+        total = len(lota_ids)
+        cached = fetched = failed = 0
+        failed_lids: list[str] = []
+
+        for lid in lota_ids:
+            if not lid:
+                continue
+            with _file_lock(f"features:{lid}", timeout=600):
+                status = self._compact_fet_status(self.get_cached_compact_fet(lid))
+                if status == "fresh":
+                    cached += 1
+                    continue
+                if status == "negative":
+                    # 失败桩 TTL 内：不重试，视为失败（与 get_compact_fet 语义一致）
+                    failed += 1
+                    failed_lids.append(lid)
+                    continue
+                data = self.get_compact_fet(lid)
+            if data is None:
+                failed += 1
+                failed_lids.append(lid)
+                continue
+            # 区分「真的拉到新数据」与「API 失败回退旧缓存」
+            if self._compact_fet_status(self.get_cached_compact_fet(lid)) == "fresh":
+                fetched += 1
+            else:
+                cached += 1  # 旧缓存兜底（与 node_fetch_features 原计数一致）
+            if with_tags:
+                try:
+                    from .tools import compact_fet_to_tags, save_tagged_sections
+                    sections = compact_fet_to_tags(lid, data)
+                    if sections:
+                        save_tagged_sections(lid, sections)
+                except Exception:
+                    pass
+
+        return {
+            "total": total,
+            "cached": cached,
+            "fetched": fetched,
+            "failed": failed,
+            "failed_lids": failed_lids,
+        }
+
+    def prepare_beidan_sp(self, sp_date: str, max_age_seconds: Optional[int] = None,
+                          owner: str = "") -> dict:
+        """协调式拉取并合并某足球日的北单开奖 SP（跨进程单飞）。
+
+        同一 sp_date 同时只有一个进程打 /beidan/sp；窗口内（默认 10 分钟）已成功
+        合并过则直接读本地，避免多只北单狗并发结算重复拉取 + 并发写缓存。
+
+        Returns:
+            {"date", "source": "online"|"local"|"none", "count", "updated",
+             "warning": str|None, "sp": dict[str, dict]|None}
+        """
+        max_age = max_age_seconds if max_age_seconds is not None else self.BEIDAN_SP_CACHE_MAX_AGE
+        with _file_lock(f"beidan-sp:{sp_date}", timeout=600):
+            st = (_load_dm_state().get("beidan_sp") or {}).get(sp_date)
+            if st and st.get("at") and (st.get("count") or 0) > 0:
+                try:
+                    ct = datetime.fromisoformat(st["at"])
+                    if (datetime.now() - ct).total_seconds() <= max_age:
+                        return {"date": sp_date, "source": "local",
+                                "count": st.get("count", 0), "updated": 0,
+                                "warning": None, "sp": None}
+                except Exception:
+                    pass
+
+            sp = self.fetch_beidan_sp(sp_date)
+            if sp:
+                self.save_beidan_sp_cache(sp_date, sp)
+                merged = self.merge_beidan_sp(sp)
+                updated = merged["updated"]
+                dirty = merged["dirty"]
+                _record_dm_state("beidan_sp", sp_date, {
+                    "source": "online",
+                    "at": datetime.now().isoformat(),
+                    "count": len(sp),
+                    "updated": updated,
+                    "dirty": dirty,
+                    "by": owner or "",
+                })
+                warning = None
+                if dirty:
+                    warning = (f"{sp_date} 北单开奖SP有 {dirty} 场 result 与比分/让球推导"
+                               f"矛盾（脏值），已标 result_suspect 跳过结算")
+                return {"date": sp_date, "source": "online", "count": len(sp),
+                        "updated": updated, "dirty": dirty, "warning": warning,
+                        "sp": sp}
+            if st:
+                return {"date": sp_date, "source": "local", "count": st.get("count", 0),
+                        "updated": 0, "warning": f"{sp_date} 开奖SP拉取失败，保留本地缓存",
+                        "sp": None}
+            return {"date": sp_date, "source": "none", "count": 0, "updated": 0,
+                    "warning": f"{sp_date} 开奖SP拉取为空", "sp": None}
+
+    def prepare_day(self, day_date: str, jingcai_only: bool = True,
+                    beidan_only: bool = False, live: bool = False,
+                    with_features: bool = True, with_tags: bool = True,
+                    owner: str = "", with_jc_odds: Optional[bool] = None,
+                    with_beidan_odds: Optional[bool] = None) -> dict:
+        """准备一个足球日的完整数据（比赛列表 + compact-fet + tags），返回就绪报告。
+
+        不同狗传不同 day_date / 范围时互不阻塞：同日期共享单飞锁与状态文件，
+        已准备好的日期会秒回 ready（source=local），避免重复打线上。
+
+        with_jc_odds / with_beidan_odds 显式控制是否叠加竞彩/北单盘口字段；
+        默认 None 时分别跟随 jingcai_only / beidan_only。
+
+        Returns:
+            {"day", "window", "calendar_dates", "status": "ready"|"partial"|"empty",
+             "ready", "source", "matches": {cd: {...}}, "candidates",
+             "features": {...}|None, "failed_lids", "warnings"}
+        """
+        from datetime import date as _date
+        from .environment import get_football_day, football_day_calendar_dates
+
+        if with_jc_odds is None:
+            with_jc_odds = jingcai_only
+        if with_beidan_odds is None:
+            with_beidan_odds = beidan_only
+        if beidan_only:
+            jingcai_only = False
+
+        d = _date.fromisoformat(day_date)
+        window_start, window_end = get_football_day(d)
+        cal_dates = football_day_calendar_dates(d)
+
+        match_reports: dict[str, dict] = {}
+        for cd in cal_dates:
+            match_reports[cd] = self.prepare_matches(
+                cd, live=live,
+                with_jc_odds=with_jc_odds, with_beidan_odds=with_beidan_odds,
+                owner=owner,
+            )
+
+        all_matches: list[dict] = []
+        for cd in cal_dates:
+            all_matches += match_reports[cd].get("matches") or []
+
+        candidates = [
+            m for m in all_matches
+            if window_start <= str(m.get("match_time", ""))[:16] <= window_end
+            and m.get("lota_id")
+            and m.get("home_name", "?") not in ("", "?")
+            and m.get("away_name", "?") not in ("", "?")
+            and (not jingcai_only or m.get("jingcai_number"))
+            and (not beidan_only or m.get("beidan_number"))
+        ]
+        # 去重：同一场可能同时落在相邻日历日缓存
+        seen_lids: set[str] = set()
+        uniq: list[dict] = []
+        for m in candidates:
+            lid = m.get("lota_id")
+            if lid in seen_lids:
+                continue
+            seen_lids.add(lid)
+            uniq.append(m)
+        candidates = uniq
+
+        features = None
+        if with_features:
+            features = self.prepare_features(
+                [m.get("lota_id", "") for m in candidates],
+                with_tags=with_tags, owner=owner,
+            )
+
+        sources = {r.get("source") for r in match_reports.values()}
+        source = ("online" if "online" in sources
+                  else ("local" if "local" in sources else "none"))
+        failed_count = len(features.get("failed_lids", [])) if features else 0
+        # 北单模式：候选场次必须 100% 带 beidan_info（含开奖字段）才算数据就绪
+        beidan_missing: list[str] = []
+        if beidan_only:
+            beidan_missing = [
+                m.get("lota_id", "") for m in candidates
+                if not m.get("beidan_info")
+            ]
+        beidan_complete = not beidan_missing
+        failed_count += len(beidan_missing)
+        status = ("empty" if not candidates
+                  else ("ready" if failed_count == 0 else "partial"))
+
+        report = {
+            "day": day_date,
+            "window": f"{window_start[:16]} ~ {window_end[:16]}",
+            "calendar_dates": cal_dates,
+            "status": status,
+            "ready": status == "ready",
+            "source": source,
+            "matches": {
+                cd: {"source": r.get("source"), "count": r.get("count", 0)}
+                for cd, r in match_reports.items()
+            },
+            "candidates": len(candidates),
+            "features": features,
+            "failed_lids": features.get("failed_lids", []) if features else [],
+            "beidan_complete": beidan_complete,
+            "beidan_missing": beidan_missing,
+            "warnings": [
+                r["warning"] for r in match_reports.values() if r.get("warning")
+            ] + ([f"{day_date} {len(beidan_missing)} 场北单缺 beidan_info"]
+                 if beidan_missing else []),
+        }
+        _record_dm_state("days", day_date, {
+            "prepared_at": datetime.now().isoformat(),
+            "by": owner or "",
+            "status": status,
+            "ready": report["ready"],
+            "source": source,
+            "candidates": len(candidates),
+            "features_ok": (features.get("fetched", 0) + features.get("cached", 0)
+                            if features else None),
+            "features_failed": failed_count,
+            "beidan_complete": beidan_complete,
+        })
+        return report
+
+    def prepare_range(self, start_date: str, end_date: str,
+                      jingcai_only: bool = True, beidan_only: bool = False,
+                      live: bool = False, with_features: bool = True,
+                      with_tags: bool = True, owner: str = "",
+                      with_jc_odds: Optional[bool] = None,
+                      with_beidan_odds: Optional[bool] = None) -> dict:
+        """按范围准备多个足球日（覆盖不同狗的不同数据范围），返回逐日就绪报告。"""
+        from datetime import date as _date, timedelta as _td
+
+        if with_jc_odds is None:
+            with_jc_odds = jingcai_only
+        if with_beidan_odds is None:
+            with_beidan_odds = beidan_only
+        if beidan_only:
+            jingcai_only = False
+
+        d = _date.fromisoformat(start_date)
+        end = _date.fromisoformat(end_date)
+        days: dict[str, dict] = {}
+        total_candidates = total_failed = 0
+        while d <= end:
+            day_key = d.isoformat()
+            report = self.prepare_day(
+                day_key, jingcai_only=jingcai_only, beidan_only=beidan_only,
+                live=live, with_features=with_features, with_tags=with_tags,
+                owner=owner, with_jc_odds=with_jc_odds,
+                with_beidan_odds=with_beidan_odds,
+            )
+            days[day_key] = report
+            total_candidates += report["candidates"]
+            total_failed += len(report.get("failed_lids") or [])
+            total_failed += len(report.get("beidan_missing") or [])
+            d += _td(days=1)
+
+        ready_days = sum(1 for r in days.values() if r["ready"])
+        return {
+            "start": start_date,
+            "end": end_date,
+            "status": ("ready" if ready_days == len(days)
+                       else ("partial" if days else "empty")),
+            "days": days,
+            "summary": {
+                "days": len(days),
+                "ready_days": ready_days,
+                "candidates": total_candidates,
+                "failed": total_failed,
+            },
+        }
+
+    def data_ready(self, day_date: str) -> dict:
+        """查询某足球日数据是否已准备就绪（只读状态，不触发任何拉取）。"""
+        with _file_lock("dm-state", timeout=30):
+            st = _load_dm_state()
+        entry = (st.get("days") or {}).get(day_date)
+        if not entry:
+            return {"day": day_date, "ready": False, "reason": "not_prepared"}
+        return {"day": day_date, **entry}
+
+    def prepared_days(self) -> list[str]:
+        """返回状态文件中已准备的足球日列表（升序）。"""
+        with _file_lock("dm-state", timeout=30):
+            st = _load_dm_state()
+        return sorted((st.get("days") or {}).keys())
 
     # ═══════════════════════════════════════════
     # Odds（Pinnacle 终盘）
@@ -1182,6 +2021,43 @@ get_match_context = _dm.get_match_context
 # ═══════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════
+
+def save_beidan_sp_cache_merge(sp_dates: list[str], sp_map: dict[str, dict]) -> int:
+    """把 {lota_id: beidan_info(含开奖)} 合并进 beidan_sp/<date>.json。
+
+    与 save_beidan_sp_cache（整表覆盖）不同：按 lota_id upsert，保留已有场次、
+    用传入的开奖字段补全。用于 settle 后把逐腿开奖落盘，跨环境同步不再丢。
+    Returns: 实际写入的场次数。
+    """
+    if not sp_map:
+        return 0
+    written = 0
+    for sp_date in sp_dates or []:
+        path = BEIDAN_SP_DIR / f"{sp_date}.json"
+        cur: dict[str, dict] = {}
+        if path.exists():
+            try:
+                d = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(d, dict):
+                    cur = d
+            except Exception:
+                cur = {}
+        changed = False
+        for lid, info in sp_map.items():
+            if not lid or not isinstance(info, dict):
+                continue
+            base = dict(cur.get(lid) or {})
+            base.update({k: v for k, v in info.items()
+                         if k in ("result", "result_des", "spvalue", "score",
+                                  "goal_line", "beidan_id", "draw_datetime")
+                         and v is not None})
+            cur[lid] = base
+            changed = True
+        if changed:
+            _atomic_write_text(path, json.dumps(cur, ensure_ascii=False, indent=2))
+            written += len(cur)
+    return written
+
 
 if __name__ == "__main__":
     import sys

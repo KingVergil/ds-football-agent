@@ -29,10 +29,11 @@ from .beidan_settlement import (
     _round2,
     parlay_combinations,
     parse_ticket_spec,
+    settle_leg,
     settle_parlay_combo,
 )
 from .chuan_guan_dog import ChuanGuanDog
-from .data_manager import DataManager
+from .data_manager import DataManager, is_offline
 from .environment import football_day_calendar_dates, get_football_day
 from .models import _uid
 from .role import Role
@@ -188,6 +189,15 @@ class BeidanParlayDog(ChuanGuanDog):
         out: list[dict] = []
         warnings: list[str] = []
         for cd in football_day_calendar_dates(d):
+            if is_offline():
+                # 离线回放：只读本地缓存，禁联网。优先 matches/<date>.json
+                # （refresh_beidan_cache 已写入最新 beidan_info 赛前赔率）；
+                # 旧日 legacy beidan/<date>.json 兜底（含开奖 result/spvalue）。
+                ms = self._dm.get_cached_beidan_matches(cd) or []
+                if not ms:
+                    ms = self._dm._read_legacy_beidan(cd) or []
+                out.extend(ms or [])
+                continue
             # 走调度器：同日期跨进程单飞 + 5 分钟新鲜窗口 + beidan_info 完整性判定；
             # 刷新返回全量比赛 → 再按北单编号过滤，避免非北单场次混入串关选项
             prep = self._dm.prepare_matches(
@@ -401,6 +411,67 @@ class BeidanParlayDog(ChuanGuanDog):
             "llm": True,
         }
 
+    def _direction_factor_text(self, role: Role, as_of=None) -> str:
+        """方向型因子文本：只取 selected_active 的 main（含顺向 pos / 反向 neg）。
+
+        用途：单选腿。方向型因子给出明确可下注方向（主/平/客），
+        才是决定「单选往哪边打」的依据；赔率只是参考。
+        """
+        try:
+            role.memory.factors.load()
+        except Exception:
+            return ""
+        main, _, _, _ = role.memory.factors.selected_active(as_of)
+        pos = [x for x in main if x[2].get("sign") == "pos"]
+        neg = [x for x in main if x[2].get("sign") == "neg"]
+        lines = []
+        if pos:
+            lines.append("📈 方向型·顺向因子（给出明确方向，单选候选）:")
+            for fid, s0, p0 in pos:
+                desc = s0.get("desc", "")
+                lines.append(
+                    f"  ▲ {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
+                    f"收缩命中{p0['shrunk_rate']:.0%} 加权回报{p0['w_return']:+.2f}]"
+                )
+                if desc:
+                    lines.append(f"     {desc[:70]}")
+        if neg:
+            lines.append("🔄 方向型·反向因子（负回报，反买/规避信号 → 规避或全包）:")
+            for fid, s0, p0 in neg:
+                desc = s0.get("desc", "")
+                lines.append(
+                    f"  ▼ {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
+                    f"加权回报{p0['w_return']:+.2f}]"
+                )
+                if desc:
+                    lines.append(f"     {desc[:70]}")
+        return "\n".join(lines)
+
+    def _volatility_factor_text(self, role: Role, as_of=None) -> str:
+        """波动型因子文本：只取 selected_active 的 volatility。
+
+        用途：覆盖腿/防冷。波动型因子提示「会爆冷 / 低赔不可单选 / 走水」，
+        用来看哪些场次必须全包，而不是拿来定单选方向。
+        """
+        try:
+            role.memory.factors.load()
+        except Exception:
+            return ""
+        _, _, volatility, _ = role.memory.factors.selected_active(as_of)
+        if not volatility:
+            return ""
+        lines = ["🌊 波动型因子（SP收益口径，只用于判断「要不要全包防冷」，不用于定单选方向）:"]
+        for fid, s0, p0 in volatility:
+            avg_sp = p0.get("avg_sp")
+            sp_txt = f"均SP {avg_sp:.2f}" if avg_sp else "均SP —"
+            desc = s0.get("desc", "")
+            lines.append(
+                f"  ⚡ {fid} [近{p0['n']}单 {sp_txt} 加权回报{p0['w_return']:+.2f}]"
+            )
+            if desc:
+                lines.append(f"     {desc[:70]}")
+        return "\n".join(lines)
+
     def _select_legs_llm(self, matches: list[dict], day_date: str
                          ) -> tuple[Optional[list[dict]], Optional[list[dict]]]:
         """LLM 分析（对齐 agent.py 的 build_prompt→call_llm→parse 写法，
@@ -439,7 +510,8 @@ class BeidanParlayDog(ChuanGuanDog):
             except ValueError:
                 as_of = None
 
-        factor_text = self._self_factor_text(role, as_of)
+        dir_factor_text = self._direction_factor_text(role, as_of)
+        vol_factor_text = self._volatility_factor_text(role, as_of)
         factor_slugs = self._self_factor_slugs(role, as_of)
         alpha_data = None
         if role.alpha_mode:
@@ -488,19 +560,26 @@ class BeidanParlayDog(ChuanGuanDog):
             cover_desc = "双选" if cfg["cover_picks"] == 2 else "三选"
             cover_note = "每场取前 {n} 个高概率方向".format(n=cfg["cover_picks"])
         combo_count = int(cfg["cover_picks"]) ** int(cfg["cover_legs"])
-        factor_block = ""
-        if factor_text:
-            factor_block = (
-                "## 你自己的因子库（结算反思产出，供选腿参考；方向型因子支持的方向可做单选）\n"
-                + factor_text + "\n"
+        dir_factor_block = ""
+        if dir_factor_text:
+            dir_factor_block = (
+                "## 📌 方向型因子（仅供定「单选」方向；赔率低≠更稳，方向由这些因子+离散/资金/盘口一致决定）\n"
+                + dir_factor_text + "\n"
+            )
+        vol_factor_block = ""
+        if vol_factor_text:
+            vol_factor_block = (
+                "## 🛡️ 波动型因子（仅供判断哪些场次要全包/防冷，绝不拿来定单选方向）\n"
+                + vol_factor_text + "\n"
             )
         factor_cue_block = (
-            "## 🧭 因子性质判断（重要：用之前先判断，不要按名字/关键词套）\n"
-            "- **用每个因子前，先读它的描述判断性质**：\n"
-            "- ① 它给出**明确可下注方向**（主/客/平某一侧）→ 可作**单选方向**，但**仍需离散/资金/盘口同向**。\n"
-            "- ② 它只**提示风险/波动/爆冷、需要防冷或全包** → 只能进**全包/防冷**，**绝不拿去单选**。\n"
-            "- 🔄反向（负回报）→ 一律规避或全包，绝不单选。\n"
-            "- 判断依据是「用它会给你一个方向，还是只提醒你小心」。**读描述语义判断，不要按因子名套用**。\n\n"
+            "## 🧭 因子用法（重要，按用途分工，不要混用）\n"
+            "- **单选腿**：只能参考上面「方向型因子」——它给出明确可下注方向（主/客/平某一侧），"
+            "且该方向需离散/资金/盘口同向；赔率只是参考，不因低赔就默认它是答案。\n"
+            "- **覆盖腿**：只能参考上面「波动型因子」——它提示风险/波动/爆冷/防冷，"
+            "用来决定哪几场必须全包，绝不能拿去定单选方向。\n"
+            "- 🔄方向型里的**反向（负回报）**因子 → 一律规避或降为全包，绝不单选。\n"
+            "- 判断依据是「它给你一个方向，还是只提醒你小心」。**读描述语义判断，不要按因子名套用**。\n\n"
         )
         alpha_block = ""
         if alpha_data and alpha_data.get("qualified_factors"):
@@ -521,7 +600,8 @@ class BeidanParlayDog(ChuanGuanDog):
 共 {cfg['cover_picks']}^{cfg['cover_legs']} = {combo_count} 注，每注 2 元。
 - 单选：选 {cfg['single_legs']} 场最有把握的，每场只选一个方向 H/D/A（H=让球后主胜，D=平，A=让球后客胜）。
 - {cover_desc}：另选 {cfg['cover_legs']} 场，{cover_note}。
-- 单选场次只吃确定性高的方向，不吃超低蚊子肉、不追高赔冷门。
+- **单选**：方向由「方向型因子 + 单狗 agent（alpha）倾向」决定，且需离散/资金/盘口同向；赔率低只是参考，绝不等于“更稳”。
+- **覆盖/防冷**：由「波动型因子」判断哪些场次会爆冷/走水，放进 covers 全包，不用来定单选方向。
 
 ## 决策要求
 1. lota_id 必须来自下面列表。
@@ -531,15 +611,16 @@ class BeidanParlayDog(ChuanGuanDog):
 4. 凑不齐 {n_legs} 场好腿就 empty:true，singles 和 covers 都为空数组。
 
 ## 思考步骤（输出前必做，思考过程写在 thinking 里，最终只输出 JSON）
-1. 逐场分类：把「离散/资金/盘口方向一致、低水保护」的稳定场放进单选候选；
-   把「离散矛盾、资金背离、盘口反复、可能爆冷」的场放进覆盖候选。
-2. 单选定方向：只从稳定候选里选 {cfg['single_legs']} 场，方向取信号最一致的一边，不吃蚊子肉、不追高赔。
-3. 覆盖选 {cfg['cover_legs']} 场：优先把最可能爆冷的 {cfg['cover_legs']} 场放进 covers（{cover_note}）。
-4. 校验：singles {cfg['single_legs']} 条、covers {cfg['cover_legs']} 条、不重复；凑不齐就 empty:true。
+1. 先看「波动型因子」：哪些场被判「防冷/爆冷/走水」→ 这些是 covers 候选（{cover_note}），绝不进单选。
+2. 再看「方向型因子 + 跨狗 alpha 倾向」：哪些场有明确方向、且离散/资金/盘口同向 → 从稳定场里选 {cfg['single_legs']} 场做单选。
+3. 补足 {cfg['cover_legs']} 场覆盖腿：除波动型爆冷场外，再从「离散矛盾、资金背离、盘口反复」的场次补齐。
+4. 单选出方向：取「方向型因子指向 + alpha 倾向」一致的一边；赔率低的默认答案若缺因子/资金/盘口同向支撑，应降级为覆盖或放弃。
+5. 校验：singles {cfg['single_legs']} 条、covers {cfg['cover_legs']} 条、不重复；凑不齐就 empty:true。
 
 ## 人设
 {persona}
-{factor_block}
+{dir_factor_block}
+{vol_factor_block}
 {factor_cue_block}
 {alpha_block}
 
@@ -550,7 +631,8 @@ class BeidanParlayDog(ChuanGuanDog):
         from .prompt_builder import count_tokens
         tokens_in = count_tokens(system)
         data_tokens = count_tokens(matches_text)
-        mem_tokens = count_tokens(factor_block) + count_tokens(alpha_block)
+        mem_tokens = (count_tokens(dir_factor_block) + count_tokens(vol_factor_block)
+                      + count_tokens(alpha_block))
         user_tokens = count_tokens(user_msg)
         token_breakdown = {
             "sys": max(0, tokens_in - data_tokens - mem_tokens - user_tokens),
@@ -798,23 +880,141 @@ class BeidanParlayDog(ChuanGuanDog):
     # settle — 北单开奖 result + spvalue 结算（65% 返奖）
     # ═══════════════════════════════════════════
 
+    @staticmethod
+    def _football_day_start_from_match_time(match_time: Optional[str]) -> Optional[str]:
+        """从比赛开赛时间反推北单足球日起始日（窗口 [D 12:01, D+1 12:00]）。
+
+        12:00 及以前的比赛属于前一个足球日；12:01 以后属于当天足球日。
+        """
+        if not match_time:
+            return None
+        s = str(match_time).strip().replace("T", " ")
+        s = s[:16]
+        try:
+            dt = datetime.strptime(s, "%Y-%m-%d %H:%M")
+        except ValueError:
+            return None
+        if dt.hour < 12 or (dt.hour == 12 and dt.minute == 0):
+            base = dt.date() - timedelta(days=1)
+        else:
+            base = dt.date()
+        return base.isoformat()
+
+    def _infer_sp_dates_from_orders(self, orders: list[dict]) -> list[str]:
+        """按未结算订单里的比赛时间推断应拉取的北单 SP 日期。
+
+        settle 的 day_date 业务口径是「窗口结束日」，但用户/测试偶尔会传
+        「窗口起始日」；直接 `day_date - 1` 会取错 SP，导致静默漏结。
+        这里以订单腿的 match_time 为准，比入参日期更可靠。
+        """
+        out: set[str] = set()
+        for o in orders or []:
+            for leg in list(o.get("legs") or []) + list(o.get("ticket_legs") or []):
+                if not isinstance(leg, dict):
+                    continue
+                sp = self._football_day_start_from_match_time(leg.get("match_time"))
+                if sp:
+                    out.add(sp)
+        return sorted(out)
+
     def _fetch_beidan_results(self, day_date: Optional[str],
-                              lids: set[str]) -> dict[str, dict]:
+                              lids: set[str],
+                              sp_dates: Optional[list[str]] = None,
+                              orders: Optional[list[dict]] = None) -> dict[str, dict]:
         """结算前先通过 beidan/sp 接口把开奖 result/spvalue 合并进本地缓存，再读回。
 
         走 DataManager.prepare_beidan_sp：同一 sp_date 跨进程单飞，
         并发结算（多只北单狗）只拉一次线上，窗口内重复结算直接读本地。
+
+        若调用方未显式传 sp_dates，则回退为 day_date - 1（兼容旧的窗口结束日口径）；
+        建议 settle() 传入从订单 match_time 推断出的 sp_dates，避免日期口径错位。
         """
-        if day_date:
+        if sp_dates is None:
+            sp_dates = []
+            if day_date:
+                try:
+                    sp_dates = [(date.fromisoformat(day_date) - timedelta(days=1)).isoformat()]
+                except Exception:
+                    sp_dates = []
+        sp_dates = list(dict.fromkeys(sp_dates or []))
+
+        for sp_date in sp_dates:
+            if is_offline():
+                # 离线回放：不读 beidan_sp 缓存（可能被线上半开奖污染），
+                # 也不联网。直接走 get_cached_beidan_results（读 beidan/<date>.json，
+                # 含全量 result/spvalue），避免 result_suspect 跳过结算。
+                break
             try:
-                # settle 的 day_date 是窗口结束日（起始日 + 1）；beidan/sp 按足球日起始日键控，故 -1 天
-                sp_date = (date.fromisoformat(day_date) - timedelta(days=1)).isoformat()
                 prep = self._dm.prepare_beidan_sp(sp_date, owner=f"{self.user}:settle")
                 if prep.get("warning"):
                     print(f"  ⚠️ {prep['warning']}")
             except Exception as e:
                 print(f"  ⚠️ 开奖SP拉取失败（继续用本地缓存）: {e}")
-        return self._dm.get_cached_beidan_results(lids)
+
+        if is_offline():
+            # 离线回放：三源合并开奖 result/spvalue，优先取「带 result」的源。
+            #   ① legacy beidan/<date>.json（最完整开奖）
+            #   ② matches/<date>.json 的 beidan_info（08-29/30 等开奖在报文里）
+            #   ③ beidan_sp/<date>.json（独立开奖 SP）
+            # 用「已有 result 才覆盖」的策略，避免无 result 的不完整 beidan_info 顶掉真实开奖。
+            result: dict[str, dict] = {}
+            for sp_date in sp_dates:
+                for m in (self._dm._read_legacy_beidan(sp_date) or []):
+                    lid = m.get("lota_id")
+                    bi = m.get("beidan_info")
+                    if lid and bi and lid in lids:
+                        result.setdefault(lid, bi)
+                # ② matches 缓存的 beidan_info（仅当该 lid 尚无 result 时补缺）
+                for lid, bi in self._dm.get_cached_beidan_results({lid for lid in lids}).items():
+                    if lid not in lids:
+                        continue
+                    if lid not in result and isinstance(bi, dict) and bi.get("result") not in (None, ""):
+                        result[lid] = bi
+                # ③ beidan_sp 独立缓存（仅当该 lid 尚无 result 时补缺）
+                for lid, info in (self._dm.get_beidan_sp_cache(sp_date) or {}).items():
+                    if lid not in lids or lid in result:
+                        continue
+                    if isinstance(info, dict) and info.get("result") not in (None, ""):
+                        result[lid] = info
+            return result
+
+        result = self._dm.get_cached_beidan_results(lids)
+        if not sp_dates:
+            return result
+
+        # 线上开奖优先于本地缓存：比赛缓存若被其他 agent 覆盖（lota_id 轮换/缺失），
+        # merge_beidan_sp 会 updated=0，但这里仍用独立落盘的开奖 SP 补缺。
+        # 关键是补缺前做与 merge_beidan_sp 相同的脏值校验，不能覆盖 result_suspect 防线。
+        goal_line_by_lid: dict[str, float] = {}
+        for o in orders or []:
+            for leg in list(o.get("legs") or []) + list(o.get("ticket_legs") or []):
+                if not isinstance(leg, dict):
+                    continue
+                lid = leg.get("lota_id")
+                if lid and "goal_line" in leg and lid not in goal_line_by_lid:
+                    goal_line_by_lid[lid] = leg.get("goal_line")
+
+        for sp_date in sp_dates:
+            if is_offline():
+                break
+            sp_cache = self._dm.get_beidan_sp_cache(sp_date)
+            for lid, info in sp_cache.items():
+                if lid not in lids:
+                    continue
+                base = dict(result.get(lid) or {})
+                candidate = dict(base)
+                candidate.pop("result_suspect", None)
+                candidate.update(info)
+                if lid in goal_line_by_lid and candidate.get("goal_line") is None:
+                    candidate["goal_line"] = goal_line_by_lid[lid]
+
+                probe = settle_leg("H", candidate)
+                if probe.get("ready") and probe.get("mismatch"):
+                    base["result_suspect"] = True
+                else:
+                    base = candidate
+                result[lid] = base
+        return result
 
     def _settle_one(self, role: Role, order: dict,
                     beidan_map: dict[str, dict]) -> Optional[dict]:
@@ -836,6 +1036,40 @@ class BeidanParlayDog(ChuanGuanDog):
         role.save_order(order)
         role.save()
         return {"hit": res.get("hit"), "profit": res.get("profit", 0.0)}
+
+    def _persist_lid_opening(self, beidan_map: dict[str, dict],
+                             unsettled: list[dict],
+                             sp_dates: list[str]) -> None:
+        """把 settle 拿到的逐腿开奖（result/spvalue/score/goal_line）落盘，保证跨环境不丢。
+
+        做两件事：
+        1. 回写订单 legs 的 beidan_info —— orders 随后 role.save() 持久化，订单即完整开奖载体。
+        2. 按体育日 upsert 进 beidan_sp/<date>.json —— 该文件即该日全量开奖，可独立同步。
+        不联网；失败只警告不影响结算。
+        """
+        if not beidan_map:
+            return
+        from .data_manager import save_beidan_sp_cache_merge
+        # 1) 回写订单 legs 的 beidan_info
+        for o in unsettled:
+            for l in list(o.get("legs") or []) + list(o.get("ticket_legs") or []):
+                if not isinstance(l, dict):
+                    continue
+                lid = l.get("lota_id")
+                info = beidan_map.get(lid)
+                if not info:
+                    continue
+                cur = l.get("beidan_info") or {}
+                if not isinstance(cur, dict):
+                    cur = {}
+                # 用开奖 field(带 result/spvalue) 补全/刷新 beidan_info
+                merged = {**cur, **info}
+                l["beidan_info"] = merged
+        # 2) upsert 到 beidan_sp/<date>.json（按 lota_id 补全开奖字段）
+        try:
+            save_beidan_sp_cache_merge(sp_dates, beidan_map)
+        except Exception as e:
+            print(f"  ⚠️ 开奖落盘失败（不影响结算）: {e}")
 
     def _judge_ticket_legs(self, ticket_legs: list[dict],
                            beidan_map: dict[str, dict]) -> Optional[dict]:
@@ -890,7 +1124,21 @@ class BeidanParlayDog(ChuanGuanDog):
                 return summary
 
             lids = {lid for o in unsettled for lid in self._leg_ids(o)}
-            beidan_map = self._fetch_beidan_results(day_date, lids)
+            inferred_sp_dates = self._infer_sp_dates_from_orders(unsettled)
+            fetch_sp_dates = inferred_sp_dates
+            if not fetch_sp_dates and day_date:
+                try:
+                    fetch_sp_dates = [
+                        (date.fromisoformat(day_date) - timedelta(days=1)).isoformat()
+                    ]
+                except Exception:
+                    fetch_sp_dates = []
+            beidan_map = self._fetch_beidan_results(
+                day_date, lids, sp_dates=fetch_sp_dates, orders=unsettled
+            )
+            # 治本：把逐腿开奖落盘（订单 legs beidan_info + beidan_sp/<date>.json），
+            # 保证跨环境同步不丢 result/spvalue。
+            self._persist_lid_opening(beidan_map, unsettled, fetch_sp_dates)
 
             summary = {"settled": 0, "hit": 0, "miss": 0, "push": 0, "pnl": 0.0,
                        "slips_any_hit": 0, "slips_total": 0}

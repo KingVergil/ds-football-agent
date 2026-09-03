@@ -76,6 +76,14 @@ def main() -> int:
     ap.add_argument("--capital", type=float, default=5000.0)
     ap.add_argument("--dedup-interval", type=int, default=7)
     ap.add_argument("--run-root", default=None)
+    ap.add_argument("--no-alpha", action="store_true",
+                    help="关闭跨狗 alpha（不注入其他单狗因子/订单倾向）")
+    ap.add_argument("--stop-on-ruin", action="store_true",
+                    help="结算后若剩余资金不足下一张票成本，立即停止")
+    ap.add_argument("--offline", action="store_true",
+                    help="纯离线：只读本地缓存（matches/beidan/beidan_sp），禁用一切联网拉取")
+    ap.add_argument("--resume", action="store_true",
+                    help="续跑：不重置资金/订单/因子，直接从现有 run-root 状态继续 start~end")
     args = ap.parse_args()
 
     run_root = Path(args.run_root or (TEST_ROOT / args.dog))
@@ -83,13 +91,34 @@ def main() -> int:
     os.environ["DS_SESSIONS_ROOT"] = str(run_root / "sessions")
     os.environ["DS_FACTORS_ROOT"] = str(run_root / "factors")
     from src.beidan_parlay_dog import BeidanParlayDog
+    if args.offline:
+        from src.data_manager import set_offline
+        set_offline(True)
+        print("  🔌 已开启离线模式：只读本地缓存，禁止联网刷新", flush=True)
     _copy_role_assets(args.dog, Path(os.environ["DS_ROLES_ROOT"]))
 
     dog = BeidanParlayDog(user=args.dog, capital=args.capital)
-    dog.reset(args.capital)
+    if not args.resume:
+        dog.reset(args.capital)
+    else:
+        print(f"  ▶️ 续跑：加载现有状态 start_capital={dog._ensure_role().capital:.0f}", flush=True)
+    if args.no_alpha:
+        role = dog._ensure_role()
+        role.alpha_mode = False
+        role.scope = "beidan"
+        role.save()
+        print(f"  🔒 已关闭 alpha (alpha_mode=False) | scope={role.scope}", flush=True)
     days = _date_range(args.start, args.end)
 
-    trajectory = []
+    trajectory_path = run_root / "trajectory.json"
+    if args.resume and trajectory_path.exists():
+        try:
+            trajectory = json.loads(trajectory_path.read_text(encoding="utf-8"))
+            print(f"  ▶️ 续跑：已加载历史轨迹 {len(trajectory)} 天", flush=True)
+        except Exception:
+            trajectory = []
+    else:
+        trajectory = []
     print(f"walkforward {args.dog} {args.start}~{args.end} capital={args.capital:.0f} "
           f"dedup每{args.dedup_interval}天", flush=True)
     for i, d in enumerate(days, 1):
@@ -115,16 +144,25 @@ def main() -> int:
         print(f"  {d} 下单{row['placed']} 结算{row['settled']} "
               f"中{row['hit']} 挂{row['miss']} PnL{row['pnl']:+.0f} "
               f"资金{row['capital']:.0f} 因子{nf}", flush=True)
+        if args.stop_on_ruin:
+            # 破产停：剩余资金不足以再下最小一张票（486=8串1 243注×2）即停
+            cfg = dog._load_parlay_config()
+            combos = int(cfg.get("cover_picks", 3)) ** int(cfg.get("cover_legs", 5))
+            min_cost = dog.UNIT_STAKE * combos
+            if role.capital < min_cost:
+                print(f"  🛑 资金 {role.capital:.0f} < 最小票成本 {min_cost:.0f}，破产停止", flush=True)
+                break
         if i % args.dedup_interval == 0:
             before = nf
             after = _dedup_factors(dog)
             print(f"  🧹 去重: {before} -> {after} 因子", flush=True)
 
-    (run_root / "trajectory.json").write_text(
+    trajectory_path.write_text(
         json.dumps(trajectory, ensure_ascii=False, indent=2), encoding="utf-8")
     role = dog._ensure_role()
     print(f"完成 {args.dog}: 期末资金 {role.capital:.0f} | "
-          f"PnL {role.capital - args.capital:+.0f}", flush=True)
+          f"PnL {role.capital - args.capital:+.0f} | "
+          f"共跑 {len(trajectory)} 天/停在第 {i if 'i' in dir() else len(trajectory)} 天", flush=True)
     return 0
 
 
