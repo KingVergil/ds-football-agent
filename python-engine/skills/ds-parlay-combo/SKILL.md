@@ -13,7 +13,7 @@ description: 串关狗（3串1 竞彩串关）独立连招：预取数据 → �
 bash skills/ds-parlay-combo/scripts/parlay_combo.sh [YYYY-MM-DD]   # 不传日期 = live 语义
 ```
 
-脚本依次执行：prefetch → `python -m src.chuan_guan_dog analyze <day> --tickets 3串1` → `./batch_agents.sh dashboard` → `./batch_agents.sh email-orders <day> 串关狗`。
+脚本依次执行：prefetch → `python -m src.chuan_guan_dog analyze <day> --tickets 3串1` → `python dsfootball_cli.py dashboard` → `python dsfootball_cli.py agent 串关狗 email-orders <day>`。
 
 ## 分步执行（调试时）
 
@@ -21,8 +21,8 @@ bash skills/ds-parlay-combo/scripts/parlay_combo.sh [YYYY-MM-DD]   # 不传日�
 2. **串关狗分析**：`python -m src.chuan_guan_dog analyze <day> --tickets 3串1`
    - 正式角色 `串关狗`，人设已锁定"只玩 3串1，没有条件就跳过"
    - `--tickets 3串1` 硬锁：prompt 同步收窄为恰好 3 场
-3. **刷新看板**：`./batch_agents.sh dashboard`（打开 UI）
-4. **发送串关狗邮件**：`./batch_agents.sh email-orders <day> 串关狗`
+3. **刷新看板**：`python dsfootball_cli.py dashboard`（打开 UI）
+4. **发送串关狗邮件**：`python dsfootball_cli.py agent 串关狗 email-orders <day>`
 
 ## 关键规则
 
@@ -30,5 +30,5 @@ bash skills/ds-parlay-combo/scripts/parlay_combo.sh [YYYY-MM-DD]   # 不传日�
 - **独立于 7 狗**：串关狗有自己的 CLI（`python -m src.chuan_guan_dog`）和角色/资金，不进 batch 的 7 狗列表；7 狗流程里 analyze/settle 会带串关狗，但"提前连招"场景单独跑本技能
 - **不用 alpha 模式**：串关狗当前不读跨狗因子注册表（人设 + 竞彩赔率 + 数据段选腿）
 - **邮件收件人**：`email-orders` 的 agent 参数必须传 `串关狗`，否则默认发梭哈2狗/均注狗
-- **结算**：`python -m src.chuan_guan_dog settle <day>` 或 `./batch_agents.sh settle <day>`（已内置串关狗 + 因子归纳）
+- **结算**：`python -m src.chuan_guan_dog settle <day>`（串关狗独立角色；7 狗结算走斗狗场「🧾 结算」）
 - 结果落盘：会话 `data/sessions/串关狗/`、订单/资金 `data/roles/串关狗/`

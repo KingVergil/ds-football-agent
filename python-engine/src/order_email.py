@@ -11,6 +11,7 @@
 import json
 import sys
 from pathlib import Path
+from collections import OrderedDict
 from datetime import date, datetime, timedelta
 
 from . import tools
@@ -157,6 +158,7 @@ def save_snapshot(agent_name: str, football_day: str, orders: list[dict]) -> Non
 def detect_changes(
     current_orders: list[dict],
     snapshot: dict | None,
+    settled_ids: set | None = None,
 ) -> dict:
     """
     对比当前订单和快照，检测变化。
@@ -171,6 +173,7 @@ def detect_changes(
       }
     """
     result = {"new": [], "changed": [], "removed": [], "has_changes": False}
+    settled_ids = settled_ids or set()
 
     if snapshot is None:
         return result
@@ -180,7 +183,8 @@ def detect_changes(
 
     # 检测移除：上次快照有、当前不在 pending 中的
     for sid, s in snapshot_map.items():
-        if sid not in current_ids:
+        # 订单被"结算"后才离开 pending → 不是取消，不标"取消/不下"
+        if sid not in current_ids and sid not in settled_ids:
             result["removed"].append(s)
             result["has_changes"] = True
 
@@ -600,6 +604,163 @@ def build_email_body(
 
 
 # ═══════════════════════════════════════════════
+# bc狗邮件（按票聚合：北单编号 + 最晚可购买时间）
+# ═══════════════════════════════════════════════
+
+def get_beidan_parlay_slips(agent_name: str, day_start: str, day_end: str) -> list[dict]:
+    """获取bc狗当前足球日窗口内、未结算的串关票（按 slip_id 聚合）。
+
+    每票返回:
+      slip_id, ticket_type, combos_count, unit_stake, total_stake,
+      leg_count, created_at, earliest_kickoff, latest_purchase, legs
+    按 earliest_kickoff 升序。
+    """
+    role = _load_role_json(agent_name)
+    orders = role.get("orders", [])
+    if not orders:
+        return []
+
+    slips: "OrderedDict[str, dict]" = OrderedDict()
+    for o in orders:
+        if o.get("settled_at"):
+            continue
+        if o.get("bet_type") != "北单串关":
+            continue
+        sid = o.get("slip_id") or o.get("id")
+        if not sid or sid in slips:
+            continue
+        legs = o.get("ticket_legs") or o.get("legs") or []
+        if not legs:
+            continue
+        times = [l.get("match_time", "") for l in legs if l.get("match_time")]
+        if not times:
+            continue
+        # 至少一腿落在本足球日窗口
+        if not any(day_start <= t <= day_end for t in times):
+            continue
+        earliest = min(times)
+        try:
+            latest = (datetime.strptime(earliest, "%Y-%m-%d %H:%M:%S")
+                      - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            latest = earliest
+        combos = int(o.get("combos_count") or 0)
+        unit = float(o.get("bet_size") or 2.0)
+        slips[sid] = {
+            "slip_id": sid,
+            "ticket_type": o.get("ticket_type") or "8串1",
+            "combos_count": combos,
+            "unit_stake": unit,
+            "total_stake": round(combos * unit, 2),
+            "leg_count": len(legs),
+            "created_at": o.get("created_at", ""),
+            "earliest_kickoff": earliest,
+            "latest_purchase": latest,
+            "legs": legs,
+        }
+    result = list(slips.values())
+    result.sort(key=lambda x: x["earliest_kickoff"])
+    return result
+
+
+def _beidan_pick_cn(leg: dict) -> str:
+    """北单让球胜平负：H→胜, D→平, A→负；多选 → 用 / 连接。"""
+    mp = {"H": "胜", "D": "平", "A": "负"}
+    picks = leg.get("picks") or ([leg.get("pick")] if leg.get("pick") else [])
+    names = [mp.get(p, p) for p in picks]
+    return "/".join(names) if names else "—"
+
+
+def _beidan_odds_str(leg: dict) -> str:
+    od = leg.get("odds") or {}
+    if isinstance(od, dict):
+        mp = {"H": "胜", "D": "平", "A": "负"}
+        return " / ".join(f"{mp.get(k, k)}@{v}" for k, v in od.items())
+    return str(od or "-")
+
+
+def build_beidan_parlay_email_body(agent_name: str, football_day: str,
+                                   slips: list[dict]) -> str:
+    """构建bc狗邮件正文：每票一块，含北单编号 + 最晚可购买时间。"""
+    total_stake = sum(s["total_stake"] for s in slips)
+    now = datetime.now()
+
+    slip_blocks = ""
+    for si, s in enumerate(slips, 1):
+        legs_html = ""
+        for li, l in enumerate(s["legs"], 1):
+            mt = str(l.get("match_time", ""))[5:16]
+            goal = l.get("goal_line")
+            gl_str = f"{goal:+.1f}" if isinstance(goal, (int, float)) else "—"
+            bg = "#f9f9f9" if li % 2 == 1 else "#ffffff"
+            legs_html += f"""
+        <tr style="background:{bg}">
+            <td style="padding:5px 8px;text-align:center;color:#555">{l.get('beidan_number','?')}</td>
+            <td style="padding:5px 8px;white-space:nowrap;color:#888">{mt}</td>
+            <td style="padding:5px 8px;color:#888">{l.get('league_name','?')}</td>
+            <td style="padding:5px 8px;text-align:right;color:#333">{l.get('home_name','?')}</td>
+            <td style="padding:5px 2px;text-align:center;color:#ccc">vs</td>
+            <td style="padding:5px 8px;color:#333">{l.get('away_name','?')}</td>
+            <td style="padding:5px 8px;text-align:center;color:#666">{gl_str}</td>
+            <td style="padding:5px 8px;text-align:center;font-weight:bold;color:#c0392b">{_beidan_pick_cn(l)}</td>
+            <td style="padding:5px 8px;text-align:center;color:#333">{_beidan_odds_str(l)}</td>
+        </tr>"""
+        slip_blocks += f"""
+    <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:18px;overflow:hidden">
+        <div style="background:#2c3e50;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+            <span><b>票{si}</b> · {s['ticket_type']} · {s['combos_count']}注 · {s['total_stake']:.0f}元</span>
+            <span style="color:#ffd98a">⏰ 最晚可购买：<b>{s['latest_purchase']}</b>（最早开赛 {s['earliest_kickoff'][5:16]} 前5分钟）</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+                <tr style="background:#f0f0f0;color:#999">
+                    <th style="padding:6px 8px;text-align:center">北单编号</th>
+                    <th style="padding:6px 8px;text-align:center">时间</th>
+                    <th style="padding:6px 8px;text-align:left">联赛</th>
+                    <th style="padding:6px 8px;text-align:right">主队</th>
+                    <th style="padding:6px 2px"></th>
+                    <th style="padding:6px 8px;text-align:left">客队</th>
+                    <th style="padding:6px 8px;text-align:center">让球</th>
+                    <th style="padding:6px 8px;text-align:center">选择</th>
+                    <th style="padding:6px 8px;text-align:center">赔率</th>
+                </tr>
+            </thead>
+            <tbody>{legs_html}</tbody>
+        </table>
+    </div>"""
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,SF Pro Display,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#333;max-width:900px;margin:0 auto;padding:20px">
+
+    <div style="background:#fff8e1;border:1px solid #f0c36d;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#7a5c00">
+        ⏰ <b>购买提醒：</b>每张票的「最晚可购买时间」= 该票<b>最早开赛场次的比赛时间 - 5分钟</b>；
+        到点后整票无法再投，请以临近开赛的邮件为准。
+    </div>
+
+    <div style="margin-bottom:16px">
+        <span style="font-size:18px;font-weight:bold">{agent_name}</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span>足球日 {football_day}</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span style="color:#e67e22">{len(slips)} 票待结算</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span>合计 <b>{total_stake:.0f}元</b></span>
+    </div>
+    <div style="margin-bottom:16px;font-size:13px;color:#888">
+        每票为北单让球胜平负长串（默认 8串1 · 5全包+3单选）；全包腿任选结果即中，单选腿须全部命中。
+    </div>
+
+    {slip_blocks}
+
+    <div style="margin-top:20px;font-size:12px;color:#aaa">
+        {agent_name} · 自动发送 | {now.strftime('%Y-%m-%d %H:%M')}
+    </div>
+</body></html>"""
+    return html
+
+
+# ═══════════════════════════════════════════════
 # 主入口
 # ═══════════════════════════════════════════════
 
@@ -627,6 +788,20 @@ def send_order_email(agent_name: str = "均注狗", day_str: str | None = None) 
 
     football_day = start[:10]  # 取窗口起始日期作为标签
 
+    # ── bc狗：按票聚合（北单编号 + 最晚可购买时间）──
+    if agent_name == "bc狗":
+        slips = get_beidan_parlay_slips(agent_name, start, end)
+        if not slips:
+            print(f"[order_email] {agent_name} 足球日 {football_day} 无待结算串关票，跳过发送")
+            return True
+        body = build_beidan_parlay_email_body(agent_name, football_day, slips)
+        subject = f"[{agent_name}] 足球日 {football_day} 北单串关待结算 ({len(slips)}票)"
+        ok = send_email(subject, body, mail_cfg="163", is_html=True, agent_name=agent_name)
+        if not ok:
+            return False
+        # 北单暂不写快照（票固定，无逐单变化检测需求）
+        return True
+
     # 2. 加载未结算订单
     orders = get_pending_orders(agent_name, start, end)
     if not orders:
@@ -639,7 +814,18 @@ def send_order_email(agent_name: str = "均注狗", day_str: str | None = None) 
     if snapshot and snapshot.get("football_day") != football_day:
         snapshot = None
 
-    changes = detect_changes(orders, snapshot)
+    # 已结算离开 pending 的 lota_id：这些是"结算了"不是"取消"，不能标"取消/不下"
+    settled_ids: set = set()
+    try:
+        _role_data = _load_role_json(agent_name)
+        settled_ids = {
+            o.get("lota_id") for o in (_role_data.get("orders") or [])
+            if o.get("settled_at") and o.get("lota_id")
+        }
+    except Exception:
+        settled_ids = set()
+
+    changes = detect_changes(orders, snapshot, settled_ids=settled_ids)
 
     # 4. 构建邮件
     body = build_email_body(agent_name, football_day, orders, changes)

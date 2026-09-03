@@ -109,6 +109,7 @@ window.__ModuleLoader__.load({
 .dsd-card-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--dsw-alias-label-secondary);border-top:1px solid var(--dsw-alias-border-l1);padding-top:8px;margin-top:4px}
 .dsd-pos{color:var(--dsw-alias-state-success-primary)}
 .dsd-neg{color:var(--dsw-alias-state-error-primary)}
+.dsd-hit{color:var(--dsw-alias-state-error-primary)}
 .dsd-mut{color:var(--dsw-alias-label-secondary)}
 .dsd-pend{color:var(--dsw-alias-state-warn-primary)}
 .dsd-detail-head{display:flex;align-items:center;gap:14px;margin:4px 0 14px}
@@ -492,24 +493,42 @@ window.__ModuleLoader__.load({
     function renderParlayTicket(o, hide) {
       var tone = o.settled ? (o.profit > 0 ? "dsd-pos" : o.profit < 0 ? "dsd-neg" : "dsd-mut") : "dsd-pend";
       var pnl = o.settled ? (o.profit == null ? "—" : signed(o.profit)) : "⏳ 待投";
+      var earliestKickoff = o.earliestKickoff ? "最早 " + String(o.earliestKickoff).slice(5, 16) : "";
+      // 命中单：每腿展示开奖实际 SP（保留开奖结果码）；未中/待投：仍展示赛前赔率
+      var isHit = o.settled && o.hit;
       var legRows = (o.legs || []).map(function (l, i) {
         var gl = l.goalLine == null ? "—" : (l.goalLine > 0 ? "受让" + l.goalLine : l.goalLine < 0 ? "让" + Math.abs(l.goalLine) : "平手");
-        var oddsTxt = (l.odds || []).map(function (kv) { return kv[0] + "@" + kv[1]; }).join(" & ");
+        var showSp = isHit && l.sp != null && l.legHit;
+        var oddsTxt = showSp
+          ? "实SP " + Number(l.sp).toFixed(2)
+          : (l.odds || []).map(function (kv) { return kv[0] + "@" + kv[1]; }).join(" & ");
+        var pickTxt = (showSp && l.resultCode) ? l.resultCode : l.pickText;
+        // 胆 = 单选腿（只押固定方向，全串胜负手）；全包/双选腿不标
+        var isDan = (l.picks && l.picks.length === 1) || l.picksLabel === "单选";
+        var pickCell = isDan
+          ? h("span", null,
+              h("span", { className: "dsd-dan", style: { color: "#d33", fontWeight: "700", marginRight: "5px" } }, "胆"),
+              pickTxt)
+          : pickTxt;
         return h("tr", { key: i },
           h("td", { className: "dsd-num" }, i + 1),
+          h("td", { className: "dsd-num" }, l.beidanNumber || "—"),
           h("td", { className: "dsd-td-match", title: l.league }, l.match + (l.league ? " · " + l.league : "")),
           h("td", { className: "dsd-num dsd-hcp" }, gl),
-          h("td", null, l.pickText),
-          h("td", { className: "dsd-num" }, oddsTxt || "—"));
+          h("td", null, pickCell),
+          h("td", { className: "dsd-num" + (showSp ? " dsd-hit" : "") }, oddsTxt || "—"));
       });
       return h("div", { className: "dsd-parlay-ticket" },
         h("div", { className: "dsd-parlay-ticket-head" },
           h("span", { className: "dsd-parlay-title" }, o.match),
           h("span", { className: "dsd-parlay-meta" },
-            o.pickLabel + " · " + money(o.betSize, hide) + "元" + (o.settled ? " · " + pnl : " · " + pnl))),
+            o.pickLabel + " · " + money(o.betSize, hide) + "元" + (o.settled ? " · " + pnl : " · " + pnl) + (earliestKickoff ? " · " + earliestKickoff : ""))),
+        h("div", { className: "dsd-parlay-legend" },
+          h("span", { className: "dsd-dan", style: { color: "#d33", fontWeight: "700", marginRight: "5px" } }, "胆"), " = 单选腿（全串胜负手）· 未标=全包/双选"),
         h("table", { className: "dsd-parlay-legs" },
           h("thead", null, h("tr", null,
             h("th", { className: "dsd-num" }, "#"),
+            h("th", { className: "dsd-num" }, "北单编号"),
             h("th", null, "比赛"),
             h("th", { className: "dsd-num" }, "让球"),
             h("th", null, "胜平负"),
@@ -1609,6 +1628,8 @@ window.__ModuleLoader__.load({
       var showCreate = createState[0], setShowCreate = createState[1];
       var prepMsgState = React.useState("");
       var prepMsg = prepMsgState[0], setPrepMsg = prepMsgState[1];
+      var prepBdMsgState = React.useState("");
+      var prepBdMsg = prepBdMsgState[0], setPrepBdMsg = prepBdMsgState[1];
       var settleAllMsgState = React.useState("");
       var settleAllMsg = settleAllMsgState[0], setSettleAllMsg = settleAllMsgState[1];
       var inductAllMsgState = React.useState("");
@@ -1628,6 +1649,22 @@ window.__ModuleLoader__.load({
             else setPrepMsg("⚠️ " + ((res.body && res.body.error) || ("启动失败 HTTP " + res.status)));
           })
           .catch(function (e) { setPrepMsg("⚠️ " + String((e && e.message) || e)); });
+      }
+
+      // 顶部「北单准备」：某足球日北单范围数据预取（全局，不属单狗）→ POST /ds-run func=prepare beidan_only
+      function prepBeidanToday() {
+        setPrepBdMsg("");
+        fetch("/ds-run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ func: "prepare", day: footballDayBj(), opts: { mode: "live", beidan_only: true } }),
+        })
+          .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+          .then(function (res) {
+            if (res.body && res.body.ok) setPrepBdMsg("✅ " + (res.body.message || "北单数据准备已启动（📡 看进度）"));
+            else setPrepBdMsg("⚠️ " + ((res.body && res.body.error) || ("启动失败 HTTP " + res.status)));
+          })
+          .catch(function (e) { setPrepBdMsg("⚠️ " + String((e && e.message) || e)); });
       }
 
       // 顶部「结算全部」：对所有 live 狗并行发起当天足球日结算（POST /ds-run func=settle）
@@ -1727,12 +1764,14 @@ window.__ModuleLoader__.load({
             gen ? h("div", { className: "dsd-h2" }, "更新于 " + gen) : null),
           h("div", { className: "dsd-actions" },
             h("button", { className: "dsd-btn", onClick: load, disabled: loading }, loading ? "加载中…" : "🔄 刷新"),
-            h("button", { className: "dsd-btn", onClick: prepToday, title: "预取当天足球日比赛 + 赔率/特征段（全局数据准备）" }, "📦 准备"),
+            h("button", { className: "dsd-btn", onClick: prepToday, title: "预取当天足球日竞彩比赛 + 赔率/特征段（全局数据准备）" }, "📦 准备"),
+            h("button", { className: "dsd-btn", onClick: prepBeidanToday, title: "预取当天足球日北单比赛 + 让球/开奖SP + 特征段（北单范围数据准备）" }, "📦 北单准备"),
             h("button", { className: "dsd-btn", onClick: settleAll, title: "对所有 live 狗并行结算当天足球日" }, "🧾 结算全部"),
-            h("button", { className: "dsd-btn", onClick: inductAll, title: "归纳全部：非 alpha 并行 → alpha barrier 串行（等价 batch_agents.sh factor-induction）" }, "🧬 归纳全部"),
+            h("button", { className: "dsd-btn", onClick: inductAll, title: "归纳全部：非 alpha 并行 → alpha barrier 串行" }, "🧬 归纳全部"),
             h("button", { className: "dsd-btn", onClick: function () { setSelected(null); setShowCreate(!showCreate); }, disabled: !!selDog }, showCreate ? "✖ 关闭创建" : "➕ 创建狗"),
             h("button", { className: "dsd-btn" + (hideMoney ? " on" : ""), onClick: function () { setHideMoney(!hideMoney); } }, hideMoney ? "👁 显示狗粮" : "🙈 隐藏狗粮"))),
         prepMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, prepMsg) : null,
+        prepBdMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, prepBdMsg) : null,
         settleAllMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, settleAllMsg) : null,
         inductAllMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, inductAllMsg) : null,
         error ? h("div", { className: "dsd-error" }, "⚠️ " + error) : null,

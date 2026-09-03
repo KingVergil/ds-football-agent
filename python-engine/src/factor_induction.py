@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.store import _get_valid_section_slugs  # noqa: E402
-from src.role_registry import all_agents as _all_agents, alpha_agents as _alpha_agents  # noqa: E402
+from src.role_registry import all_agents as _all_agents, alpha_agents as _alpha_agents, role_scope  # noqa: E402
 
 ROLES_DIR = Path(os.environ.get("DS_ROLES_ROOT") or ROOT / "data" / "roles")
 # 沙箱隔离：fac_*.json 注册表随角色根一起重定向（沙箱创建时会把线上 factors 复制进 workspace）
@@ -460,48 +460,53 @@ def main(argv: list = None) -> None:
             summary[k] += res[k]
         summary["scopes"] += 1
 
-    # ── 阶段 B（barrier）：非 alpha 完成后，alpha 池跨角色统一归纳（1 次进全库）──
+    # ── 阶段 B（barrier）：非 alpha 完成后，alpha 池按 scope 分别跨角色归纳 ──
     alpha_roles = [r for r in ALL_ROLES if r in roles and r in ALPHA_ROLES]
     if alpha_roles:
-        pool: dict[str, dict] = {}
-        role_of: dict[str, str] = {}
-        removed: dict[str, list[str]] = {r: [] for r in alpha_roles}
-        groups: dict[str, list[tuple[str, str, dict]]] = {}
+        alpha_by_scope: dict[str, list[str]] = {}
         for r in alpha_roles:
-            for name, entry in roles[r].get("factor_perf", {}).items():
-                groups.setdefault(clean_name(name), []).append((r, name, entry))
-        # 跨角色同清洗名：确定性合并（不调 LLM），保留样本最多者
-        for cname, items in groups.items():
-            if len(items) == 1:
-                r, name, entry = items[0]
-                entry["_name"] = name
-                pool[name] = entry
-                role_of[name] = r
-                continue
-            br, bname, bentry = max(items, key=lambda x: x[2].get("total", 0))
-            bentry["_name"] = bname
-            pool[bname] = bentry
-            role_of[bname] = br
-            for r, name, entry in items:
-                if (r, name) == (br, bname):
+            alpha_by_scope.setdefault(role_scope(r), []).append(r)
+
+        for scope, scope_roles in alpha_by_scope.items():
+            pool: dict[str, dict] = {}
+            role_of: dict[str, str] = {}
+            removed: dict[str, list[str]] = {r: [] for r in scope_roles}
+            groups: dict[str, list[tuple[str, str, dict]]] = {}
+            for r in scope_roles:
+                for name, entry in roles[r].get("factor_perf", {}).items():
+                    groups.setdefault(clean_name(name), []).append((r, name, entry))
+            # 跨角色同清洗名：确定性合并（不调 LLM），保留样本最多者
+            for cname, items in groups.items():
+                if len(items) == 1:
+                    r, name, entry = items[0]
+                    entry["_name"] = name
+                    pool[name] = entry
+                    role_of[name] = r
                     continue
-                merge_entries(bentry, entry, name)
-                removed[r].append(name)
-                print(f"  🔗 [alpha] 跨角色同清洗名合并: {name} → {bname}（{r} → {br}）")
-        for r in alpha_roles:
-            roles[r]["factor_perf"] = {
-                n: e for n, e in roles[r]["factor_perf"].items() if n not in removed[r]
-            }
-        print(f"\n== alpha 归纳（{len(alpha_roles)} 狗合并，{len(pool)} 个因子）==")
-        res = induct_scope("alpha", pool, role_of, provider, args.limit, args.dry_run)
-        for r in alpha_roles:
-            roles[r]["factor_perf"] = {
-                n: e for n, e in pool.items() if role_of[n] == r and n in pool
-            }
-            changed.add(r)
-        for k in ("merged", "llm_calls", "fac_created"):
-            summary[k] += res[k]
-        summary["scopes"] += 1
+                br, bname, bentry = max(items, key=lambda x: x[2].get("total", 0))
+                bentry["_name"] = bname
+                pool[bname] = bentry
+                role_of[bname] = br
+                for r, name, entry in items:
+                    if (r, name) == (br, bname):
+                        continue
+                    merge_entries(bentry, entry, name)
+                    removed[r].append(name)
+                    print(f"  🔗 [alpha:{scope}] 跨角色同清洗名合并: {name} → {bname}（{r} → {br}）")
+            for r in scope_roles:
+                roles[r]["factor_perf"] = {
+                    n: e for n, e in roles[r]["factor_perf"].items() if n not in removed[r]
+                }
+            print(f"\n== alpha:{scope} 归纳（{len(scope_roles)} 狗合并，{len(pool)} 个因子）==")
+            res = induct_scope(f"alpha:{scope}", pool, role_of, provider, args.limit, args.dry_run)
+            for r in scope_roles:
+                roles[r]["factor_perf"] = {
+                    n: e for n, e in pool.items() if role_of[n] == r and n in pool
+                }
+                changed.add(r)
+            for k in ("merged", "llm_calls", "fac_created"):
+                summary[k] += res[k]
+            summary["scopes"] += 1
 
     if not args.dry_run and changed:
         save_roles(roles, changed)

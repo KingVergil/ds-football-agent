@@ -476,12 +476,17 @@ if __name__ == "__main__":
 
     # ── 独立命令: 回填北单数据缓存 (goal_line + 开奖sp) ──
     if cmd == "beidan":
-        from src.data_manager import DataManager
+        from src.data_manager import DataManager, LotaAPIError
         days = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 60
         dm = DataManager()
-        print(f"[beidan] 回填过去 {days} 天北单缓存 ...")
-        written = dm.refresh_beidan_history(days)
-        print(f"[beidan] 完成: {len(written)} 个足球日, 共 {sum(written.values())} 场")
+        print(f"[beidan] 回填过去 {days} 天北单数据（并入统一 matches 缓存）...")
+        try:
+            written = dm.refresh_beidan_history(days)
+        except LotaAPIError as e:
+            print(f"[beidan] ⚠️ 刷新失败（{e}）")
+            print("[beidan]  已保留现有比赛缓存；待上游恢复后重跑本命令即可。")
+            sys.exit(1)
+        print(f"[beidan] 完成: {len(written)} 个日历日, 共 {sum(written.values())} 场")
         sys.exit(0)
 
     # ── 独立命令（不需要 agent 参数）──
@@ -761,12 +766,13 @@ if __name__ == "__main__":
     if cmd == "prefetch":
         """预取足球日窗口内所有候选比赛的 compact-fet + tags，供并发 analyze 共用。
 
-        用法: python dsfootball_cli.py prefetch [YYYY-MM-DD]
+        走 DataManager 数据准备调度器：比赛列表 + compact-fet + tags 一次准备完成，
+        记录共享状态；随后并发 analyze 各狗直接读本地缓存。
+
+        用法: python dsfootball_cli.py prefetch [YYYY-MM-DD] [--jingcai|--beidan]
         """
         from datetime import date as _date
-        from src.environment import get_football_day, football_day_calendar_dates
         from src.data_manager import DataManager
-        from src.tools import compact_fet_to_tags, save_tagged_sections
 
         day_str = sys.argv[2] if len(sys.argv) > 2 else None
         if day_str:
@@ -776,45 +782,142 @@ if __name__ == "__main__":
                 print(f"[prefetch] 日期格式错误: {day_str}")
                 sys.exit(1)
         else:
-            # 与 batch_agents.sh 的 live 语义一致：12:00 前 → 昨天
+            # live 语义：12:00 前 → 昨天
+            from datetime import datetime as _dt
             now = _dt.now()
             d = now.date() if now.hour >= 12 else now.date() - timedelta(days=1)
-        start, end = get_football_day(d)
-        cal_dates = football_day_calendar_dates(d)
 
         dm = DataManager()
-        dm.set_live_mode(True)  # 未开赛场次强制刷新，拒绝旧缓存
         jingcai_only = "--jingcai" in sys.argv
+        beidan_only = "--beidan" in sys.argv
+        if beidan_only:
+            jingcai_only = False
         with_jc_odds = "--jingcai-odds" in sys.argv  # 附带竞彩让球(goal_line/赔率)
-
-        all_matches = []
-        for cd in cal_dates:
-            ms = dm.refresh_matches_cache(cd, with_jc_odds=with_jc_odds)
-            all_matches += ms or []
-
-        candidates = [
-            m for m in all_matches
-            if start <= m.get("match_time", "") <= end
-            and m.get("lota_id")
-            and m.get("home_name", "?") not in ("", "?")
-            and m.get("away_name", "?") not in ("", "?")
-            and (not jingcai_only or m.get("jingcai_number"))
-        ]
-        ok = fail = 0
-        for m in candidates:
-            lid = m["lota_id"]
-            data = dm.get_compact_fet(lid)
-            if not data:
-                fail += 1
-                print(f"  ⚠️ prefetch 失败: {lid} {m.get('home_name','?')} vs {m.get('away_name','?')}")
-                continue
-            sections = compact_fet_to_tags(lid, data)
-            if sections:
-                save_tagged_sections(lid, sections)
-            ok += 1
-        dm.set_live_mode(False)
-        print(f"✅ prefetch 完成: {ok}/{len(candidates)} 场 compact-fet + tags 已缓存 (窗口 {start[:10]})")
+        with_beidan_odds = beidan_only  # 北单路径附带 beidan_info
+        report = dm.prepare_day(
+            d.isoformat(),
+            jingcai_only=jingcai_only,
+            beidan_only=beidan_only,
+            live=True,
+            with_features=True,
+            with_tags=True,
+            owner="prefetch",
+            with_jc_odds=with_jc_odds,
+            with_beidan_odds=with_beidan_odds,
+        )
+        feats = report.get("features") or {}
+        ok = feats.get("fetched", 0) + feats.get("cached", 0)
+        fail = feats.get("failed", 0)
+        print(f"✅ 数据准备完成: {report['day']} | source={report['source']} | "
+              f"候选 {report['candidates']} 场 | features {ok} ok / {fail} fail | "
+              f"status={report['status']}")
+        for w in report.get("warnings", []):
+            print(f"  ⚠️ {w}")
+        for lid in report.get("failed_lids", [])[:10]:
+            print(f"  ⚠️ compact-fet 缺失: {lid}")
         sys.exit(0)
+
+    if cmd == "prepare":
+        """准备单个足球日数据（比赛列表 + compact-fet + tags），返回就绪报告。
+
+        用法: python dsfootball_cli.py prepare [YYYY-MM-DD] [--jingcai|--beidan] [--no-live]
+        """
+        from datetime import date as _date
+        from src.data_manager import DataManager
+
+        day_str = sys.argv[2] if len(sys.argv) > 2 else None
+        flags = sys.argv[3:]
+        jingcai_only = "--jingcai" in flags
+        beidan_only = "--beidan" in flags
+        if beidan_only:
+            jingcai_only = False
+        with_jc_odds = "--jingcai-odds" in flags
+        with_beidan_odds = beidan_only
+        live = "--no-live" not in flags
+        if day_str:
+            try:
+                _date.fromisoformat(day_str)
+            except ValueError:
+                print(f"[prepare] 日期格式错误: {day_str}")
+                sys.exit(1)
+        else:
+            from datetime import datetime as _dt
+            now = _dt.now()
+            day_str = now.date().isoformat() if now.hour >= 12 \
+                else (now.date() - timedelta(days=1)).isoformat()
+
+        dm = DataManager()
+        report = dm.prepare_day(
+            day_str, jingcai_only=jingcai_only, beidan_only=beidan_only,
+            live=live, with_features=True, with_tags=True, owner="cli",
+            with_jc_odds=with_jc_odds, with_beidan_odds=with_beidan_odds,
+        )
+        feats = report.get("features") or {}
+        print(json.dumps({
+            "day": report["day"],
+            "window": report["window"],
+            "status": report["status"],
+            "ready": report["ready"],
+            "source": report["source"],
+            "calendar_dates": report["calendar_dates"],
+            "matches": report["matches"],
+            "candidates": report["candidates"],
+            "features": feats,
+            "failed_lids": report["failed_lids"],
+            "warnings": report["warnings"],
+        }, ensure_ascii=False, indent=2))
+        sys.exit(0 if report["ready"] else 1)
+
+    if cmd == "prepare-range":
+        """按范围准备多个足球日（覆盖不同狗的不同数据范围）。
+
+        用法: python dsfootball_cli.py prepare-range <start> <end> [--jingcai|--beidan] [--no-live]
+        """
+        from src.data_manager import DataManager
+
+        if len(sys.argv) < 4:
+            print("[prepare-range] 需要 start 和 end 日期")
+            sys.exit(2)
+        start, end = sys.argv[2], sys.argv[3]
+        flags = sys.argv[4:]
+        jingcai_only = "--jingcai" in flags
+        beidan_only = "--beidan" in flags
+        if beidan_only:
+            jingcai_only = False
+        with_jc_odds = "--jingcai-odds" in flags
+        with_beidan_odds = beidan_only
+        live = "--no-live" not in flags
+        try:
+            from datetime import date as _date
+            _date.fromisoformat(start)
+            _date.fromisoformat(end)
+        except ValueError:
+            print(f"[prepare-range] 日期格式错误: {start} ~ {end}")
+            sys.exit(1)
+
+        dm = DataManager()
+        report = dm.prepare_range(
+            start, end, jingcai_only=jingcai_only, beidan_only=beidan_only,
+            live=live, with_features=True, with_tags=True, owner="cli",
+            with_jc_odds=with_jc_odds, with_beidan_odds=with_beidan_odds,
+        )
+        print(json.dumps({
+            "start": report["start"],
+            "end": report["end"],
+            "status": report["status"],
+            "summary": report["summary"],
+            "days": {
+                d: {
+                    "status": r["status"],
+                    "ready": r["ready"],
+                    "source": r["source"],
+                    "candidates": r["candidates"],
+                    "failed": len(r.get("failed_lids") or []),
+                }
+                for d, r in report["days"].items()
+            },
+        }, ensure_ascii=False, indent=2))
+        sys.exit(0 if report["status"] == "ready" else 1)
 
     if cmd == "factor-induction":
         """因子归纳 — 统一清洗/合并/补定义每日因子（alpha 跨狗 1 次，非 alpha 各自）

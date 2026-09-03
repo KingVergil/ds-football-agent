@@ -20,6 +20,7 @@ from .factor_select import (
     factor_profile,
     FACTOR_SAMPLE_WINDOW,
     FACTOR_SMALL_SAMPLE,
+    FACTOR_MIN_ACTIONABLE,
     FACTOR_MAX_MAIN,
     FACTOR_MAX_MAIN_POS,
     FACTOR_MAX_MAIN_NEG,
@@ -449,7 +450,8 @@ class FactorMemory:
 
     def record(self, factor_id: str, hit: bool | None, profit: float,
                desc: str = "", date: str = "", lota_id: str = "",
-               bet_size: float = 0) -> None:
+               bet_size: float = 0, factor_type: str = "directional",
+               sp: float | None = None, low_sample: bool = False) -> None:
         if not self._loaded:  # 防止覆盖磁盘上的因子库
             self.load()
         return_ratio = profit / bet_size if bet_size > 0 else 0.0
@@ -466,12 +468,17 @@ class FactorMemory:
             self.factor_perf[factor_id] = {
                 "total": 0, "hit": 0, "miss": 0, "push": 0,
                 "profit": 0.0, "total_return": 0.0,
-                "status": "active", "desc": desc,
+                "status": "testing", "desc": desc,
+                "type": factor_type,
+                "low_sample": low_sample,
                 "first_seen": date, "last_seen": date,
                 "history": [], "aliases": [],
                 "fac_id": self.fac_id_for(factor_id),
             }
         p = self.factor_perf[factor_id]
+        p.setdefault("type", factor_type)
+        if low_sample:
+            p["low_sample"] = True
         self._backfill_fac_link(factor_id)
         p["total"] += 1
         if eff_hit is True:       p["hit"] += 1
@@ -487,11 +494,14 @@ class FactorMemory:
             if not p.get("first_seen"):
                 p["first_seen"] = date
             p["last_seen"] = date
-            p.setdefault("history", []).append({
+            hist_entry = {
                 "date": date, "hit": eff_hit,
                 "profit": profit, "return_ratio": return_ratio,
                 "lota_id": lota_id,
-            })
+            }
+            if sp is not None:
+                hist_entry["sp"] = float(sp)
+            p.setdefault("history", []).append(hist_entry)
         self._save()
 
     def set_status(self, factor_id: str, status: str) -> None:
@@ -506,32 +516,42 @@ class FactorMemory:
 
     # ── 因子选择（注入 prompt 前）：样本窗 + 衰减加权 + 自适应休眠 ──
 
-    def selected_active(self, as_of=None) -> tuple[list[tuple[str, dict, dict]], list[tuple[str, dict, dict]], int]:
+    def selected_active(self, as_of=None):
         """
-        返回 (main, aux, dormant_count)：
+        返回 (main, aux, volatility, dormant_count)：
           main — 窗口内 n>=2 且加权回报>0 的活跃因子（按加权回报降序，最多 12 个）
           aux  — 窗口内样本不足 / 加权回报<=0 的因子（观察区，慎用）
+          volatility — 波动性因子（SP收益口径，不参与方向命中率排序）
           dormant_count — 超过 3×平均触发间隔未触发（或已被 review 标记 dormant）的因子数
         as_of: 评估基准时间（datetime）；历史回放时传模拟当日，默认用真实当前时间。
         """
         if not self._loaded or not self.factor_perf:
-            return [], [], 0
-        main_pos, main_neg, aux, dormant_count = [], [], [], 0
+            return [], [], [], 0
+        main_pos, main_neg, aux, volatility, dormant_count = [], [], [], [], 0
         for fid, s in self.factor_perf.items():
             status = s.get("status", "active")
             if status == "retired":
                 continue
-            if status == "dormant":
-                dormant_count += 1
-                continue
             prof = factor_profile(s, now=as_of)
             if prof is None:
                 continue
-            if prof["dormant"]:
+            strong_large = bool(prof.get("strong_large"))
+            if status == "dormant" and not strong_large:
                 dormant_count += 1
                 continue
+            if prof["dormant"] and not strong_large:
+                dormant_count += 1
+                continue
+            if strong_large and status == "dormant":
+                s["status"] = "active"
+                status = "active"
             item = (fid, s, prof)
             n, wr = prof["n"], prof["w_return"]
+
+            if prof["factor_type"] == "volatility":
+                volatility.append(item)
+                continue
+
             if n < 2:
                 aux.append(item)
             elif wr >= FACTOR_NOISE_W_RETURN:
@@ -541,17 +561,18 @@ class FactorMemory:
                 prof["sign"] = "neg"
                 main_neg.append(item)
             # else: 0 回报附近噪声 → 不展示
-        main_pos.sort(key=lambda x: -x[2]["w_return"])
-        main_neg.sort(key=lambda x: x[2]["w_return"])
+        main_pos.sort(key=lambda x: -x[2]["rank_score"])
+        main_neg.sort(key=lambda x: x[2]["rank_score"])
         aux.sort(key=lambda x: -x[2]["w_return"] if x[2] else 0)
+        volatility.sort(key=lambda x: -(x[2].get("avg_sp") or x[2].get("w_return") or 0))
         main = main_pos[:FACTOR_MAX_MAIN_POS] + main_neg[:FACTOR_MAX_MAIN_NEG]
-        return main[:FACTOR_MAX_MAIN], aux[:6], dormant_count
+        return main[:FACTOR_MAX_MAIN], aux[:10], volatility[:10], dormant_count
 
     def perf_text(self, as_of=None) -> str:
         """分层注入：L1 负例护栏 + L2 顺向(正回报) + L3 反向(负回报/反买) + L4 观察 + 噪声/休眠计数。"""
         if not self._loaded or not self.factor_perf:
             return ""
-        main, aux, dormant_count = self.selected_active(as_of)
+        main, aux, volatility, dormant_count = self.selected_active(as_of)
         noise_count = 0
         for fid, s in self.factor_perf.items():
             status = s.get("status", "active")
@@ -576,34 +597,93 @@ class FactorMemory:
         if pos:
             lines.append("📈 顺向因子（正回报，按自适应得分）:")
             for fid, s0, p0 in pos:
-                small = f" ⚠️样本少({p0['n']}单)" if p0["n"] < 5 else ""
-                lines.append(f"  {fid} [近{p0['n']}单 命中{p0['hits']}/{p0['n']} 加权回报{p0['w_return']:+.2f}{small}]")
+                total = s0.get("total", 0)
+                hit = s0.get("hit", 0)
+                miss = s0.get("miss", 0)
+                push = s0.get("push", 0)
+                status = s0.get("status", "active")
+                decided = p0.get("decided", 0)
+                tag = ""
+                if status == "testing":
+                    tag = " 🧪未验证"
+                elif s0.get("low_sample") or (0 < decided < FACTOR_SMALL_SAMPLE):
+                    tag = " ⚠️样本少"
+                lines.append(
+                    f"  {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
+                    f"收缩命中{p0['shrunk_rate']:.0%} 加权回报{p0['w_return']:+.2f} "
+                    f"| 全样本 {total:g}单 {hit:g}胜/{miss:g}负/{push:g}走]{tag}"
+                )
                 desc = s0.get("desc", "")
                 if desc:
                     lines.append(f"     {desc[:80]}")
         if neg:
             lines.append("🔄 反向因子（负回报，反买/规避信号）:")
             for fid, s0, p0 in neg:
-                small = f" ⚠️样本少({p0['n']}单)" if p0["n"] < 5 else ""
-                lines.append(f"  {fid} [近{p0['n']}单 命中{p0['hits']}/{p0['n']} 加权回报{p0['w_return']:+.2f}{small}]")
+                total = s0.get("total", 0)
+                hit = s0.get("hit", 0)
+                miss = s0.get("miss", 0)
+                push = s0.get("push", 0)
+                status = s0.get("status", "active")
+                decided = p0.get("decided", 0)
+                tag = ""
+                if status == "testing":
+                    tag = " 🧪未验证"
+                elif s0.get("low_sample") or (0 < decided < FACTOR_SMALL_SAMPLE):
+                    tag = " ⚠️样本少"
+                lines.append(
+                    f"  {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
+                    f"收缩命中{p0['shrunk_rate']:.0%} 加权回报{p0['w_return']:+.2f} "
+                    f"| 全样本 {total:g}单 {hit:g}胜/{miss:g}负/{push:g}走]{tag}"
+                )
+                desc = s0.get("desc", "")
+                if desc:
+                    lines.append(f"     {desc[:80]}")
+        if volatility:
+            lines.append("🌊 波动性因子（SP收益口径，不参与方向命中率）:")
+            for fid, s0, p0 in volatility:
+                avg_sp = p0.get("avg_sp")
+                sp_txt = f"均SP {avg_sp:.2f}" if avg_sp else "均SP —"
+                lines.append(
+                    f"  {fid} [近{p0['n']}单 {sp_txt} "
+                    f"加权回报{p0['w_return']:+.2f}]"
+                )
                 desc = s0.get("desc", "")
                 if desc:
                     lines.append(f"     {desc[:80]}")
         if aux:
-            lines.append("📉 观察（样本不足，勿重仓）:")
-            for fid, s0, p0 in aux[:15]:
+            lines.append("📉 观察（样本不足，最大仓位 5-10%，禁止重仓）:")
+            for fid, s0, p0 in aux[:10]:
                 wr = p0["w_return"] if p0 else 0.0
                 n = p0["n"] if p0 else 0
                 lines.append(f"  ⚠️ {fid}: 近{n}单 加权回报{wr:+.2f}")
         if noise_count:
             lines.append(f"  (另有 {noise_count} 个 0 回报附近噪声因子已过滤)")
+        dormant_strong = []
+        for fid, s0 in self.factor_perf.items():
+            if s0.get("status") != "dormant":
+                continue
+            decided = s0.get("total", 0) - s0.get("push", 0)
+            hit_rate = s0.get("hit", 0) / decided if decided > 0 else 0.0
+            if decided >= 20 and hit_rate > 0.55:
+                dormant_strong.append((fid, s0))
+        if dormant_strong:
+            dormant_strong.sort(key=lambda x: -x[1].get("total", 0))
+            lines.append("💤 休眠但历史强（保留参考，不参与排序）:")
+            for fid, s0 in dormant_strong:
+                total = s0.get("total", 0)
+                hit = s0.get("hit", 0)
+                miss = s0.get("miss", 0)
+                push = s0.get("push", 0)
+                lines.append(
+                    f"  {fid} [全样本 {total:g}单 {hit:g}胜/{miss:g}负/{push:g}走]"
+                )
         if dormant_count:
             lines.append(f"  (另有 {dormant_count} 个休眠因子)")
         return "\n".join(lines)
 
     def factor_desc_text(self, as_of=None) -> str:
         """L2 正例完整定义：只输出自适应 main 的定义（预算内，库再大不膨胀）。"""
-        main, _, _ = self.selected_active(as_of)
+        main, _, _, _ = self.selected_active(as_of)
         active_names = {fid for fid, _, _ in main}
         if not active_names:
             return ""

@@ -41,6 +41,10 @@ harness-sdk/
 
 # ── 测试 / 临时图片 ──
 7.jpeg
+Gemini_Generated_Image_*.jpeg
+
+# ── 客户交付包 / 大体积打包（含 fixtures 数据，不入库）──
+ds_agents_customer_*.zip
 
 # ── 环境与密钥 ──
 .env

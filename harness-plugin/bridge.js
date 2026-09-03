@@ -260,12 +260,15 @@ export function runBridge({
 export function bridgeResultSummary(func, data = {}) {
   try {
     switch (func) {
-      case "prepare":
-        return `竞彩 ${data.jingcai_count ?? data.candidates ?? 0} 场，预取 ${data.prefetched_ok ?? 0}/${data.candidates ?? 0}${data.warnings && data.warnings.length ? `；${data.warnings[0]}` : ""}`;
+      case "prepare": {
+        const scope = data.beidan_only ? "北单" : "竞彩";
+        return `${scope} ${data.jingcai_count ?? data.candidates ?? 0} 场，预取 ${data.prefetched_ok ?? 0}/${data.candidates ?? 0}${data.warnings && data.warnings.length ? `；${data.warnings[0]}` : ""}`;
+      }
       case "analyze": {
         const placed = Number(data.placed || 0);
         const skipped = (data.orders || []).filter((o) => o.skip).length;
-        return `比赛 ${data.matches_count ?? 0} 场 → 下单 ${placed} 单${skipped ? `（skip ${skipped}）` : ""}，余额 ${data.capital ?? "?"}`;
+        const warnings = Array.isArray(data.warnings) && data.warnings.length ? `；${data.warnings[0]}` : "";
+        return `比赛 ${data.matches_count ?? 0} 场 → 下单 ${placed} 单${skipped ? `（skip ${skipped}）` : ""}，余额 ${data.capital ?? "?"}${warnings}`;
       }
       case "settle": {
         const s = data.settlement || {};

@@ -229,6 +229,7 @@ function buildMatchMap(cacheDir) {
               match: [m.home_name, m.away_name].filter(Boolean).join(" vs "),
               league: m.league_name || "",
               time: m.match_time || "",
+              beidanInfo: (m && m.beidan_info) || null,
             };
           }
         }
@@ -306,10 +307,39 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     const pending = orders.filter((o) => !o.settled_at);
     const locked = pending.reduce((s, o) => s + Number(o.bet_size || 0), 0);
     const pnl = settled.reduce((s, o) => s + Number(o.profit || 0), 0);
-    const wins = settled.filter((o) => (o.profit || 0) > 0).length;
-    const losses = settled.filter((o) => (o.profit || 0) < 0).length;
-    const pushes = settled.length - wins - losses;
+    // 胜率口径：以「票/单」为结算单位。
+    // 北单/竞彩串关一张票展开成多注（如 8串1=243 注），中奖按票算 1 次，而不能按注算成 1/243；
+    // 单关单每单就是 1 个单位。只有串关票使用 slip_id；单关狗无 slip_id，按注计数不受影响。
+    // money（pnl/bet/turnover）仍按注累计，不随此口径变化。
+    const betUnitKey = (o) => (o && o.slip_id)
+      ? "slip:" + String(o.slip_id)
+      : "ord:" + String((o && (o.id || o.lota_id)) || "");
+    const countBetUnits = (arr) => {
+      const s = new Set();
+      for (const o of arr || []) s.add(betUnitKey(o));
+      return s.size;
+    };
+    const betUnits = new Map();
+    const unitList = [];
+    for (const o of settled) {
+      const key = betUnitKey(o);
+      let u = betUnits.get(key);
+      if (!u) {
+        u = { anyWin: false, anyLoss: false };
+        betUnits.set(key, u);
+        unitList.push(u);
+      }
+      const p = Number(o.profit || 0);
+      if (p > 0) u.anyWin = true;
+      if (p < 0) u.anyLoss = true;
+    }
+    const wins = unitList.filter((u) => u.anyWin).length;
+    const losses = unitList.filter((u) => !u.anyWin && u.anyLoss).length;
+    const pushes = unitList.length - wins - losses;
     const decided = wins + losses;
+    const settledCount = countBetUnits(settled);
+    const pendingCount = countBetUnits(pending);
+    const totalCount = settledCount + pendingCount;
     const turnover = settled.reduce((s, o) => s + Number(o.bet_size || 0), 0);
     const hitRate = decided > 0 ? wins / decided : null;
     const roi = turnover > 0 ? pnl / turnover : null;
@@ -351,16 +381,29 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
       const gl = l.goal_line == null ? null : Number(l.goal_line);
       const picks = Array.isArray(l.picks) ? l.picks : [];
       const odds = (l.odds && typeof l.odds === "object") ? l.odds : {};
+      const beidanNumber = (l.beidan_info && l.beidan_info.beidan_id) || l.beidan_number || "";
+      // 开奖实际 SP/结果：结算后 matches 缓存的 beidan_info 已并入 result + spvalue（按 lota_id 关联）
+      const mmBeidan = (matchMap && matchMap[l.lota_id] && matchMap[l.lota_id].beidanInfo) || {};
+      const sp = (mmBeidan && mmBeidan.spvalue != null) ? Number(mmBeidan.spvalue) : null;
+      const resultCode = (mmBeidan && mmBeidan.result != null) ? String(mmBeidan.result) : "";
+      const resultDes = (mmBeidan && mmBeidan.result_des) ? String(mmBeidan.result_des) : "";
       // 北单让球胜平负固定码：3=让球后主胜，1=平，0=让球后客胜
       const sideLabel = (p) => (p === "H" ? "3" : p === "D" ? "1" : p === "A" ? "0" : p);
+      // 该腿是否打出：单选腿需该选=开奖结果；双选/全包腿只要结果在其中即中（全包天然覆盖）
+      const legHit = resultCode !== "" && picks.some((p) => sideLabel(p) === resultCode);
       return {
         match: `${l.home_name || "?"} vs ${l.away_name || "?"}`,
         league: l.league_name || "",
+        beidanNumber,
         goalLine: gl,
         picks,
         picksLabel: picks.length >= 3 ? "全包" : picks.length === 2 ? "双选" : "单选",
         pickText: picks.map(sideLabel).join("&"),
         odds: Object.keys(odds).map((k) => [sideLabel(k), odds[k]]),
+        sp,
+        resultCode,
+        resultDes,
+        legHit,
       };
     }
 
@@ -392,6 +435,8 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
       const totalStake = sub.reduce((s, o) => s + (Number(o.bet_size) || 0), 0);
       const created = sub.map((o) => o.created_at || "").sort().pop() || "";
       const settledAt = sub.map((o) => o.settled_at || "").sort().pop() || "";
+      const kickoffTimes = (p.ticket_legs || []).map((l) => l.match_time).filter(Boolean).sort();
+      const earliestKickoff = kickoffTimes[0] || "";
       const matchDay = sub.map((o) => (matchMap[String(o.lota_id || "")] || {}).time)
         .filter(Boolean).map(footballDayOf).sort().pop() || "";
       orderRows.push({
@@ -399,6 +444,7 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
         match: `${p.ticket_type || "串关"} · ${nCover}全包+${nSingle}单选`,
         league: p.bet_type || "",
         time: created,
+        earliestKickoff,
         matchDay,
         betType: p.bet_type || "",
         pick: `${p.ticket_type || "串关"}`,
@@ -440,10 +486,10 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
       roi,
       sharpe: calcSharpe(settled),
       mdd: round2(calcMdd(curve)),
-      totalCount: settled.length + pending.length,
+      totalCount,
       wins, losses, pushes, decided,
-      settledCount: settled.length,
-      pendingCount: pending.length,
+      settledCount,
+      pendingCount,
       factors: activeFactorsFor(readFactors(name)),
       curve,
       orders: orderRows,
@@ -707,7 +753,11 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
           const day = String(spec.day || "").trim();
           const start = String(spec.start || "").trim();
           const end = String(spec.end || "").trim();
-          const key = `${dog}|${func}|${day || end}`;
+          // prepare 按范围区分在途 key：竞彩/北单准备可并行，不互相 409
+          const prepScope = func === "prepare"
+            ? ((spec.opts && spec.opts.beidan_only) ? "beidan" : "jc")
+            : "";
+          const key = `${dog}|${func}|${day || end}${prepScope ? "|" + prepScope : ""}`;
           // 同一只狗只允许一个在跑的桥任务（读持久层，跨 dsh 重启也拦得住）。
           const dogRunning = (dog && MUTATING_FUNCS.has(func))
             ? readTasks(cacheDir).tasks.filter((t) => t.status === "running" && t.params && t.params.dog === dog).length
@@ -731,7 +781,8 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
           }));
 
           // ── 后台管线（响应已发出，不阻塞请求）──
-          const title = `${FUNC_LABEL[func] || func} ${dog} ${day || end || ""}`.trim();
+          const scopeTag = func === "prepare" ? ((spec.opts && spec.opts.beidan_only) ? "北单" : "竞彩") : "";
+          const title = `${FUNC_LABEL[func] || func}${scopeTag ? "·" + scopeTag : ""} ${dog} ${day || end || ""}`.trim();
           const taskId = taskReg
             ? taskReg.start({ type: `bridge-${func}`, title, params: { dog, func, day, start, end, opts: spec.opts } })
             : null;

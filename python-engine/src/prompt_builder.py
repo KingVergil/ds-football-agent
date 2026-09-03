@@ -382,9 +382,32 @@ class PromptBuilder:
         if memory and alpha_mode:
             from .factor_registry import FactorRegistry
             exclude = set(kwargs.get("cross_factor_exclude", []) or [])
-            fr = FactorRegistry(exclude_roles=exclude)
-            # 自适应选择：最近 N 单 + 衰减加权 + 休眠过滤，避免固定时间窗口
-            cross_factor_text = fr.format_for_prompt(current_date=day_date, adaptive=True)
+            scope = kwargs.get("scope", "jc")
+            scope = None if scope == "all" else scope
+            reference_scopes = []
+            if scope == "jc":
+                reference_scopes = ["beidan"]
+            elif scope == "beidan":
+                reference_scopes = ["jc"]
+            fr = FactorRegistry(
+                exclude_roles=exclude,
+                scope=scope,
+                reference_scopes=reference_scopes,
+            )
+            # 该狗自己已证伪(retired)的因子：跨狗同模式因子要抑制，护栏与跨狗不打架
+            if not getattr(memory.factors, "factor_perf", None):
+                try:
+                    memory.factors.load()
+                except Exception:
+                    pass
+            retired_entries = {
+                n: e for n, e in (memory.factors.factor_perf or {}).items()
+                if e and e.get("status") == "retired"
+            }
+            # 自适应选择：最近 N 单 + 衰减加权 + 休眠过滤 + 已证伪抑制
+            cross_factor_text = fr.format_for_prompt(
+                current_date=day_date, adaptive=True, suppress_entries=retired_entries
+            )
         breakdown["cross_agent_factors"] = count_tokens(cross_factor_text)
 
         # ── 5. 拼接 ──
@@ -410,6 +433,11 @@ class PromptBuilder:
                 "      - 方向型因子 + 数据背离 → 放弃该因子\n"
                 "      - 预警型因子触发 → 降低仓位/收紧条件，但不反向下注\n"
                 "4. 没有因子触发或验证不通过 → 按你自己的数据分析决策\n\n"
+                "⚠️ 已证伪方向优先（最重要的一条）："
+                "若某跨狗因子的**方向**与你上方「🪦 已证伪模式（负例护栏，勿用）」中的模式一致"
+                "（典型如：深盘强队顺向 / 深盘顺资金 / 深盘凝聚跟强队 / 离散低位凝聚正路），"
+                "**一律视为无效**，不得采纳其✅方向，且不得据此下单；"
+                "该因子只能作为**规避或全包参考**。即使它标✅且回报为正，也以你的已证伪清单为准。\n\n"
                 "⚠️ 跨狗因子是参考，原始数据是最终裁判。不盲从。\n\n"
                 "输出时，每场比赛的 order 理由中必须注明："
                 "\"跨狗检查: [因子名]-[触发/不触发]\""

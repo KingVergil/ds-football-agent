@@ -104,6 +104,14 @@ def settle_leg(pick: str, beidan_info: Optional[dict]) -> dict:
                 "sp": 0.0, "actual": None, "expected": None, "mismatch": False,
                 "result_code": None}
 
+    # 脏值防护：上游 /beidan/sp 曾把未开奖页面的赛前赔率误抓成开奖 SP，
+    # 导致 result 与 score+goal_line 推导方向矛盾（见 docs/beidan-data-channel-status.md）。
+    # 标记 result_suspect 的场次按「未开奖」处理，跳过结算，等待上游修正后重抓。
+    if info.get("result_suspect"):
+        return {"ready": False, "reason": "result_suspect", "hit": False,
+                "push": False, "sp": 0.0, "actual": None, "expected": None,
+                "mismatch": False, "result_code": None}
+
     result_s = str(raw_result).strip()
     if result_s == VOID_RESULT:
         return {"ready": True, "hit": True, "push": True, "sp": VOID_SP,

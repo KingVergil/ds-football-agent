@@ -13,26 +13,47 @@
 """
 
 import json
+import re
+import difflib
 from pathlib import Path
 from datetime import date as _date
 
 from .factor_select import factor_profile, FACTOR_SAMPLE_WINDOW, FACTOR_SMALL_SAMPLE
+from .role_registry import role_scope
 
 ROLES_DIR = Path(__file__).parent.parent / "data" / "roles"
 FACTORS_DIR = Path(__file__).parent.parent / "data" / "factors"
+
+# 跨狗因子压制（狗已证伪 → 跨狗同模式因子不再标 ✅）匹配阈值
+# 只做"近同名"精确压制，避免误伤好因子；换名不换义的同方向因子靠狗自己的护栏兜底。
+_MATCH_BIT_DIST = 2               # slugs 对称差 <= 该值
+_MATCH_NAME_RATIO = 0.80          # 有 slugs 时，名字相似度下限（近同名才算同模式）
+_MATCH_ORPHAN_NAME_RATIO = 0.85   # 双方无 slugs 的孤儿因子，名字相似度下限
+
+
+def _clean_name(name: str) -> str:
+    n = (name or "").strip().strip('"\'“”`')
+    n = re.sub(r"[（(][^）)]*[）)]", "", n).strip()
+    n = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F]", "", n).strip()
+    return re.sub(r"\s+", " ", n)
 
 
 class FactorRegistry:
     """跨角色因子聚合器"""
 
-    def __init__(self, exclude_roles: set = None):
+    def __init__(self, exclude_roles: set = None, scope: str = None,
+                 reference_scopes: list[str] = None):
         self._cache: dict[str, dict] = {}  # {role_name: factor_perf}
+        self._cache_ref: dict[str, dict] = {}  # 跨 scope 只读参考因子
         self._factor_defs: dict[str, dict] = {}  # {fac_id: {slugs, content}}
         self._exclude_roles: set = exclude_roles or set()
+        self._scope = scope
+        self._reference_scopes = list(reference_scopes or [])
 
     def refresh(self):
         """重新扫描所有角色的因子"""
         self._cache.clear()
+        self._cache_ref.clear()
         self._factor_defs.clear()
 
         # 因子定义（全局 fac_*.json）
@@ -58,9 +79,45 @@ class FactorRegistry:
                     data = json.loads(mem_path.read_text(encoding="utf-8"))
                     fp = data.get("factor_perf", {})
                     if fp:
+                        sc = role_scope(role_dir.name)
+                        if self._scope and sc != self._scope:
+                            if sc in self._reference_scopes:
+                                self._cache_ref[role_dir.name] = fp
+                            continue
                         self._cache[role_dir.name] = fp
                 except Exception:
                     pass
+
+    def _slugs_of(self, name: str, entry: dict) -> set:
+        """解析一个因子的 slugs（优先条目冗余，其次回退全局 fac_*.json）。"""
+        slugs = (entry or {}).get("slugs") or []
+        if slugs:
+            return set(slugs)
+        fid = (entry or {}).get("fac_id") or f"fac_{_clean_name(name).lower().replace(' ','_')[:40]}"
+        return set(self._factor_defs.get(fid, {}).get("slugs", []))
+
+    def _is_suppressed(self, name: str, entry: dict, suppress: list) -> bool:
+        """跨狗因子是否与该狗自己的已证伪(retired)因子同模式。
+
+        匹配口径（与因子归纳的候选预筛一致）：
+          - 清洗名精确相等 → 同模式
+          - 双方有 slugs：对称差 <=2 且 名字相似 >=0.35 → 同模式
+          - 双方都无 slugs（孤儿）：名字相似 >=0.60 → 同模式
+        """
+        if not suppress:
+            return False
+        cn = _clean_name(name)
+        sa = self._slugs_of(name, entry)
+        for sname, sentry in suppress:
+            if cn == _clean_name(sname):
+                return True
+            sb = self._slugs_of(sname, sentry)
+            ratio = difflib.SequenceMatcher(None, cn, _clean_name(sname)).ratio()
+            if sa and sb and len(sa ^ sb) <= _MATCH_BIT_DIST and ratio >= _MATCH_NAME_RATIO:
+                return True
+            if not sa and not sb and ratio >= _MATCH_ORPHAN_NAME_RATIO:
+                return True
+        return False
 
     def get_all_factors(self, before_date: str = None,
                         include_retired: bool = False,
@@ -177,7 +234,8 @@ class FactorRegistry:
                           window_days: int = 0,
                           min_samples: int = 0,
                           adaptive: bool = False,
-                          max_factors: int = 25) -> str:
+                          max_factors: int = 25,
+                          suppress_entries: dict = None) -> str:
         """
         格式化因子注册表 → LLM prompt 可用文本。
         按时间分组，标注来源角色。
@@ -191,7 +249,9 @@ class FactorRegistry:
             max_factors: adaptive 模式下的最大展示数量。
         """
         if adaptive:
-            return self._format_adaptive_prompt(max_factors=max_factors)
+            return self._format_adaptive_prompt(
+                max_factors=max_factors, suppress_entries=suppress_entries
+            )
 
         factors = self.get_all_factors(before_date=current_date,
                                        include_retired=include_retired,
@@ -233,42 +293,80 @@ class FactorRegistry:
 
         return "\n".join(lines)
 
-    def _format_adaptive_prompt(self, max_factors: int = 25) -> str:
+    def _format_adaptive_prompt(self, max_factors: int = 25,
+                                suppress_entries: dict = None) -> str:
         """
         自适应版跨 Agent 因子注册表：
-          每个因子取最近 N 次触发，指数衰减加权计算单注回报，
-          只展示 近期触发 >=2 次 且 加权回报 >0 的因子，按回报降序取 Top-K。
+          每个因子取最近 N 次触发，指数衰减加权计算单注回报与波动。
+          只保留 方向明确 的因子，剔除"平庸"因子（不是无脑取全部）：
+            - 近期触发 >=3 次（杜绝 1-2 单"全中"幻觉）
+            - 非平庸（|平均回报|≈0 且收缩命中率在硬币区间 → 剔除）
+            - 正、负方向都保留：明确能赢的(✅) 与 明确会输/该规避的(🔴)
+          按 |加权回报| 降序取 Top-K（赢得多/输得多的都浮出来），波动仅作展示。
+          suppress_entries: 该狗自己已证伪(retired)的 {因子名: 条目}；匹配到的
+            跨狗同模式因子直接剔除，不再当 ✅ 喂给模型，护栏与跨狗不再打架。
         """
         if not self._cache:
             self.refresh()
+        from .factor_select import (
+            CROSS_LOW_INFO_HIT_HI,
+            CROSS_LOW_INFO_HIT_LO,
+            CROSS_MIN_EDGE_RETURN,
+            CROSS_MIN_SAMPLE,
+            factor_profile,
+        )
         rows = []
+        suppress = list((suppress_entries or {}).items())
+        suppressed_set: set[str] = set()
         for role_name, factor_perf in self._cache.items():
             for factor_name, fdata in factor_perf.items():
                 if fdata.get("status") in ("retired", "dormant"):
                     continue
+                if self._is_suppressed(factor_name, fdata, suppress):
+                    suppressed_set.add(factor_name)
+                    continue
                 p = factor_profile(fdata)
                 if p is None or p["dormant"]:
                     continue
-                if p["n"] < 2 or p["w_return"] <= 0:
+                if p["n"] < CROSS_MIN_SAMPLE:
+                    continue
+                # 平庸因子：命中率≈五五开 且 |回报| 不够强 → 方向不明确，剔除
+                in_coin_band = (
+                    CROSS_LOW_INFO_HIT_LO <= p["shrunk_rate"] <= CROSS_LOW_INFO_HIT_HI
+                )
+                weak_edge = abs(p["w_return"]) < CROSS_MIN_EDGE_RETURN
+                mediocre = in_coin_band and weak_edge
+                if mediocre:
                     continue
                 rows.append((factor_name, role_name, fdata, p))
-        rows.sort(key=lambda x: -x[3]["w_return"])
+        rows.sort(key=lambda x: -abs(x[3]["w_return"]))
         rows = rows[:max_factors]
 
+        ref_block = self._format_reference_block()
+
         if not rows:
-            return "(跨Agent因子注册表: 近窗口内无正回报因子)"
+            return ("(跨Agent因子注册表: 近窗口内无方向明确的因子)"
+                    + ref_block)
 
         lines = [
-            "## 📐 跨Agent因子注册表（自适应: 最近N单·衰减加权·仅正回报）",
+            "## 📐 跨Agent因子注册表（自适应: 最近N单·衰减加权·方向明确·含正负）",
             f"  {len(rows)} 个因子 | 来自 {len({r[1] for r in rows})} 个Agent",
             "  ⚠️ 样本<5 的因子仅作方向参考，仓位减半/试探",
-            "",
         ]
+        if suppressed_set:
+            lines.append(
+                f"  ⛔ 已抑制 {len(suppressed_set)} 个与本人已证伪模式冲突的跨狗因子："
+                f"{'、'.join(sorted(suppressed_set)[:6])}"
+                + ("…" if len(suppressed_set) > 6 else "")
+            )
+        lines.append("")
         for factor_name, role_name, fdata, p in rows:
             small = f" ⚠️样本少({p['n']}单)" if p["n"] < FACTOR_SMALL_SAMPLE else ""
+            sign = "✅" if p["w_return"] > 0 else "🔴"
             lines.append(
-                f"  ✅ `{factor_name}` [{role_name}] 近{p['n']}单 命中{p['hits']}/{p['n']} "
-                f"加权回报{p['w_return']:+.2f} 收缩命中{p['shrunk_rate']:.0%}{small}"
+                f"  {sign} `{factor_name}` [{role_name}] 近{p['n']}单 命中{p['hits']}/{p['n']} "
+                f"加权回报{p['w_return']:+.2f} 波动{p['volatility']:.2f} "
+                f"收缩命中{p['shrunk_rate']:.0%}{small}"
             )
             desc = fdata.get("desc", "")
             if desc:
@@ -279,6 +377,40 @@ class FactorRegistry:
                 slugs = self._factor_defs.get(fac_id, {}).get("slugs", [])
             if slugs:
                 lines.append(f"     slugs: {', '.join(slugs[:5])}")
+        if ref_block:
+            lines.append(ref_block)
+        return "\n".join(lines)
+
+    def _format_reference_block(self, max_factors: int = 15) -> str:
+        """跨 scope 只读参考区：只展示，不参与统计 / 排序 / 信任权重。"""
+        if not self._cache_ref:
+            return ""
+        rows: list[tuple[str, str, dict, dict]] = []
+        for role_name, factor_perf in self._cache_ref.items():
+            for factor_name, fdata in factor_perf.items():
+                if fdata.get("status") in ("retired", "dormant"):
+                    continue
+                p = factor_profile(fdata)
+                if p is None or p["dormant"]:
+                    continue
+                rows.append((factor_name, role_name, fdata, p))
+        if not rows:
+            return ""
+        rows.sort(key=lambda x: -x[3]["w_return"])
+        rows = rows[:max_factors]
+        lines = [
+            "",
+            "## 🔍 跨池参考因子（只读，不参与统计/排序，勿作下注重仓依据）",
+            f"  {len(rows)} 个跨 scope 因子，仅供对照当前场次盘口信号。",
+        ]
+        for factor_name, role_name, fdata, p in rows:
+            lines.append(
+                f"  · `{factor_name}` [{role_name}] 近{p['n']}单 "
+                f"收缩命中{p['shrunk_rate']:.0%} 加权回报{p['w_return']:+.2f}"
+            )
+            desc = fdata.get("desc", "")
+            if desc:
+                lines.append(f"     {desc[:80]}")
         return "\n".join(lines)
 
     def summary(self) -> str:

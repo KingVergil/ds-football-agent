@@ -23,9 +23,9 @@ echo "2/4 串关狗分析（3串1 专注模式）..."
 python -m src.chuan_guan_dog analyze "$day" --tickets 3串1
 
 echo "3/4 刷新 dashboard..."
-./batch_agents.sh dashboard
+python dsfootball_cli.py dashboard
 
 echo "4/4 发送串关狗邮件..."
-./batch_agents.sh email-orders "$day" 串关狗
+python dsfootball_cli.py agent 串关狗 email-orders "$day"
 
 echo "✅ 串关狗连招完成"

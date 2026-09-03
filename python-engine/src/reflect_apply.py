@@ -43,6 +43,9 @@ def _valid(name: str) -> bool:
     return True
 
 
+ALLOWED_FACTOR_TYPES = {"directional", "volatility"}
+
+
 def apply_reflection(user: str, day_date: str, data: dict,
                      settled: list[dict]) -> dict:
     """把 factor JSON 确定性写回某只狗的因子/反思记忆。"""
@@ -54,9 +57,11 @@ def apply_reflection(user: str, day_date: str, data: dict,
     factors = role.memory.factors
     if not factors._loaded:
         factors.load()
-    existing_names = {n.lower() for n in factors.factor_perf.keys()}
+    original_existing = {n.lower() for n in factors.factor_perf.keys()}
+    existing_names = set(original_existing)
 
     desc_map: dict = data.get("factor_desc", {}) or {}
+    type_map: dict = data.get("factor_types", {}) or {}
     summary = data.get("reflection", "") or ""
     money_lesson = data.get("money_lesson", "") or ""
     key_slugs_list: list = data.get("key_slugs", []) or []
@@ -77,19 +82,12 @@ def apply_reflection(user: str, day_date: str, data: dict,
                 if _valid(f)
             ]
 
-    # 1. 归因驱动 record（hit/profit 取自结算单）
-    for idx, fns in attr_map.items():
-        o = settled[idx]
-        for fn in fns:
-            factors.record(
-                fn, o.get("hit"), o.get("profit", 0),
-                desc=desc_map.get(fn, ""), date=day_date,
-                lota_id=o.get("lota_id", ""), bet_size=o.get("bet_size", 0),
-            )
+    sample_count = len({o.get("lota_id") for o in settled if o.get("lota_id")})
+    low_sample = sample_count < 5
 
-    # 2. 兜底：LLM 提到但未归因的新因子
+    # 先确定本次要新建的因子，并在写入前校验 factor_types。
+    # 没有 type 的因子拒绝写入并报错，避免高 SP 防冷因子被静默默认成 directional。
     new_factors: list[str] = []
-    all_attributed = {f.strip().lower() for fns in attr_map.values() for f in fns}
     for raw in (_clean_name(f) for f in data.get("alpha_factors", []) if _valid(f)):
         fn_lower = raw.lower()
         is_dup = any(fn_lower == en or fn_lower in en or en in fn_lower
@@ -97,9 +95,46 @@ def apply_reflection(user: str, day_date: str, data: dict,
         if not is_dup:
             new_factors.append(raw)
             existing_names.add(fn_lower)
+
+    pending_factors = {
+        fn for fns in attr_map.values() for fn in fns
+    } | set(new_factors)
+    missing_type = [
+        fn for fn in pending_factors
+        if fn.lower() not in original_existing
+        and (fn not in type_map or type_map.get(fn) not in ALLOWED_FACTOR_TYPES)
+    ]
+    if missing_type:
+        raise ValueError(
+            "以下新因子缺少有效的 factor_types（directional/volatility），"
+            "已拒绝写入反思结果: " + ", ".join(missing_type)
+        )
+
+    # 1. 归因驱动 record（hit/profit 取自结算单）
+    for idx, fns in attr_map.items():
+        o = settled[idx]
+        for fn in fns:
+            ftype = type_map.get(fn)
+            if ftype not in ALLOWED_FACTOR_TYPES:
+                ftype = (factors.factor_perf.get(fn) or {}).get("type") or "directional"
+            factors.record(
+                fn, o.get("hit"), o.get("profit", 0),
+                desc=desc_map.get(fn, ""), date=day_date,
+                lota_id=o.get("lota_id", ""), bet_size=o.get("bet_size", 0),
+                factor_type=ftype,
+                sp=(o.get("sp_value") or o.get("odds")),
+                low_sample=low_sample,
+            )
+
+    # 2. 兜底：LLM 提到但未归因的新因子
+    all_attributed = {f.strip().lower() for fns in attr_map.values() for f in fns}
     for fn in new_factors:
         if fn.lower() not in all_attributed:
-            factors.record(fn, None, 0, desc=desc_map.get(fn, ""), date=day_date)
+            factors.record(
+                fn, None, 0, desc=desc_map.get(fn, ""), date=day_date,
+                factor_type=type_map.get(fn, "directional"),
+                low_sample=low_sample,
+            )
 
     # 2.5 保存新 Factor 模型
     for fn in new_factors:
@@ -113,7 +148,6 @@ def apply_reflection(user: str, day_date: str, data: dict,
             pass
 
     # 3. 反思记忆（含低样本标）
-    sample_count = len({o.get("lota_id") for o in settled if o.get("lota_id")})
     role.memory.reflections.add_reflection(day_date, summary, sample_count=sample_count)
     if key_slugs_list or noise_slugs_list:
         slug_note = f"\n📡 有效slug: {key_slugs_str if key_slugs_str else '无'}"

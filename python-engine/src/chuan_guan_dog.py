@@ -296,10 +296,38 @@ class ChuanGuanDog(Agent):
             return "(因子数据段缺失: 需 prefetch compact-fet)"
         from .prompt_builder import count_tokens, truncate_section
         if budget is None:
-            budget = self.SECTIONS_TOKEN_BUDGET
+            return text  # 全量，不截断
         if count_tokens(text) > budget:
             text = truncate_section(text, budget)
         return text
+
+    def _live_clean_matches(self, matches: list[dict]) -> list[dict]:
+        """live 模式：预取 compact-fet，只保留「可用」场次，其余不进分析（所有狗统一）。
+
+        先协调式预取（单飞 + 新鲜窗口），再从 failed_lids 与内容有效性两个维度过滤，
+        避免把空/旧/失败桩的 compact-fet 数据放进 prompt 误导出单。
+        """
+        if not matches:
+            return matches
+        lids = [m.get("lota_id") for m in matches if m.get("lota_id")]
+        bad: set[str] = set()
+        if lids:
+            try:
+                prep = self._dm.prepare_features(lids, owner=f"{self.user}:analyze")
+                bad = set(prep.get("failed_lids") or [])
+            except Exception:
+                bad = set()
+        out: list[dict] = []
+        for m in matches:
+            lid = m.get("lota_id")
+            if not lid or lid in bad:
+                continue
+            if not self._dm.has_usable_compact_fet(lid):
+                continue
+            out.append(m)
+        if len(out) != len(matches):
+            print(f"  🔒 live 过滤无有效 compact-fet 场次: {len(matches)} → {len(out)}")
+        return out
 
     def _self_factor_text(self, role: Role, as_of=None) -> str:
         """自己的因子库文本（非 alpha：只用自己生成的因子）。
@@ -1208,6 +1236,8 @@ pick: H
         try:
             role = self._ensure_role()
             matches = self._jc_matches(day_date, live=live)
+            if live:
+                matches = self._live_clean_matches(matches)
             source = "rules"
             llm_tickets = None
             if use_llm is None:
@@ -1532,7 +1562,7 @@ pick: H
 
     @staticmethod
     def _default_day() -> str:
-        """默认足球日：与 batch_agents.sh / dsfootball_cli.py 的 live 语义一致（12:00 前 → 昨天）"""
+        """默认足球日：与 dsfootball_cli.py 的 live 语义一致（12:00 前 → 昨天）"""
         now = datetime.now(_BEIJING_TZ)
         return now.date().isoformat() if now.hour >= 12 else (now.date() - timedelta(days=1)).isoformat()
 
