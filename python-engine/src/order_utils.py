@@ -211,26 +211,28 @@ def scale_orders_to_budget(
     started_total: float,
     limits,
 ) -> list[dict]:
-    """按可用预算折算下单金额（已开赛占用是预算口径，不真实扣款）。
+    """按可用余额封顶下单金额（已开赛占用是预算口径，不真实扣款）。
 
-    可用预算 = 扣减前余额 − 已开赛占用（LLM 下单时的余额口径）。
-    limits 启用 → FundManager 硬约束；否则按「全金额 = 余额 + 锁定敞口」比例缩放。
-    返回折算后可下单的订单列表（不会真实扣掉 started_total）。
+    prompt 里给 LLM 的资金已经是「可用余额 = 全金额 − 已落盘在途单」，
+    这里只做封顶（超了才按比例缩），不再二次折算。
     """
     effective_capital = capital_before - started_total
     if effective_capital <= 0:
         print("  📐 可用预算 ≤ 0（已开赛占用吃满），本轮不下单")
         return []
+
     if limits.enabled:
         placed, _dropped = FundManager(limits).apply(new_orders, effective_capital)
-        return placed
-    full_amount = capital_before + locked_exposure
-    new_total = sum(o.get("bet_size", 0) for o in new_orders)
-    if new_total > 0 and full_amount > 0:
-        scale = effective_capital / full_amount
-        print(f"  📐 资金折算: 锁定¥{locked_exposure:,.0f} + 余额¥{capital_before:,.0f}"
-              f"（已开赛占用¥{started_total:,.0f}） = 全金额¥{full_amount:,.0f}")
-        print(f"  📐 LLM分配¥{new_total:,.0f} → 折算×{scale:.2f} → 实下¥{int(new_total * scale):,.0f}")
-        for o in new_orders:
-            o["bet_size"] = int(o["bet_size"] * scale)
-    return new_orders
+    else:
+        placed = new_orders
+
+    # limits 开了但没配总仓上限（梭哈2狗/梭哈3狗）时 FundManager 不会折算，
+    # 一旦总额超余额，place_order 第一单就 ValueError，整波静默 0 单。
+    total = sum(float(o.get("bet_size", 0) or 0) for o in placed)
+    if total > effective_capital > 0:
+        scale = effective_capital / total
+        for o in placed:
+            o["bet_size"] = int(float(o.get("bet_size", 0) or 0) * scale)
+        print(f"  📐 按可用余额封顶: ¥{total:,.0f} → ¥{int(total * scale):,.0f}"
+              f"（可用 ¥{effective_capital:,.0f}）")
+    return placed

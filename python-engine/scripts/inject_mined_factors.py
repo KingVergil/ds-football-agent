@@ -10,14 +10,18 @@
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
 from pathlib import Path
 
-ENGINE_DATA = Path("/Users/cjy/Desktop/code/ds_agents/python-engine/data")
-DEFAULT_CAND_ASIAN = "/Users/cjy/Desktop/code/deepseek_lota/data/factor_mining_20260823/factor_candidates_asian.json"
-DEFAULT_CAND_OU = "/Users/cjy/Desktop/code/deepseek_lota/data/factor_mining_20260823/factor_candidates_ou.json"
+# 引擎数据目录 = 本脚本所在仓库（python-engine/data），不依赖任何本机绝对路径
+ENGINE_DATA = Path(__file__).resolve().parents[1] / "data"
+DEFAULT_CAND_ASIAN = os.environ.get("DS_FACTOR_CAND_ASIAN",
+                                    "/path/to/factor_candidates_asian.json")
+DEFAULT_CAND_OU = os.environ.get("DS_FACTOR_CAND_OU",
+                                 "/path/to/factor_candidates_ou.json")
 
 SLUG_CN = {
     "match-head": "联赛环境", "match-history": "历史交锋", "rank-info": "积分排名",

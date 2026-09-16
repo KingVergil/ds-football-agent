@@ -13,9 +13,9 @@
 支持 --resume 断点续跑（每完成一天记一次进度，LLM 失败当天不记、下次重跑该天）。
 
 用法:
-  /Users/cjy/miniconda3/bin/python scripts/snapshot_replay.py            # 全窗口
-  /Users/cjy/miniconda3/bin/python scripts/snapshot_replay.py --resume   # 续跑
-  /Users/cjy/miniconda3/bin/python scripts/snapshot_replay.py --days 2026-07-13,2026-07-14
+  python scripts/snapshot_replay.py            # 全窗口
+  python scripts/snapshot_replay.py --resume   # 续跑
+  python scripts/snapshot_replay.py --days 2026-07-13,2026-07-14
 """
 
 from __future__ import annotations

@@ -89,6 +89,7 @@ function readEnvFile(file) {
 const KNOWN_KEYS = new Set([
   "DEEPSEEK_API_KEY",
   "LOTA_API_KEY",
+  "LOTA_API_BASE",
   "QQ_EMAIL_ADDR",
   "QQ_EMAIL_AUTH_CODE",
   "EMAIL_163_ADDR",

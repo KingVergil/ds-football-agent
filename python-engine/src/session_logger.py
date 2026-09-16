@@ -79,15 +79,26 @@ class SessionLogger:
 
     def llm_call(self, system_prompt: str, response: str,
                  tokens_in: int, tokens_out: int = 0,
-                 model: str = "deepseek-v4-pro",
+                 model: str = "",
                  token_breakdown: dict = None,
-                 match_features: dict = None):
-        """记录 LLM 调用"""
+                 match_features: dict = None,
+                 label: str = None):
+        """记录 LLM 调用。
+
+        ⚠️ `model` 缺省**必须**回落 `DEEPSEEK_MODEL`，不能硬编码 pro：
+        各分析/反思调用点都不传 model（实际用 provider 默认值，即 DEEPSEEK_MODEL），
+        硬编码会让会话记录显示错误的模型名（2026-09-12 实测：跑 flash 却全写 pro），
+        误导"这次到底用了什么模型"的排查。
+        """
+        model = model or os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
         self._total_tokens_in += tokens_in
         self._total_tokens_out += tokens_out
 
         self._w(f"---")
-        self._w(f"### 🤖 LLM Call")
+        heading = "### 🤖 LLM Call"
+        if label:
+            heading += f" — {label}"
+        self._w(heading)
         self._w(f"")
         self._w(f"| 指标 | 值 |")
         self._w(f"|------|-----|")
@@ -201,6 +212,35 @@ class SessionLogger:
             else:
                 self._w(f"| {i+1} | {o.get('lota_id','?')} | {o.get('bet_type','')} | {o.get('pick','')} | "
                         f"{o.get('odds',0):.2f} | {o.get('bet_size',0):.0f} | {o.get('reason','')[:50]} |")
+        self._w(f"")
+
+
+    def rejection(self, reason: str, singles: list[dict], covers: list[dict]):
+        """记录「被拒绝落盘」的决策：原因是单选/覆盖不足目标数，但 LLM 实际选了什么要可见。"""
+        self._w(f"---")
+        self._w(f"### ⛔ 拒绝落盘（单选/覆盖不足目标数）")
+        self._w(f"")
+        self._w(f"**原因**: {reason}")
+        self._w(f"")
+        if singles:
+            self._w(f"**单选候选（{len(singles)}）**:")
+            self._w(f"| lota_id | 方向 | 赔率 | 置信度 |")
+            self._w(f"|---------|------|------|--------|")
+            for l in singles:
+                o = l.get("odds") or {}
+                pick = ",".join(l.get("picks") or [])
+                odds = o.get("H") or (list(o.values())[0] if o else 0)
+                self._w(f"| {l.get('lota_id','?')} | {pick} | {odds:.2f} | {l.get('confidence',0):.3f} |")
+            self._w(f"")
+        if covers:
+            self._w(f"**覆盖/防冷候选（{len(covers)}）**:")
+            self._w(f"| lota_id | 覆盖方向 | 主赔 | 平赔 | 客赔 |")
+            self._w(f"|---------|----------|------|------|------|")
+            for l in covers:
+                o = l.get("odds") or {}
+                self._w(f"| {l.get('lota_id','?')} | {','.join(l.get('picks') or [])} | "
+                        f"{o.get('H',0):.2f} | {o.get('D',0):.2f} | {o.get('A',0):.2f} |")
+            self._w(f"")
         self._w(f"")
 
     def settlement(self, result: dict):

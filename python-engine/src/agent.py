@@ -43,6 +43,7 @@ class AgentState(TypedDict, total=False):
     jingcai_only: bool  # 只拉竞彩比赛，减少数量加速测试
     beidan_only: bool   # 只拉北单比赛（与 jingcai_only 互斥）
     prefetched: bool    # 数据已由外部预取（prefetch 命令），跳过强制刷新
+    live_window: bool   # live 模式且 now 仍在足球日窗口内（已开赛已被剔除）
     capital: float
 
     # role 不可序列化，存引用
@@ -61,6 +62,7 @@ class AgentState(TypedDict, total=False):
     unsettled_orders: list[dict]
     scores: dict[str, str]
     settlement: dict
+    reflect: bool  # settle 图：False = 只结算、不跑 reflect 节点（2026-09-16 解耦）
 
     # factor_review 阶段
     review_start_date: str   # 评估窗口起始日（factor_review 用，空=自动7天）
@@ -184,6 +186,48 @@ def node_fetch_matches(state: AgentState) -> AgentState:
     # 竞彩过滤：只保留有 jingcai_number 的比赛
     if state.get("jingcai_only"):
         matches = [m for m in matches if m.get("jingcai_number")]
+        # 硬护栏：竞彩编号的周X 必须等于本足球日的星期。不等说明缓存里的 match_time
+        # 还是数据源早期的"临时赛程"（比赛已改期），这类场次绝不能再进分析/下单
+        # （2026-09-11 事故：周五002 的沙特联被算进足球日 09-10，多只狗提前一天下注）。
+        from .data_manager import football_day_weekday, jc_number_weekday
+        want_wd = football_day_weekday(day_date)
+        if want_wd:
+            kept, suspect = [], []
+            for m in matches:
+                num_wd = jc_number_weekday(m.get("jingcai_number"))
+                (suspect if num_wd and num_wd != want_wd else kept).append(m)
+            # 编号与足球日不符有两种可能：①缓存里的时间还是数据源的临时赛程（要剔）
+            # ②延期比赛保留了原编号、但确实在本窗口内开赛（要留）。
+            # 以数据源单场时间为准裁决；查不到源头时保守剔除（宁可少下一注）。
+            if suspect:
+                print(f"  🔎 {len(suspect)} 场竞彩编号与足球日不符，按源头时间裁决")
+            for m in suspect:
+                lid = m.get("lota_id")
+                src_time = ""
+                try:
+                    rec = rt.dm.fetch_match_by_id(lid) or {}
+                    src_time = str(rec.get("match_time") or "")[:16]
+                except Exception:
+                    src_time = ""
+                if src_time and start <= src_time <= end:
+                    m["match_time"] = src_time
+                    kept.append(m)
+                    warnings.append(
+                        f"⏰ 编号与足球日不符但源头时间在窗口内，保留 {lid} "
+                        f"{m.get('home_name')} vs {m.get('away_name')}"
+                        f"（{m.get('jingcai_number')} → {src_time}）"
+                    )
+                else:
+                    warnings.append(
+                        f"⏰ 竞彩编号与足球日不符，已剔除 {lid} "
+                        f"{m.get('home_name')} vs {m.get('away_name')}"
+                        f"（{m.get('jingcai_number')}，缓存时间 {str(m.get('match_time'))[:16]}"
+                        + (f"，源头时间 {src_time}" if src_time else "，源头不可查") + "）"
+                    )
+                if src_time:
+                    print(f"    · {lid} {m.get('jingcai_number')} 源头={src_time} "
+                          f"→ {'保留' if src_time and start <= src_time <= end else '剔除'}")
+            matches = kept
     # 北单过滤：只保留有 beidan_number 的比赛（与竞彩互斥）
     if state.get("beidan_only"):
         matches = [m for m in matches if m.get("beidan_number")]
@@ -196,16 +240,23 @@ def node_fetch_matches(state: AgentState) -> AgentState:
         if len(matches) != before:
             print(f"  🪟 窗口过滤: {before} 场 → {len(matches)} 场")
 
-    # live 模式：当 now 仍落在该足球日窗口内时，保留全部比赛（含已开赛）。
-    # 已开赛比赛标注 _live_started=True，供 prompt & place_orders 使用：
-    #   - prompt: 展示全量比赛 + 已有持仓标注，LLM 可对比信号强度重新分配资金
-    #   - place_orders: 只更新未开赛比赛的订单，已开赛的维持原仓
-    # 回测（历史日期，now 早已越过窗口末）→ 不触发，全量保留。
+    # live 模式：当 now 仍落在该足球日窗口内时，剔除已开赛比赛（match_time <= now），
+    # 只把未开赛场次送进后续流程（特征预取 / LLM 分析 / 下单）。
+    # 背景：足球日窗口 [D 12:01, D+1 12:00] 会跨午夜，00:xx 波次会把前一晚
+    # 17:00~23:30 已开赛/已完赛的场次整窗带进来；它们不应被当成待分析比赛
+    # （浪费 token、还拿赛前赔率预测已开场的比赛）。
+    # 已开赛订单的「维持原仓」由 analyze() 前置的 refresh_orders 与 place_orders 的
+    # pending_markets 负责，不依赖这里保留比赛本身。
+    # 回测（live=False）或 now 已越过窗口末 → 不触发，全量保留。
+    live_window = False
     if state.get("live"):
         now_str = _now_bj()
         if start <= now_str <= end:
-            for m in matches:
-                m["_live_started"] = m.get("match_time", "") <= now_str
+            live_window = True
+            upcoming = [m for m in matches if m.get("match_time", "") > now_str]
+            if len(upcoming) != len(matches):
+                print(f"  🕒 live 剔除已开赛: {len(matches)} 场 → {len(upcoming)} 场")
+                matches = upcoming
 
     print(f"{len(matches)} 场")
 
@@ -216,7 +267,12 @@ def node_fetch_matches(state: AgentState) -> AgentState:
             "window": f"{start} ~ {end}",
         }, f"{len(matches)} matches in football day window" + (f"（{len(warnings)} 个回退提示）" if warnings else ""))
 
-    return {**state, "matches": matches, "warnings": warnings}
+    return {
+        **state,
+        "matches": matches,
+        "warnings": warnings,
+        "live_window": live_window,
+    }
 
 
 def node_strip_scores(state: AgentState) -> AgentState:
@@ -350,11 +406,15 @@ def node_build_prompt(state: AgentState) -> AgentState:
     if api_failed_count:
         print(f"  🔒 过滤 {api_failed_count} 场无有效特征数据比赛，剩余 {len(clean_safe)} 场进入 LLM")
 
-    # ── live 近场保护：未来（未开赛）场次 >10 时，只保留「未开赛 + N 小时内开赛」的比赛 ──
-    # 防止 live 分析一次押太多/押到数小时后的场次；未来场次 ≤10 时全放（客户急着看全量）。
+    # ── live 近场保护：未开赛场次 >10 时，只保留 N 小时内开赛的比赛 ──
+    # 防止 live 分析一次押太多/押到数小时后的场次；未开赛场次 ≤10 时全放。
+    # 已开赛比赛已在 node_fetch_matches 剔除，这里只处理「未来场次过多」。
     # 注意：这是 live 模式的安全护栏，不是波次启动时间表（波次窗口由外部编排传 window，
-    # 见 harness windows.js / replay.js）；回放（历史日期）无 _live_started 标记不触发。
-    in_live_window = any("_live_started" in m for m in clean_safe)
+    # 见 harness windows.js / replay.js）；回放（历史日期）无 live_window 标记不触发。
+    in_live_window = bool(
+        state.get("live_window")
+        or any("_live_started" in m for m in clean_safe)
+    )
     now_str = _now_bj()
     future_matches = [m for m in clean_safe if m.get("match_time", "") > now_str]
     if in_live_window and len(future_matches) > 10:
@@ -364,6 +424,50 @@ def node_build_prompt(state: AgentState) -> AgentState:
         print(f"  🎯 live 近场保护: 未来 {len(future_matches)} 场 → {focus_hours}h 内未开赛 {len(focus)} 场"
               f"（窗口 {now_str} ~ {cutoff}）")
         clean_safe = focus
+
+    # ── 数据断更提示（只提示不拦截）──
+    # 上游按场次抽风：同一时间点，有的场次序列新鲜，有的冻在几小时前。缓存侧
+    # _cached_at 是新的（所以 check_data_freshness 看不出问题），只能逐系列比末点。
+    stale_lines: list[str] = []
+    stale_records: list[dict] = []
+    for m in clean_safe:
+        lid = m.get("lota_id", "")
+        feat = rt.dm.get_cached_compact_fet(lid) or {}
+        text = feat.get("compact_fet", "") or (feat.get("data") or {}).get("compact_fet", "")
+        if not text:
+            continue
+        hits = [r for r in _fet_series_stale(text) if r["stale"]]
+        if not hits:
+            continue
+        stale_lines.append(
+            f"[{lid}] {m.get('home_name', '?')} vs {m.get('away_name', '?')} "
+            f"({m.get('match_time', '?')[5:16]})"
+        )
+        for r in hits:
+            stale_lines.append(
+                f"    {r['series']}: 末点 {r['last_point']}（{r['age_min']} 分钟前；"
+                f"比同场最新序列晚 {r['lag_min']} 分钟，阈值 {r['threshold_min']} 分钟）⚠️"
+            )
+        stale_records.append({
+            "lota_id": lid,
+            "stale_series": [r["series"] for r in hits],
+            "detail": [
+                f"{r['series']} 末点{r['last_point']} lag={r['lag_min']}m "
+                f"age={r['age_min']}m 阈值{r['threshold_min']}m"
+                for r in hits
+            ],
+        })
+
+    stale_context = ""
+    if stale_lines:
+        stale_context = (
+            "⚠️ 数据断更提示（不拦截，但引用前必须自行折价）\n"
+            "以下比赛的某些赔率序列末点明显晚于同场最新序列，疑似上游停更、不是真实最新赔率。\n"
+            "用这些序列的价格/水位下结论前先确认时效；拿不准就以同场新鲜序列或离散指数为准，\n"
+            "或在 order 理由里注明该数据的数据龄。\n\n"
+            + "\n".join(stale_lines)
+        )
+        print(stale_context)
 
     # ── 阶段2: 按 active 因子的 slugs 扩展每场数据段 ──
     # PromptBuilder 会把 factors[].slugs 追加进该场 sections（默认 7 段 + 因子 slugs）。
@@ -375,7 +479,7 @@ def node_build_prompt(state: AgentState) -> AgentState:
             from .memory import FactorMemory as _FM
             _fm = _FM(rt.role.memory.factors.path.parent)
             _fm.load()
-            main, _, _ = _fm.selected_active()
+            main, _, _, _ = _fm.selected_active()
             factor_objs = [
                 SimpleNamespace(slugs=fdata.get("slugs") or [])
                 for _, fdata, _ in main
@@ -443,11 +547,12 @@ def node_build_prompt(state: AgentState) -> AgentState:
         settled_orders=settled_orders,
         day_date=day_date,
         persona_text=rt.role.persona_text() if rt.role else "",
-        capital=full_capital,
+        # 只插入「扣掉已落盘在途单」后的可用余额，LLM 按它分配
+        capital=capital,
         alpha_mode=rt.role.alpha_mode if rt.role else False,
         cross_factor_exclude=rt.role.cross_factor_exclude if rt.role else [],
         scope=rt.role.scope if rt.role else "jc",
-        extra_context=labels_text if labels_text else None,
+        extra_context="\n\n".join(x for x in (labels_text, stale_context) if x) or None,
     )
 
     # 记录今天使用的 slugs（供明天 settle 后回填 PnL）
@@ -460,6 +565,16 @@ def node_build_prompt(state: AgentState) -> AgentState:
             "strategy": sp.name if sp else "baseline-v1",
             "settlement_review": len(settled_orders),
         }, f"{result['token_count']} tokens (budget {result['budget']})")
+
+    if stale_records and rt.session:
+        rt.session.tool_call(
+            "stale_series_alert",
+            {
+                "stale_matches": stale_records,
+                "thresholds_min": _FET_STALE_THRESHOLD_MIN,
+            },
+            f"{len(stale_records)} 场存在断更序列（只提示不拦截）",
+        )
 
     return {**state, "prompt": result, "safe_matches": clean_safe}
 
@@ -576,6 +691,71 @@ def _fet_last_clock(sections: dict[str, list[str]], name: str, kickoff) -> datet
     return kickoff - timedelta(minutes=vals[-1])
 
 
+# ── 断更检测（只提示不拦截）──
+# 阈值 = 「该系列末点」比「同场最新序列末点」晚多少分钟算断更。
+# 各系列更新频率不同：亚盘临场几分钟一动，离散指数慢得多；统一 60 分钟会把亚盘停更漏掉。
+_FET_STALE_THRESHOLD_MIN = {
+    "亚盘": 20,
+    "大小球": 20,
+    "欧盘": 30,
+    "离散指数": 60,
+}
+_FET_STALE_DEFAULT_MIN = 30
+
+
+def _fet_stale_threshold(name: str) -> int:
+    """系列名 → 断更阈值（分钟）。"""
+    for prefix, mins in _FET_STALE_THRESHOLD_MIN.items():
+        if name.startswith(prefix):
+            return mins
+    return _FET_STALE_DEFAULT_MIN
+
+
+def _fet_kickoff(text: str) -> datetime | None:
+    """从 compact-fet 文本解析开赛时间。"""
+    mtxt = re.search(r"时间[：:]\s*([\d\- :]+)", text)
+    if not mtxt:
+        return None
+    try:
+        return datetime.strptime(mtxt.group(1).strip()[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+def _fet_series_stale(text: str) -> list[dict]:
+    """逐系列比对末点时间，标出疑似断更的系列。
+
+    判据用「相对同场最新序列」而不是「相对当前时间」：赛前几天的场次本来就没几条
+    数据点，按绝对时间判会全员误报；要抓的是同一场里某条序列停更（如 Pinnacle 冻在
+    几小时前、离散还在动）。每项都带 age_min（末点距当前多少分钟），
+    人工和狗都能据此判断这条价格的真实时效。
+    """
+    sections = _parse_fet_series(text)
+    kickoff = _fet_kickoff(text)
+    if kickoff is None:
+        return []
+    clocks = {n: _fet_last_clock(sections, n, kickoff) for n in _FET_SERIES_ORDER}
+    freshest = max((c for c in clocks.values() if c), default=None)
+    if freshest is None:
+        return []
+    now = datetime.now()
+    rows = []
+    for name in _FET_SERIES_ORDER:
+        last = clocks.get(name)
+        if not last or not (sections.get(name) or []):
+            continue
+        lag_min = int((freshest - last).total_seconds() // 60)
+        rows.append({
+            "series": name,
+            "last_point": last.strftime("%H:%M"),
+            "age_min": max(0, int((now - last).total_seconds() // 60)),
+            "lag_min": lag_min,
+            "threshold_min": _fet_stale_threshold(name),
+            "stale": lag_min > _fet_stale_threshold(name),
+        })
+    return rows
+
+
 def _fet_odds_tail(text: str, per_series: int = 2) -> list[str]:
     """从 compact-fet 文本提取各赔率系列最近的几个数据点（Δt/OPt 行）。"""
     sections = _parse_fet_series(text)
@@ -603,36 +783,18 @@ def _print_placed_fet_tail(rt, lid: str) -> None:
         return
     sections = _parse_fet_series(text)
 
-    # 开赛时间（从 fet 文本"时间:"字段解析）
-    kickoff = None
-    mtxt = re.search(r"时间[：:]\s*([\d\- :]+)", text)
-    if mtxt:
-        try:
-            kickoff = datetime.strptime(mtxt.group(1).strip()[:16], "%Y-%m-%d %H:%M")
-        except ValueError:
-            kickoff = None
-
-    clocks = {
-        name: _fet_last_clock(sections, name, kickoff)
-        for name in _FET_SERIES_ORDER
-    }
-    freshest = max((c for c in clocks.values() if c), default=None)
-
     print(f"  📊 [{lid}] {home} vs {away} {mt} | cached {cached_at}")
     stale_any = False
-    for name in _FET_SERIES_ORDER:
-        pts = sections.get(name) or []
-        if not pts:
-            continue
+    for row in _fet_series_stale(text):
+        pts = sections.get(row["series"]) or []
         flag = ""
-        last_clock = clocks.get(name)
-        if last_clock and freshest and (freshest - last_clock) > timedelta(minutes=60):
-            flag = " ⚠️断更"
+        if row["stale"]:
+            flag = f" ⚠️断更(晚{row['lag_min']}m>{row['threshold_min']}m)"
             stale_any = True
         line = " | ".join(p[:90] for p in pts[-2:])
-        print(f"      {name}: {line}{flag}")
+        print(f"      {row['series']}: {line}{flag}")
     if stale_any:
-        print("      ⚠️ 有系列最新点比最全系列晚 60 分钟以上，数据疑似断更")
+        print("      ⚠️ 有系列末点明显晚于同场最新序列，数据疑似断更（只提示不拦截）")
 
 
 def node_place_orders(state: AgentState) -> AgentState:
@@ -650,11 +812,19 @@ def node_place_orders(state: AgentState) -> AgentState:
         if not o.get("settled_at") and o.get("lota_id")
     }
 
-    # 已开赛比赛的 lota_id 集合 → 这些比赛的订单不更新，维持原仓
+    # 已开赛比赛的 lota_id 集合 → 这些比赛的订单不更新，维持原仓。
+    # fetch 时已剔除已开赛；这里在真正下单前按当前时间再查一次，
+    # 兜住 LLM 分析期间才开赛的场次（回放无 live_window 标记不触发）。
     started_lids = {
         m["lota_id"] for m in state.get("safe_matches", [])
         if m.get("_live_started")
     }
+    if state.get("live_window"):
+        now_str = _now_bj()
+        started_lids |= {
+            m["lota_id"] for m in state.get("safe_matches", [])
+            if m.get("match_time", "") <= now_str
+        }
 
     # ── 分离：已开赛仅占用预算不下注 / 未开赛纳入（不真实扣款）──
     capital_before = rt.role.capital
@@ -904,10 +1074,24 @@ def node_settle_orders(state: AgentState) -> AgentState:
 # ═══════════════════════════════════════════════
 
 def _extra_reflect_matches(dm: DataManager, day_date: str, exclude_lids: set,
-                           max_extra: int = 3, by_sp: bool = False) -> list[str]:
+                           max_extra: int = 3, by_sp: bool = False,
+                           by_strata: bool = False, dedup: bool = False,
+                           only_beidan: bool = False) -> list[str]:
     """当天足球日窗口内、已完场但未下单的比赛，作为反思补充样本。
 
-    by_sp=False 随机挑；by_sp=True 按 beidan_info.spvalue 降序挑高 SP 场次。
+    三种抽样方式（**调用方显式选择**，默认沿用历史行为）：
+      · 默认            → 随机
+      · `by_sp=True`    → 按 beidan_info.spvalue 降序（历史用法，结果条件化）
+      · `by_strata=True`→ 按**赛前离散**分层抽样（低/中/高），不碰开奖结果
+        —— 北单串关波动路径用它，避免"候选由事后 SP 决定"造成的选择偏差。
+
+    dedup=True 时按 lota_id 去重：足球日窗口跨两个日历日，同一场比赛会同时
+    出现在 `matches/<d1>.json` 与 `matches/<d2>.json`，不去重会让同一场被
+    反思两遍（浪费 token，且污染「≥2-3 场共性」判断）。
+
+    only_beidan=True 时只保留北单场次（`beidan_number` 非空，与竞彩互斥）：
+    北单是**彩池**玩法，混入竞彩固定赔率场次会把两种口径的样本搅在一起。
+    ⚠️ 两项默认 False = 线上单狗原行为。
     """
     import random
 
@@ -933,10 +1117,23 @@ def _extra_reflect_matches(dm: DataManager, day_date: str, exclude_lids: set,
                 continue
             if m.get("state") != 6:
                 continue
+            # 北单口径（与竞彩互斥）：彩池玩法不能混入固定赔率场次做因子归纳
+            if only_beidan and not m.get("beidan_number"):
+                continue
             candidates.append(m)
 
     if not candidates:
         return []
+    if dedup:
+        _seen: set[str] = set()
+        candidates = [m for m in candidates
+                      if not (m.get("lota_id") in _seen or _seen.add(m.get("lota_id")))]
+    if by_strata:
+        from .tools import prematch_dispersion, stratified_pick
+        picked = stratified_pick(
+            candidates, max_extra,
+            key=lambda m: prematch_dispersion(m.get("lota_id", "")))
+        return [m["lota_id"] for m in picked]
     if by_sp:
         candidates.sort(key=lambda m: -float((m.get("beidan_info") or {}).get("spvalue") or 0))
     else:
@@ -952,8 +1149,13 @@ def run_reflect(settled: list[dict], day_date: str, role,
                 slug_history_days: int = 90,
                 extra_matches: bool = True,
                 extra_by_sp: bool = False,
+                extra_by_strata: bool = False,
                 extra_max: int = 3,
                 parlay_emphasis: bool = False,
+                factor_scope: str | None = None,
+                rich_match_info: bool = False,
+                extra_only_beidan: bool = False,
+                system_rules: str = "",
                 save_fac: bool = True,
                 persist: bool = True) -> dict:
     """结算后反思核心 — 可被 node_reflect（线上）与对照组脚本复用。
@@ -963,6 +1165,11 @@ def run_reflect(settled: list[dict], day_date: str, role,
 
     use_slug_history=True 时，额外注入「历史同信号比赛回顾」（时间从近到远、
     含赛果），让因子思考不只看当天订单，还看同 slug 信号在历史完场比赛中的表现。
+
+    rich_match_info=True 时，比赛片段 header 额外带「比分 + 北单让球线」，并从
+    beidan/matches 缓存回填缺失比分（回放用赛前切片 fet_txt，里面没有赛果）。
+    ⚠️ 默认 **False**：线上单狗反思与分析 prompt 必须字节不变（红线），
+    该增强只由北单串关/沙盒路径显式打开。
 
     role 只需提供: alpha_mode / cross_factor_exclude / system_prompt_name /
     persona_text() / memory.factors(FactorMemory) / memory.reflections(ReflectionMemory)。
@@ -1037,7 +1244,7 @@ def run_reflect(settled: list[dict], day_date: str, role,
     match_data_blocks = []
     match_features: dict[str, str] = {}
     for lid, order_indices in seen_lids.items():
-        ctx = dm.get_match_context(lid)
+        ctx = dm.get_match_context(lid, rich=rich_match_info)
         match_info = ctx.get("match", {})
         data_text = dm.get_sections(lid, reflect_slugs) if lid else ""
         if count_tokens(data_text) > REFLECT_TOKENS_PER_MATCH:
@@ -1045,8 +1252,22 @@ def run_reflect(settled: list[dict], day_date: str, role,
         match_features[lid] = data_text
         # 比分: 优先 match_info，fallback order 里的 score
         score = match_info.get("score", "") or settled[order_indices[0]].get("score", "?")
+        # 让球线：北单「让球后胜平负」的方向必须知道 goal_line 才可归因。
+        # ⚠️ 仅在 rich_match_info=True（北单串关/沙盒）时输出，保证单狗 prompt 不变。
+        gl_txt = ""
+        if rich_match_info:
+            gl = match_info.get("goal_line")
+            if gl is None:
+                gl = ((settled[order_indices[0]].get("beidan_info") or {}).get("goal_line"))
+            if gl is not None and gl != "":
+                try:
+                    g = float(gl)
+                    gl_txt = f" | 让球{'受让' if g > 0 else '让'}{abs(g):g}" if g else " | 让球0(平手)"
+                except (TypeError, ValueError):
+                    gl_txt = f" | 让球{gl}"
         header = (
-            f"### lota_id={lid} | {match_info.get('home','?')} vs {match_info.get('away','?')} | 比分={score}\n"
+            f"### lota_id={lid} | {match_info.get('home','?')} vs {match_info.get('away','?')}"
+            f" | 比分={score}{gl_txt}\n"
         )
         for idx in order_indices:
             o = settled[idx]
@@ -1062,19 +1283,34 @@ def run_reflect(settled: list[dict], day_date: str, role,
     extra_lids: list[str] = []
     if extra_matches:
         extra_lids = _extra_reflect_matches(
-            dm, day_date, set(seen_lids), max_extra=extra_max, by_sp=extra_by_sp
+            dm, day_date, set(seen_lids), max_extra=extra_max, by_sp=extra_by_sp,
+            by_strata=extra_by_strata, dedup=rich_match_info,
+            only_beidan=extra_only_beidan
         )
         for lid in extra_lids:
-            ctx = dm.get_match_context(lid)
+            ctx = dm.get_match_context(lid, rich=rich_match_info)
             match_info = ctx.get("match", {})
             data_text = dm.get_sections(lid, reflect_slugs) if lid else ""
             if count_tokens(data_text) > REFLECT_TOKENS_PER_MATCH:
                 data_text = truncate_section(data_text, REFLECT_TOKENS_PER_MATCH)
             match_features[lid] = data_text
+            # 脏数据（state==6 但赛果缓存无 score）会渲染成 `比分=`；rich 模式回落 `?`
             score = match_info.get("score", "?")
+            if rich_match_info and not score:
+                score = "?"
+            # 补充样本同样带让球线（方向归因依赖它）——同样只在 rich 模式输出
+            _gl_txt = ""
+            if rich_match_info:
+                _gl = match_info.get("goal_line")
+                if _gl is not None and _gl != "":
+                    try:
+                        _g = float(_gl)
+                        _gl_txt = (f" | 让球{'受让' if _g > 0 else '让'}{abs(_g):g}" if _g else " | 让球0(平手)")
+                    except (TypeError, ValueError):
+                        _gl_txt = f" | 让球{_gl}"
             header = (
                 f"### lota_id={lid} | {match_info.get('home','?')} vs {match_info.get('away','?')} "
-                f"| 比分={score}（未下单，仅供参考）\n"
+                f"| 比分={score}{_gl_txt}（未下单，仅供参考）\n"
             )
             match_data_blocks.append(header + "\n" + data_text)
         if extra_lids:
@@ -1102,8 +1338,10 @@ def run_reflect(settled: list[dict], day_date: str, role,
         except Exception as e:
             print(f"  ⚠️ 历史同信号回顾生成失败（不影响分析）: {e}")
 
-    # 人设 + 因子定义（与分析 prompt 对齐）
-    persona_text = role.persona_text() if role else ""
+    # 人设段。反思用**反思人设**（persona_reflect.md，缺失则回落主线人设）。
+    # with_header=False 只返回正文 → 段标题由下面统一给（避免双标题）。
+    persona_text = role.persona_text(mode="reflect", with_header=False) if role else ""
+    _persona_full = role.persona_text(mode="reflect") if role else ""
     if role and hasattr(role.memory, "as_of"):
         try:
             role.memory.as_of = datetime.strptime(day_date, "%Y-%m-%d") if day_date else None
@@ -1113,36 +1351,100 @@ def run_reflect(settled: list[dict], day_date: str, role,
 
     parlay_block = ""
     if parlay_emphasis:
+        # 波动 v2（2026-09-14）：`M过(N−4)` 票型下不再有「全包腿」，样本改为
+        # **当日错价场次**，按引擎 gated 侧打分。
+        #
+        # ⚠️ 阈值口径（2026-09-15 用户口径）：腿级线必须是**每腿线** `(1/返奖率)^(1/M)`，
+        # **不是单关线 `1/返奖率`=1.5385**。整票只在结算时收一次 0.65，所以 4 关票的打平
+        # 条件是 `Π(SP·p̂) > 1/0.65`，摊到每腿就是 `SP·p̂ > (1/0.65)^(1/4) = 1.11371`。
+        # 旧文案写 `0.65 × 开奖SP × p̂ > 1`（单关线）会把标准抬高 38%，反思于是永远
+        # 找不到样本 —— 与 `beidan_high_vol.HIGH_VOL_RATIO_THRESHOLD` 同源。
+        try:
+            from .beidan_high_vol import HIGH_VOL_GAP_LEGS, high_vol_threshold
+            from .beidan_settlement import BEIDAN_RETURN_RATE
+            _gap_legs = int(HIGH_VOL_GAP_LEGS)
+            _leg_line = high_vol_threshold(_gap_legs, BEIDAN_RETURN_RATE)
+            _prod_line = 1.0 / float(BEIDAN_RETURN_RATE)
+        except Exception:
+            _gap_legs, _leg_line, _prod_line = 4, 1.11371, 1.5385
         parlay_block = (
-            "## 🃏 北单串关反思重点（本狗专属）\n"
-            "- 重点提炼「高波动 / 高 SP 防冷」类因子：这类比赛更适合进全包腿（H/D/A 全选）规避爆冷。\n"
-            "- 「昨日高SP未下单」的比赛只作全包候选参考，不用于单选归因。\n"
-            "- 单选腿因子可顺带发现，但不作为重点；不要为了单选腿硬凑因子。\n"
-            "- 因子 type 标注：高波动/高SP/全包/防冷类因子在 `factor_types` 里标 "
+            "## 🌊 波动 v2 反思重点（本狗专属）\n"
+            "- 本批样本是**当日错价场次**：开奖结果相对锐市场公平价是正期望错价\n"
+            f"  （**每腿线** `开奖SP × p̂ > {_leg_line:.5f}` = `(1/0.65)^(1/{_gap_legs})`；"
+            f"p̂ 已用 Pinnacle 1X2 经\n"
+            f"  Poisson 归一化到该场让球线）。最多 10 场，按错价比例降序取前 10。\n"
+            f"- ⚠️ **别用单关线**：整票只在结算时收一次 0.65，打平靠 `Π(SP·p̂) > "
+            f"{_prod_line:.4f}`（= {_leg_line:.5f}^{_gap_legs}）；\n"
+            f"  按单关线 `0.65×SP×p̂>1` 去量这批腿，会把标准抬高 "
+            f"{_prod_line/_leg_line-1:.0%}，等于永远对自己说「没有错价」。\n"
+            "- 样本的 `pick` / `hit` / `profit` 一律按**引擎 gated 侧（x≥θ）**计算，\n"
+            "  不由开奖反推 ⇒ 有命中也有不中，请按真实盈亏归因。\n"
+            "- 要提炼的是「**什么赛前特征预示这场会开出错价**」——这类特征才值得进腿、\n"
+            "  才值得放大注额；只描述'这场爆冷了'不算因子。\n"
+            "- 因子 type 标注：高波动/高SP/防冷类因子在 `factor_types` 里标 "
             "`volatility`，其余方向性因子标 `directional`。\n"
         )
-        # 全包腿开奖SP分布：低SP占比较高时，全包位被低值正路占用，会拖累整串乘积
-        cover_sps = sorted(
-            float(s.get("odds") or 0.0) for s in settled if s.get("role") == "全包"
-        )
-        if cover_sps:
-            low_n = sum(1 for x in cover_sps if x < 3.0)
+        # 对照基线：当日错价场次占比。因子选中的场次若与基线相当 ⇒ 没有筛选力。
+        _bases = [s.get("vol_base") for s in settled if s.get("vol_base") is not None]
+        if _bases:
             parlay_block += (
-                f"## 🧾 本单全包腿开奖SP分布（拖累评估）\n"
-                f"- 全包腿开奖SP: {', '.join(f'{x:.2f}' for x in cover_sps)}；"
-                f"其中 {low_n}/{len(cover_sps)} 场 <3.0（低值）。\n"
-                f"- ⚠️ 当全包腿大量落在 <3.0 的低值正路时，等于把「必中」位浪费在"
-                f"低赔场上，会明显拖累整串乘积上限；请反思全包位的选择是否偏保守、"
-                f"是否应该把高SP/高波动场次放进全包（保值上限），而不是把低SP正路"
-                f"塞满全包。\n\n"
+                f"## 📏 当日对照基线\n"
+                f"- 当日「错价场次」占比 = **{float(_bases[0]):.0%}**。\n"
+                f"- ⚠️ 如果你的因子选中的场次，错价比例跟这个基线差不多，那它**没有筛选力**，\n"
+                f"  不要把它写成正因子。\n\n"
             )
+
+    scope_block = ""
+    if factor_scope == "directional":
+        scope_block = (
+            "## 🧭 本次反思范围：只提炼方向型因子（单选腿 H/D/A 方向）\n"
+            "- 输出因子的 `factor_types` 一律标 `directional`。\n"
+            "- 不要输出 `volatility` / 高SP / 防冷 / 全包类因子。\n"
+        )
+    elif factor_scope == "volatility":
+        # 2026-09-14：`M过(N−4)` 票型下**不再有全包腿**，波动样本改为「当日错价场次」
+        # （`beidan_high_vol`），样本 pick/hit/profit 走引擎 gated 侧 ⇒ 文案必须跟着改，
+        # 否则 LLM 会按"覆盖赚/亏"去归因一个根本不存在的东西。
+        scope_block = (
+            "## 🌊 本次反思范围：只提炼波动/错价型因子（本批 = 开奖相对锐市场错价的场次）\n"
+            "- 输出因子的 `factor_types` 一律标 `volatility`。\n"
+            "- 不要输出 `directional` 方向型因子。\n"
+            "- **因子描述只能写赛前可观测的条件**（盘口/水位/离散/资金/赔率结构等）。\n"
+            "- ⛔ 禁止把结果写进因子描述：开奖 SP、实际赛果、比分、以及「这场爆冷/这场高 SP」\n"
+            "  这类事后判断一律不许出现在因子名或 desc 里——它们只是**标签**，不是条件。\n"
+            "- ✅ 必须给出**区分度**：同一个赛前特征在「gated 侧命中」与「不中」的样本里表现\n"
+            "  有什么不同；只说某一个方向（例如只描述中的那些）等于没有信息。\n"
+        )
+
+    # 人设段标题：串关/沙盒路径（rich_match_info）**只保留一个标题**。
+    # 改造前是「## 🎯 投注人设（所有下单基于此人设）」+ persona_text 自带的
+    # `## 🎯 个人偏好` → 反思 prompt 里叠成双标题，而且写着"所有下单基于此人设"
+    # （反思根本不下单）。见 2026-09-14 用户报障。
+    # ⚠️ 按单狗红线，该修正只挂在 rich_match_info 开关下；
+    #    单狗（rich=False）走 else 分支 = 改造前的双标题，逐字节不变。
+    if rich_match_info:
+        _has_refl_persona = bool(role and hasattr(role, "has_reflect_persona")
+                                 and role.has_reflect_persona())
+        _persona_hdr = ("## 🪞 反思人设（本次只做因子复盘，不下单）" if _has_refl_persona
+                        else "## 🎭 人设（本次反思沿用下注人设，未配置 persona_reflect.md）")
+        _persona_block = f"{_persona_hdr}\n{persona_text if persona_text else '(未设)'}"
+    else:
+        _persona_block = ("## 🎯 投注人设（所有下单基于此人设）\n"
+                          f"{_persona_full if _persona_full else '(未设)'}")
+
+    # 样本段标题：初始化/未下单日全是**观察样本**（0 落单），叫「已结算投注」是错的
+    _all_obs = bool(settled) and all(o.get("observation") for o in settled)
+    _data_hdr = ("## 观察样本及原始数据（本日未下单 → 按引擎规则虚拟结算）"
+                 if _all_obs else "## 已结算投注及原始数据")
+
+    # 让球口径块：只在传了 system_rules 时插入（空则连空行都不留 → 单狗逐字节不变）
+    _rules_block = f"{system_rules}\n\n" if system_rules else ""
 
     reflect_prompt = f"""你是量化足球博彩分析师。你的任务是从已结算比赛中**发现可复用的投注因子**。
 
-## 🎯 投注人设（所有下单基于此人设）
-{persona_text if persona_text else '(未设)'}
+{_persona_block}
 
-## 已结算投注及原始数据
+{_rules_block}{_data_hdr}
 {match_data_text}
 
 {history_block if history_block else ''}
@@ -1152,6 +1454,7 @@ def run_reflect(settled: list[dict], day_date: str, role,
 {factor_desc_text if factor_desc_text else ''}
 {cross_factors_text}
 {parlay_block}
+{scope_block}
 
 ## 任务 — 案例驱动的因子发现
 
@@ -1284,6 +1587,13 @@ def run_reflect(settled: list[dict], day_date: str, role,
         summary = data.get("reflection", clean[:200])
 
         desc_map: dict[str, str] = data.get("factor_desc", {}) or {}
+        factor_types: dict[str, str] = data.get("factor_types", {}) or {}
+
+        def _ftype_for(factor_name: str) -> str:
+            if factor_scope in ("directional", "volatility"):
+                return factor_scope
+            ft = str(factor_types.get(factor_name, "directional")).strip().lower()
+            return ft if ft == "volatility" else "directional"
 
         # per_match 作为 reflection 的上下文记录
         per_match = data.get("per_match", {}) or {}
@@ -1302,6 +1612,11 @@ def run_reflect(settled: list[dict], day_date: str, role,
                     ]
 
         # ── 更新 FactorMemory（persist=False 时为只读复盘，不落盘）──
+        # 新因子判重基准：必须在「归因驱动 record」之前快照。
+        # 否则当天新发现、又被归因到订单的因子在 fp 里已被 step 1 写入，
+        # 这里会把它判成"已存在"→ 跳过 save_factor → 永远不生成 fac 定义（无 slugs）。
+        existing_names = {n.lower() for n in fp.keys()}
+
         # 1. 归因驱动
         for idx, factors in attr_map.items():
             if not persist:
@@ -1311,10 +1626,30 @@ def run_reflect(settled: list[dict], day_date: str, role,
             profit = o.get("profit", 0)
             for fn in factors:
                 desc = desc_map.get(fn, "")
+                ftype = _ftype_for(fn)
+                # 北单腿的 odds 就是开奖 SP，显式带上，供 volatility 因子的
+                # avg_sp 使用（否则 factor_select 会按旧的单注口径反推，全包腿解错）
+                sp_val = ((o.get("sp_value") or o.get("odds"))
+                          if o.get("bet_type") == "北单腿" else None)
+                # 注数基数（单选腿 1 / 全包腿 3）：样本自带口径，统计与反推不用猜
+                unit_val = (o.get("unit_cost")
+                            if o.get("bet_type") == "北单腿" else None)
+                # 北单串关专用标注：只有这些因子才启用「北单口径」统计语义
+                # （其它狗不传 → 行为与历史完全一致）
+                is_beidan = o.get("bet_type") == "北单腿"
+                vol_base_val = (o.get("vol_base") if is_beidan else None)
                 role.memory.factors.record(
                     fn, hit, profit, desc=desc,
                     date=day_date, lota_id=o.get("lota_id", ""),
                     bet_size=o.get("bet_size", 0),
+                    factor_type=ftype,
+                    sp=sp_val,
+                    unit_cost=unit_val,
+                    path=("beidan" if is_beidan else None),
+                    unit_cost_default=(
+                        (3.0 if factor_scope == "volatility" else 1.0)
+                        if is_beidan else None),
+                    vol_base=vol_base_val,
                 )
 
         # 2. 兜底：LLM 提到但未归因的因子
@@ -1323,7 +1658,6 @@ def run_reflect(settled: list[dict], day_date: str, role,
             all_attributed = set()
             for factors in attr_map.values():
                 all_attributed.update(f.strip().lower() for f in factors)
-            existing_names = {n.lower() for n in fp.keys()}
             new_factors = []
             for raw in [_clean_name(f) for f in data.get("alpha_factors", []) if _valid(f)]:
                 fn_lower = raw.lower()
@@ -1337,9 +1671,11 @@ def run_reflect(settled: list[dict], day_date: str, role,
                     existing_names.add(fn_lower)
             for factor_name in new_factors:
                 if persist and factor_name.lower() not in all_attributed:
+                    ftype = _ftype_for(factor_name)
                     role.memory.factors.record(
                         factor_name, None, 0, desc=desc_map.get(factor_name, ""),
                         date=day_date,
+                        factor_type=ftype,
                     )
 
         # 2.5 保存新 Factor 模型
@@ -1347,14 +1683,22 @@ def run_reflect(settled: list[dict], day_date: str, role,
             from src.store import save_factor
             from src.models import Factor
             for factor_name in new_factors:
+                fid = f"fac_{factor_name.lower().replace(' ','_')[:40]}"
+                slugs = [s.strip() for s in key_slugs_str.split(",") if s.strip()]
                 try:
                     save_factor(Factor(
-                        id=f"fac_{factor_name.lower().replace(' ','_')[:40]}",
-                        slugs=[s.strip() for s in key_slugs_str.split(",") if s.strip()],
+                        id=fid,
+                        slugs=slugs,
                         content=desc_map.get(factor_name, summary[:300])
                     ))
                 except Exception:
                     pass
+                # 定义落盘后立刻回填条目，避免 slugs 空到下一次 record/load 才 join 上
+                p = role.memory.factors.factor_perf.get(factor_name)
+                if p is not None:
+                    p["fac_id"] = fid
+                    p["slugs"] = slugs
+            role.memory.factors._save()
 
         # slug 列表
         key_slugs_list = data.get("key_slugs", [])
@@ -1428,6 +1772,9 @@ def node_reflect(state: AgentState) -> AgentState:
     extra_matches = os.environ.get("REFLECT_EXTRA_MATCHES", "1").strip().lower() in (
         "1", "true", "on", "yes"
     )
+    refl_extra = state.get("reflect_extra") or {}
+    if "extra_matches" in refl_extra:
+        extra_matches = bool(refl_extra["extra_matches"])
     res = run_reflect(
         settled, day_date, rt.role,
         provider=rt.provider, dm=rt.dm,
@@ -1436,9 +1783,14 @@ def node_reflect(state: AgentState) -> AgentState:
         slug_history_tokens=hist_tokens,
         slug_history_days=hist_days,
         extra_matches=extra_matches,
-        extra_by_sp=bool((state.get("reflect_extra") or {}).get("extra_by_sp")),
-        extra_max=int((state.get("reflect_extra") or {}).get("extra_max") or 3),
-        parlay_emphasis=bool((state.get("reflect_extra") or {}).get("parlay_emphasis")),
+        extra_by_sp=bool(refl_extra.get("extra_by_sp")),
+        extra_by_strata=bool(refl_extra.get("extra_by_strata")),
+        extra_max=int(refl_extra.get("extra_max") or 3),
+        parlay_emphasis=bool(refl_extra.get("parlay_emphasis")),
+        factor_scope=refl_extra.get("factor_scope"),
+        rich_match_info=bool(refl_extra.get("rich_match_info")),
+        extra_only_beidan=bool(refl_extra.get("extra_only_beidan")),
+        system_rules=refl_extra.get("system_rules") or "",
     )
 
     if rt.session:
@@ -1540,11 +1892,55 @@ def node_factor_review(state: AgentState) -> AgentState:
             rt.role.memory.factors.set_status(fid, "dormant")
             auto_dormant.append(fid)
 
-    # ── 阶段4: 低信息因子确定性退役（既不赚钱也不亏大钱 + 来来回回≈掷硬币）──
-    # 波动大/强方向的因子有信息保留；只有 |每单平均回报|≈0 且命中率在硬币区间才退役。
-    LOW_INFO_MIN_SAMPLES = 5
-    LOW_INFO_AVG_RETURN = 0.15
-    LOW_INFO_HIT_LO, LOW_INFO_HIT_HI = 0.35, 0.65
+    # ── 阶段4: 低信息因子确定性退役 ──
+    # 用户口径（2026-09-13）：**ROI 没有明显正负倾向的因子 = 该退**（在 0 附近徘徊 = 没倾向）。
+    # 周期沿用 14 天（由调用方控制频率），样本门槛 5（低于此只是"还没证据"，不下结论）。
+    #
+    # 可调（角色级 memory/factor_memory.json 的 _retire_rule 或环境变量）：
+    #   retire_min_n       样本门槛（默认 5）
+    #   retire_eps_retire  明确负倾向阈值：avg_return < −eps → 退（默认 0.20）
+    #   retire_eps_flat    无倾向带：|avg_return| ≤ eps → **退**（默认 0.20）
+    #   retire_hit_band    命中率带：仅当命中率落在带内才判"无倾向"（默认 0.30~0.70）
+    # avg_return 口径 = total_return / (total − push)，即"每单平均回报率"。
+    # ⚠️ 单狗红线：这些阈值**只从角色自己的 parlay.json 读**，读不到就用改造前的原值
+    #    （5 / 0.15 / 命中率 0.35~0.65）。**不改单狗行为**——北单串关狗在 parlay.json 里
+    #    显式写 `retire_*` 才启用新口径。
+    def _retire_cfg(key: str, default):
+        try:
+            _pj = rt.role._role_dir / "parlay.json"
+            cfg = json.loads(_pj.read_text(encoding="utf-8")) if _pj.exists() else {}
+            v = (cfg.get("retire") or {}).get(key)
+        except Exception:
+            v = None
+        if v is None:
+            return default
+        try:
+            if isinstance(default, tuple):
+                return tuple(float(x) for x in (v if isinstance(v, (list, tuple)) else str(v).split(",")))
+            return float(v)
+        except Exception:
+            return default
+
+    _parlay_retire = False
+    try:
+        _parlay_retire = bool((json.loads((rt.role._role_dir / "parlay.json").read_text(encoding="utf-8"))
+                               .get("retire") or {}))
+    except Exception:
+        _parlay_retire = False
+
+    LOW_INFO_MIN_SAMPLES = int(_retire_cfg("min_n", 5))
+    if _parlay_retire:
+        # 串关狗（配置显式开启）：无倾向 |ROI| ≤ eps 即退
+        LOW_INFO_AVG_RETURN = float(_retire_cfg("eps_flat", 0.20))
+        LOW_INFO_NEG_RETURN = float(_retire_cfg("eps_retire", 0.20))
+        LOW_INFO_HIT_LO, LOW_INFO_HIT_HI = _retire_cfg("hit_band", (0.30, 0.70))
+        LOW_INFO_USE_HIT_BAND = bool(_retire_cfg("use_hit_band", 0.0))
+    else:
+        # 其它狗（含全部单狗）：**保持改造前行为**
+        LOW_INFO_AVG_RETURN = float(_retire_cfg("legacy_eps_flat", 0.15))
+        LOW_INFO_NEG_RETURN = float(_retire_cfg("legacy_eps_retire", 1.0))  # 1.0 = 实际不触发
+        LOW_INFO_HIT_LO, LOW_INFO_HIT_HI = _retire_cfg("legacy_hit_band", (0.35, 0.65))
+        LOW_INFO_USE_HIT_BAND = True
     # LLM 休眠护栏：最近 N 天仍有触发 且 累计正回报 的因子视为健康，禁止 LLM 直接休眠
     # （"dormant" 语义 = 近期无触发场景；刚触发且赚钱的因子不应被降级/砍掉）
     LLM_DORMANT_RECENT_DAYS = 7
@@ -1559,9 +1955,21 @@ def node_factor_review(state: AgentState) -> AgentState:
         avg = sum(rets) / len(rets)
         denom = len(hist) - s.get("push", 0)
         hit_rate = s.get("hit", 0) / denom if denom > 0 else 0
-        if abs(avg) < LOW_INFO_AVG_RETURN and LOW_INFO_HIT_LO <= hit_rate <= LOW_INFO_HIT_HI:
+        # ① 明确负倾向 → 退（串关口径；单狗该阈值=1.0 故不触发，保持原行为）
+        if avg < -LOW_INFO_NEG_RETURN:
             rt.role.memory.factors.set_status(fid, "retired")
             low_info_retired.append(fid)
+            continue
+        # ② 无倾向 → 退
+        #    单狗（LOW_INFO_USE_HIT_BAND=True）：沿用改造前"|ROI|<0.15 **且** 命中率在
+        #      0.35~0.65"的双条件，行为不变；
+        #    串关狗（配置开启）：只看 |ROI| ≤ eps（用户口径：ROI 没倾向就退）。
+        if abs(avg) <= LOW_INFO_AVG_RETURN:
+            if LOW_INFO_USE_HIT_BAND and not (LOW_INFO_HIT_LO <= hit_rate <= LOW_INFO_HIT_HI):
+                continue
+            rt.role.memory.factors.set_status(fid, "retired")
+            low_info_retired.append(fid)
+            continue
 
     # ── 构建评估候选（active + dormant，排除已退役）──
     candidates: dict[str, dict] = {}
@@ -1573,11 +1981,17 @@ def node_factor_review(state: AgentState) -> AgentState:
         hit = s.get("hit", 0)
         denom = total - s.get("push", 0)
         hit_rate_str = f"{hit / denom * 100:.0f}%" if denom > 0 else "无数据"
+        total_return = float(
+            s.get("total_return")
+            if "total_return" in s
+            else s.get("profit", 0) or 0
+        )
+        avg_return = round(total_return / denom, 2) if denom > 0 else 0.0
         candidates[fid] = {
             "status": s.get("status", "active"),
             "total": total,
             "hit_rate": hit_rate_str,
-            "profit": s.get("profit", 0),
+            "avg_return": avg_return,
             "desc": s.get("desc", ""),
             "first_seen": s.get("first_seen", ""),
             "last_seen": s.get("last_seen", ""),
@@ -1602,7 +2016,7 @@ def node_factor_review(state: AgentState) -> AgentState:
 
     candidates_text = "\n".join(
         f"  {fid} [{info['status']}]: {info['total']}次 命中{info['hit_rate']} "
-        f"盈亏{info['profit']:+.0f} | 首见={info['first_seen']} 最近={info['last_seen']}\n"
+        f"单注均回报{info['avg_return']:+.2f} | 首见={info['first_seen']} 最近={info['last_seen']}\n"
         f"    定义: {info['desc'][:100] if info['desc'] else '(无描述)'}"
         for fid, info in sorted(candidates.items(), key=lambda x: -x[1]["total"])
     )
@@ -1824,7 +2238,12 @@ def build_analyze_graph() -> StateGraph:
 
 
 def build_settle_graph() -> StateGraph:
-    """构建 settle_day 子图（结算 + 反思）"""
+    """构建 settle_day 子图（结算 [+ 反思]）。
+
+    2026-09-16 解耦：`state["reflect"]=False` 时**不跑 reflect 节点** ——
+    结算与因子生成拆成两个可独立触发的动作（与北单串关狗的
+    `settle_only` / `reflect_only` 对齐）。
+    """
     g = StateGraph(AgentState)
 
     g.add_node("load_role", node_load_role)
@@ -1837,7 +2256,11 @@ def build_settle_graph() -> StateGraph:
     g.add_edge("load_role", "load_unsettled")
     g.add_edge("load_unsettled", "fetch_scores")
     g.add_edge("fetch_scores", "settle_orders")
-    g.add_edge("settle_orders", "reflect")
+    g.add_conditional_edges(
+        "settle_orders",
+        lambda s: "reflect" if s.get("reflect", True) else END,
+        {"reflect": "reflect", END: END},
+    )
     g.add_edge("reflect", END)
 
     return g.compile()
@@ -1943,8 +2366,13 @@ class Agent:
             "session_path": str(session._path),
         }
 
-    def settle(self, day_date: str = None, jingcai_only: bool = False) -> dict:
-        """结算未结算订单"""
+    def settle(self, day_date: str = None, jingcai_only: bool = False,
+               reflect: bool = True) -> dict:
+        """结算未结算订单。
+
+        `reflect=False` → **只结算**（对账订单/资金，不产因子、不烧 LLM）。
+        2026-09-16：结算与因子生成解耦（与北单串关狗 `settle_only` 同口径）。
+        """
         session = self._begin_session("settle", day_date or "all")
 
         try:
@@ -1952,6 +2380,7 @@ class Agent:
                 "user": self.user,
                 "day_date": day_date or "",
                 "jingcai_only": jingcai_only,
+                "reflect": bool(reflect),
             }
             result = self._settle_graph.invoke(state)
             settlement = result.get("settlement", {"settled": 0})
@@ -1960,6 +2389,75 @@ class Agent:
             self._end_session(session)
 
         return settlement
+
+    def settle_only(self, day_date: str = None, jingcai_only: bool = False) -> dict:
+        """**只结算**（显式语义；不产因子）。"""
+        return self.settle(day_date, jingcai_only=jingcai_only, reflect=False)
+
+    def reflect_only(self, day_date: str = None) -> dict:
+        """**只产因子**（不动订单与资金）：对该足球日**已结算**订单做归因与发现。
+
+        与北单串关狗 `reflect_only` 对齐：不结算、不改资金，只跑 reflect 节点。
+        足球日口径：12:01 切日（与 `environment.get_football_day` 一致）。
+        单狗订单没有日期字段 ⇒ 用 `lota_id → 比赛缓存 match_time` 反推足球日，
+        取不到缓存时退回 `settled_at` 的日期。
+        """
+        import os
+        from datetime import datetime as _dt, timedelta as _td
+        from .agent import _rt as _rt_reflect
+
+        rt = _rt_reflect({"user": self.user})
+        self._ensure_role()
+        role = rt.role
+
+        def _football_day(ts: str) -> str:
+            try:
+                d = _dt.strptime(str(ts)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return str(ts)[:10]
+            return (d - _td(hours=12)).date().isoformat()
+
+        day = str(day_date or "")
+        settled: list[dict] = []
+        for o in role.get_orders():
+            if not o.get("settled_at"):
+                continue
+            lid = o.get("lota_id") or ""
+            mt = ""
+            try:
+                mt = str((rt.dm.get_cached_match(lid) or {}).get("match_time") or "")
+            except Exception:
+                mt = ""
+            if _football_day(mt or str(o.get("settled_at"))) == day or not day:
+                settled.append(o)
+
+        if not rt.provider:
+            try:
+                from .providers.deepseek import DeepSeekProvider
+                if os.environ.get("DEEPSEEK_API_KEY"):
+                    self.set_provider(DeepSeekProvider())
+            except Exception:
+                pass
+
+        before = len(getattr(role.memory.factors, "factor_perf", {}) or {})
+        rt.last_settled_orders = settled
+        if not settled:
+            return {"day": day, "mode": "none", "settled": 0,
+                    "factors_before": before, "factors_after": before,
+                    "reason": "该足球日没有已结算订单（不做观察样本反思）"}
+        node_reflect({"user": self.user, "day_date": day})
+        try:
+            role.memory.factors.load()
+        except Exception:
+            pass
+        after = len(getattr(role.memory.factors, "factor_perf", {}) or {})
+        try:
+            refl = len(getattr(role.memory.reflections, "reflections", []) or [])
+        except Exception:
+            refl = 0
+        return {"day": day, "mode": "settled", "settled": len(settled),
+                "factors_before": before, "factors_after": after,
+                "reflections": refl}
 
     def factor_review(self, end_date: str, start_date: str = "", user_notes: str = "") -> dict:
         """因子结构性评估 — 由外部控制调用时机。
@@ -2194,7 +2692,13 @@ class Agent:
                     first = s2.get("first_seen", "")
                     last = s2.get("last_seen", "")
                     date_str = f" [{first}" + (f"~{last}" if last != first else "") + "]" if first else ""
-                    lines.append(f"  {fid}{date_str}: {s2['total']}次 命中{rate} 盈亏{s2['profit']:+.0f}{desc_str}")
+                    total_return = float(
+                        s2.get("total_return")
+                        if "total_return" in s2
+                        else s2.get("profit", 0) or 0
+                    )
+                    avg_return = round(total_return / denom, 2) if denom > 0 else 0.0
+                    lines.append(f"  {fid}{date_str}: {s2['total']}次 命中{rate} 单注{avg_return:+.2f}{desc_str}")
             if retired:
                 lines.append(f"  🪦 退役: {', '.join(retired.keys())}")
 

@@ -32,8 +32,8 @@
 ## 4. 怎么跑（10:30，dry-run 不订单）
 
 ```bash
-cd /Users/cjy/Desktop/code/ds_agents/python-engine
-/Users/cjy/miniconda3/bin/python -m src.beidan_parlay_dog analyze 2026-08-31 --llm --dry-run --user bc狗
+cd /path/to/ds-agents/python-engine
+python -m src.beidan_parlay_dog analyze 2026-08-31 --llm --dry-run --user bc狗
 ```
 - 日期：`2026-08-31` 是窗口起始日；若跑时已换窗口，改填新的起始日。
 - 保持 `--dry-run`（只预览）；真要下单再删掉它。

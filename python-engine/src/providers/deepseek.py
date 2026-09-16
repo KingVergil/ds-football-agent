@@ -32,9 +32,9 @@ class DeepSeekProvider(BaseLLMProvider):
         api_key: str = None,
         model: str = None,
         fast_model: str = None,
-        max_tokens: int = 200000,
+        max_tokens: int = 384000,
         temperature: float = 0.3,
-        budget_tokens: int = 131072,
+        budget_tokens: int = 384000,
         timeout: int = 300,
         thinking: bool = True,
     ):

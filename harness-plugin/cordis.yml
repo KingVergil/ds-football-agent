@@ -15,5 +15,6 @@
     cacheDir: ./python-engine/data
     # Python 引擎根目录（桥解释器按平台自动选 python3/python；可加 pythonBin 显式指定）
     engineRoot: ./python-engine
-    # pythonBin: <解释器绝对路径>   # 可选：Windows 常见 C:/Python312/python.exe；conda 亦可
+    # 桥解释器改成显式指向 conda（homebrew python3 缺 langgraph，会导致准备/分析/刷新挂掉）
+    pythonBin: python
     # envFile: <密钥文件路径>       # 可选：缺省自动读 <engineRoot>/.env 与 ~/.env

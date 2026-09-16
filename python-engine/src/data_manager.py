@@ -39,7 +39,10 @@ from .beidan_settlement import handicap_result as _beidan_handicap_result, resul
 # Config
 # ═══════════════════════════════════════════════
 
-BASE_URL = "http://deepdata.lota.tv/predictions/api/v2"
+# ⚠️ 数据接口地址**不写死**：公开面默认走域名，私有/自建端点用环境变量覆盖。
+#   export LOTA_API_BASE=http://<your-host>:<port>/predictions/api/v2
+# 内网 IP、端口、自建服务地址一律不进代码（2026-09-16）。
+BASE_URL = os.environ.get("LOTA_API_BASE", "http://deepdata.lota.tv/predictions/api/v2")
 
 # ── 离线开关 ──
 # 置 True 后 _get() 直接短路（不联网），所有 fetch_*/refresh_*/prepare_* 自动
@@ -56,6 +59,26 @@ def set_offline(flag: bool = True) -> None:
 
 def is_offline() -> bool:
     return _OFFLINE
+
+
+# ── 回测取数开关（fet_txt 时间切片）──
+# 沙箱回放（DS_ROLES_ROOT 存在）时自动启用，见 src/backtest_fet.py。
+# 启用后：在切片索引范围内的场次，compact-fet / tags 一律走本地 fet_txt 切片
+# （按「访问时刻 → 开赛前的哪一个快照档」解析），不再读线上/本地实时缓存——
+# 线上 `live/` 是赛前终盘快照，回放读它就是前视泄漏。
+def _backtest_fet():
+    """返回启用的切片源；未启用返回 None（线上恒为 None）。"""
+    try:
+        from . import backtest_fet as _bf
+    except Exception:
+        return None
+    try:
+        if not _bf.active():
+            return None
+        return _bf.current()
+    except Exception:
+        return None
+
 
 # 数据根目录
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -120,6 +143,44 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 _LOCKS_DIR = DATA_ROOT / ".dm_locks"
 _STATE_PATH = DATA_ROOT / ".dm_state.json"
+
+# 竞彩编号里的周X ↔ 足球日：竞彩按"销售日"编号，足球日窗口 [D 12:01, D+1 12:00]
+# 的起始日 D 就是销售日，所以 D 的星期必须等于编号里的周X。
+_ZH_WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+
+def football_day_weekday(day_str: str) -> str:
+    """足球日起始日 → 竞彩编号应该用的周X（如 2026-09-10 → 周四）。"""
+    try:
+        return _ZH_WEEKDAYS[datetime.strptime(day_str[:10], "%Y-%m-%d").weekday()]
+    except (ValueError, TypeError):
+        return ""
+
+
+def beidan_day_window(day_str: str) -> Optional[tuple[str, str]]:
+    """足球日 D 的北单窗口 = [D 12:01:00, D+1 12:00:00]。
+
+    ⚠️ 上游 /beidan/sp?date=D 的窗口口径依赖「服务端当前时间」：
+      12:00 之后 → [D 12:01, D+1 12:00]；12:00 之前 → [D-1 12:01, D 12:00]。
+    所以中午前跑结算时，同一个 D 会拿到前一足球日的数据（实测 2026-09-16 10:55
+    用 date=2026-09-15 拿到的是足球日 09-14 的 40 场）。
+    结算一律改用显式时间窗，绕开这个漂移。
+    """
+    try:
+        start = datetime.strptime(str(day_str)[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+    start = start.replace(hour=12, minute=1, second=0, microsecond=0)
+    return (start.strftime("%Y-%m-%d %H:%M:%S"),
+            (start + timedelta(days=1)).replace(hour=12, minute=0).strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def jc_number_weekday(number: str) -> str:
+    """竞彩编号 → 周X（如 周五002 → 周五）；无编号返回空串。"""
+    m = re.match(r"\s*(周[一二三四五六日天])", str(number or ""))
+    if not m:
+        return ""
+    return "周日" if m.group(1) == "周天" else m.group(1)
 
 
 def _sanitize_lock_name(name: str) -> str:
@@ -400,8 +461,15 @@ class DataManager:
         return self.fetch_matches_by_date(date_str, lottery_type="all", is_beidan=True)
 
     def fetch_beidan_sp(self, date_str: str) -> dict[str, dict]:
-        """从 v2-api 拉取某足球日的北单开奖 SP（data.results: {lota_id: {result, spvalue, score, ...}}）。"""
-        data = _get("/beidan/sp", {"date": date_str})
+        """从 v2-api 拉取某足球日的北单开奖 SP（data.results: {lota_id: {result, spvalue, score, ...}}）。
+
+        date_str 是足球日 D；请求用显式窗口 [D 12:01, D+1 12:00]，
+        避免上游 date= 口径在中午前后漂移（见 beidan_day_window）。
+        """
+        window = beidan_day_window(date_str)
+        params = ({"start_date": window[0], "end_date": window[1]} if window
+                  else {"date": date_str})
+        data = _get("/beidan/sp", params)
         if not data:
             return {}
         result = data.get("data") or {}
@@ -505,6 +573,125 @@ class DataManager:
             MATCHES_DIR / f"{date_str}.json",
             json.dumps(matches, ensure_ascii=False, indent=2),
         )
+
+    def _cached_feature_time(self, lota_id: str) -> str:
+        """从 features/<lid>.json 的 compact-fet 头部读真实开赛时间（无缓存返回空串）。"""
+        path = FEATURES_DIR / f"{lota_id}.json"
+        if not path.exists():
+            return ""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            text = (data.get("compact_fet") if isinstance(data, dict) else "") or ""
+        except Exception:
+            return ""
+        m = re.search(r"⏰时间:\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2})", text)
+        return m.group(1).replace("T", " ")[:16] if m else ""
+
+    @staticmethod
+    def _time_shift_hours(a: str, b: str) -> float:
+        """两个 'YYYY-MM-DD HH:MM' 的绝对小时差；任一侧不可解析返回 0。"""
+        try:
+            ta = datetime.strptime(str(a).replace("T", " ")[:16], "%Y-%m-%d %H:%M")
+            tb = datetime.strptime(str(b).replace("T", " ")[:16], "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return 0.0
+        return abs((ta - tb).total_seconds()) / 3600.0
+
+    @staticmethod
+    def _football_day_of(match_time: str) -> str:
+        """'YYYY-MM-DD HH:MM' → 所属足球日起始日（[D 12:01, D+1 12:00]）。"""
+        try:
+            mdt = datetime.strptime(str(match_time).replace("T", " ")[:16], "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return ""
+        return (mdt - timedelta(hours=12, minutes=1)).date().isoformat()
+
+    def reconcile_match_times(self, day: str, *, with_source: bool = True,
+                              max_source_checks: int = 20) -> dict:
+        """校正缓存里被"临时赛程"写死的 match_time，并把比赛搬到正确的足球日桶。
+
+        背景（2026-09-11 事故）：数据源早期给某场沙特联临时时间 09-11 02:00，缓存
+        之后源把赛程改到 09-11 23:45；缓存里的旧时间让这场"周五002"落进足球日
+        09-10 的竞彩清单，多只狗据此提前一天下注。
+
+        可疑判据（命中任一）：
+          1. 竞彩编号周X ≠ 本足球日星期（周五002 出现在周四的桶里）
+          2. features/<lid>.json 的 compact-fet ⏰时间 与缓存 match_time 差 > 30min
+        处理：以数据源单场接口为准改写 match_time；新时间属于别的足球日则把记录
+        搬到对应桶文件并从原桶移除。返回校正明细（供 prepare 告警/审计）。
+        """
+        source_matches = self.get_cached_matches(day, lottery_type="all")
+        if not source_matches:
+            return {"day": day, "suspects": 0, "corrected": [], "moved": [], "checks": 0}
+
+        want_wd = football_day_weekday(day)
+        suspects: list[tuple[dict, str]] = []
+        for m in source_matches:
+            lid = m.get("lota_id")
+            if not lid:
+                continue
+            num_wd = jc_number_weekday(m.get("jingcai_number"))
+            if num_wd and want_wd and num_wd != want_wd:
+                suspects.append(
+                    (m, f"竞彩编号 {m.get('jingcai_number')} 属{num_wd}，本足球日是{want_wd}")
+                )
+                continue
+            feat_time = self._cached_feature_time(lid)
+            if feat_time and self._time_shift_hours(feat_time, m.get("match_time", "")) > 0.5:
+                suspects.append(
+                    (m, f"特征时间 {feat_time} ≠ 列表时间 {str(m.get('match_time'))[:16]}")
+                )
+
+        corrected: list[dict] = []
+        moved: list[dict] = []
+        checks = 0
+        changed_days: set[str] = set()
+        for m, reason in suspects:
+            lid = m["lota_id"]
+            old_time = str(m.get("match_time") or "")[:16]
+            new_time = ""
+            if with_source and checks < max_source_checks:
+                checks += 1
+                try:
+                    rec = self.fetch_match_by_id(lid) or {}
+                except Exception:
+                    rec = {}
+                new_time = str(rec.get("match_time") or "")[:16]
+                for key in ("jingcai_number", "beidan_number", "state", "state_name"):
+                    if rec.get(key) not in (None, ""):
+                        m[key] = rec[key]
+            if not new_time:
+                new_time = self._cached_feature_time(lid)
+            if not new_time or new_time == old_time:
+                continue
+            m["match_time"] = new_time if len(new_time) > 16 else f"{new_time}:00"
+            entry = {"lota_id": lid, "old": old_time, "new": new_time,
+                     "reason": reason, "home": m.get("home_name"), "away": m.get("away_name")}
+            corrected.append(entry)
+            target_day = self._football_day_of(new_time)
+            if target_day and target_day != day:
+                moved.append({**entry, "from": day, "to": target_day})
+
+        if corrected:
+            removed = {c["lota_id"] for c in corrected if self._football_day_of(c["new"]) != day}
+            day_ms = [m for m in source_matches if m.get("lota_id") not in removed]
+            day_ms.sort(key=lambda x: x.get("match_time", ""))
+            self.save_matches_cache(day, day_ms)
+            changed_days.add(day)
+            for mv in moved:
+                target = mv["to"]
+                tms = self.get_cached_matches(target, lottery_type="all")
+                tms = [m for m in tms if m.get("lota_id") != mv["lota_id"]]
+                rec = next((x for x in source_matches if x.get("lota_id") == mv["lota_id"]), None)
+                if rec is None:
+                    continue
+                tms.append(rec)
+                tms.sort(key=lambda x: x.get("match_time", ""))
+                self.save_matches_cache(target, tms)
+                changed_days.add(target)
+
+        return {"day": day, "suspects": len(suspects), "corrected": corrected,
+                "moved": moved, "checks": checks, "changed_days": sorted(changed_days)}
 
     def refresh_matches_cache(self, date_str: str, with_jc_odds: bool = False,
                               with_beidan_odds: bool = False) -> list[dict]:
@@ -818,22 +1005,27 @@ class DataManager:
         except Exception:
             return {}
 
-    def merge_beidan_sp(self, sp_map: dict[str, dict]) -> dict:
+    def merge_beidan_sp(self, sp_map: dict[str, dict],
+                        day: Optional[str] = None) -> dict:
         """把开奖 SP 合并进本地 beidan_info（按 lota_id 更新 matches/ 与 beidan/ 缓存）。
 
         合并前做合理性校验：官方 result 与 score+goal_line 推导方向矛盾（脏值）的场次
         只标记 result_suspect，不合并 result/spvalue，结算时按未开奖跳过，避免按脏值结错账。
 
+        day 非空时限定写入足球日 day 的窗口 [day 12:01, day+1 12:00] 内的场次，
+        避免上游把别的足球日的开奖塞进这一天时污染缓存。
+
         Returns: {"updated": 成功合并场数, "dirty": 被判脏值并标记的场数}
         """
         if not sp_map:
             return {"updated": 0, "dirty": 0}
+        window = beidan_day_window(day) if day else None
         updated = 0
         dirty = 0
         for d in (MATCHES_DIR, BEIDAN_DIR):
             for path in sorted(d.glob("*.json")):
                 try:
-                    u, dd = self._merge_sp_into_file(path, sp_map)
+                    u, dd = self._merge_sp_into_file(path, sp_map, window)
                     updated += u
                     dirty += dd
                 except Exception:
@@ -846,12 +1038,18 @@ class DataManager:
         背景：上游 /beidan/sp 曾把「未开奖」页面的赛前赔率误抓成开奖 SP
         （如桑普多利亚 vs 尤维斯塔比亚：库里 result=3/sp=1.82，实际应为 result=0/sp=10.89）。
         仅当 result、score、goal_line 均可得且推导方向与官方结果不一致时判为可疑。
+
+        goal_line 缺失时必须放行：handicap_result 会把缺失的让球线当 0 处理，
+        从而把「主队受让 4 球输了 = 官方平」这类正常场次误判成脏值
+        （实测 2026-09-14 足球日 9 场被误标，拖住了 09-15 的结算）。
         """
         raw = sp.get("result")
         score = sp.get("score")
         if raw is None or str(raw).strip() == "" or str(raw).strip() == "*":
             return False
         if not score or ":" not in str(score):
+            return False
+        if goal_line is None or str(goal_line).strip() == "":
             return False
         try:
             actual = _beidan_result_code_to_pick(str(raw).strip())
@@ -860,9 +1058,11 @@ class DataManager:
             return False
         return bool(actual and derived and actual != derived)
 
-    def _merge_sp_into_file(self, path: Path, sp_map: dict[str, dict]
-                            ) -> tuple[int, int]:
+    def _merge_sp_into_file(self, path: Path, sp_map: dict[str, dict],
+                            window: Optional[tuple[str, str]] = None) -> tuple[int, int]:
         """把 sp_map 合并进单个缓存文件。
+
+        window 非空时只合并 match_time 落在窗口内的场次；match_time 缺失的行跳过。
 
         Returns: (updated, dirty) —— 正常合并场数 / 被判脏值仅标记的场数。
         """
@@ -883,6 +1083,10 @@ class DataManager:
         for m in matches:
             if not isinstance(m, dict):
                 continue
+            if window:
+                mt = str(m.get("match_time") or "")
+                if not mt or not (window[0] <= mt <= window[1]):
+                    continue
             sp = sp_map.get(m.get("lota_id"))
             if not sp:
                 continue
@@ -896,6 +1100,9 @@ class DataManager:
             for k in ("result", "result_des", "spvalue", "score", "draw_datetime"):
                 if sp.get(k) is not None:
                     bi[k] = sp[k]
+            # 之前按脏值标过的 result_suspect 在成功合并后要清掉，否则这行永远
+            # 按「未开奖」结算（9 场误标就卡住了整天的腿）。
+            bi.pop("result_suspect", None)
             m["beidan_info"] = bi
             updated += 1
         if updated:
@@ -1167,7 +1374,14 @@ class DataManager:
     # ═══════════════════════════════════════════
 
     def get_cached_compact_fet(self, lota_id: str) -> Optional[dict]:
-        """读取本地 compact-fet 缓存（先 Python CLI 目录，再 JS 项目目录）"""
+        """读取本地 compact-fet 缓存（先 Python CLI 目录，再 JS 项目目录）
+
+        回测模式（切片源启用）：索引内的场次**只**认 fet_txt 切片，
+        命中返回切片 payload、无可用档位返回 None（绝不回退实时缓存）。
+        """
+        src = _backtest_fet()
+        if src is not None and src.in_scope(lota_id):
+            return src.compact_fet(lota_id)
         # 1. JS 项目 features（主要缓存）
         path = FEATURES_DIR / f"{lota_id}.json"
         if path.exists():
@@ -1302,6 +1516,17 @@ class DataManager:
         except ValueError:
             return True
 
+    def needs_upcoming_refresh(self, lota_id: str) -> bool:
+        """该场是否值得强制刷新 compact-fet。
+
+        无缓存 → True；未开赛 → True（赔率还在变，必须拿最新的）；
+        已开赛/完场 → False（开赛后赔率已锁定，重抓没有意义且徒增上游压力）。
+        """
+        cached = self.get_cached_compact_fet(lota_id)
+        if not cached:
+            return True
+        return self._is_match_upcoming(cached)
+
     def _compact_fet_ttl(self, cached: dict) -> int:
         """未开赛 compact-fet 的缓存 TTL：临近开赛时缩短。"""
         mt = self._parse_match_time_from_fet(cached)
@@ -1396,9 +1621,13 @@ class DataManager:
             sections[slug] = text[start:end].strip()
         return sections
 
-    def get_sections(self, lota_id: str, slugs: list[str]) -> str:
+    def get_sections(self, lota_id: str, slugs: list[str],
+                     source_order: bool = False) -> str:
         """
         按 slug 列表获取指定段落，拼接为 prompt 可用的文本。
+
+        source_order=True：按**原始数据里的段落顺序**输出（例如 match-head 在最前），
+        用于"prompt 要忠实呈现原始 txt"的场景；默认 False 保持各狗原有顺序（隔离红线）。
 
         用法:
           context = dm.get_sections(lota_id, ["fair-odds", "asian-handicap-crown"])
@@ -1406,6 +1635,20 @@ class DataManager:
         """
         sections = self.get_tags(lota_id)
         parts = []
+        if source_order:
+            wanted = set(slugs or [])
+            for slug, text in (sections or {}).items():
+                if slug in wanted and text:
+                    parts.append(f"[section:{slug}]\n{text}")
+            # 源顺序里没有、但被显式点名要的段（例如 extra_slugs 新增）补在后面
+            for slug in slugs or []:
+                if slug in (sections or {}) or slug in {p.split(":")[1].rstrip("]")
+                                                       for p in parts}:
+                    continue
+                text = (sections or {}).get(slug)
+                if text:
+                    parts.append(f"[section:{slug}]\n{text}")
+            return "\n\n".join(parts)
         for slug in slugs:
             text = sections.get(slug)
             if text:
@@ -1413,6 +1656,16 @@ class DataManager:
         return "\n\n".join(parts)
 
     def _load_cached_tags(self, lota_id: str) -> Optional[dict]:
+        # 回测模式：段落一律从 fet_txt 切片即时切分，不读线上 tags 缓存
+        # （线上 tags 由 live 终盘快照切出，回放读它会前视；也不回写磁盘）
+        src = _backtest_fet()
+        if src is not None and src.in_scope(lota_id):
+            return {
+                "lota_id": lota_id,
+                "generated_at": datetime.now().isoformat(),
+                "sections": src.sections(lota_id),
+                "_backtest_fet": True,
+            }
         path = TAGS_DIR / f"{lota_id}.json"
         if path.exists():
             try:
@@ -1590,6 +1843,10 @@ class DataManager:
             else:
                 cached += 1  # 旧缓存兜底（与 node_fetch_features 原计数一致）
             if with_tags:
+                # 回测模式：段落由切片源即时提供，禁止把切片 tags 写进线上 tags 缓存
+                _src = _backtest_fet()
+                if _src is not None and _src.in_scope(lid):
+                    continue
                 try:
                     from .tools import compact_fet_to_tags, save_tagged_sections
                     sections = compact_fet_to_tags(lid, data)
@@ -1633,7 +1890,7 @@ class DataManager:
             sp = self.fetch_beidan_sp(sp_date)
             if sp:
                 self.save_beidan_sp_cache(sp_date, sp)
-                merged = self.merge_beidan_sp(sp)
+                merged = self.merge_beidan_sp(sp, day=sp_date)
                 updated = merged["updated"]
                 dirty = merged["dirty"]
                 _record_dm_state("beidan_sp", sp_date, {
@@ -1878,9 +2135,12 @@ class DataManager:
                 pass
         return []
 
-    def get_match_context(self, lota_id: str) -> dict:
+    def get_match_context(self, lota_id: str, rich: bool = False) -> dict:
         """
         一键获取比赛全貌: 基础信息 + 赔率 + 预测 + 订单。
+
+        rich=True 时额外回填赛果比分与北单让球线（**仅反思用**：这些字段来自
+        赛后缓存，绝不可进入分析/下单 prompt）。默认 False = 线上单狗原行为。
 
         Returns:
           {
@@ -1894,7 +2154,7 @@ class DataManager:
           }
         """
         # 比赛基础信息（从 compact-fet 提取）
-        match_info = self._extract_match_info(lota_id)
+        match_info = self._extract_match_info(lota_id, rich=rich)
         score = match_info.get("score", "")
 
         return {
@@ -1907,7 +2167,7 @@ class DataManager:
             "tags_summary": self._tags_summary(lota_id),
         }
 
-    def _extract_match_info(self, lota_id: str) -> dict:
+    def _extract_match_info(self, lota_id: str, rich: bool = False) -> dict:
         """从 compact-fet 文本提取比赛基础信息。
 
         多级回退:
@@ -1950,12 +2210,44 @@ class DataManager:
         if feat:
             score = (feat.get("data") or {}).get("score", "")
 
+        # ── 回放/北单场景的赛果回填（2026-09-13）──
+        # 回放用 fet_txt **赛前切片**（pass_6_hours 等）→ 里面没有比分；
+        # 而真实赛果在 `data/beidan/<日>.json` / `matches/<日>.json` 的 beidan_info 里。
+        # 结果：反思输入出现「比分:? 且没有 goal_line」（用户实测报障）。
+        # ⚠️ 仅在 rich=True（北单串关/沙盒反思显式打开）时回填：
+        #   1. 线上单狗/分析 prompt 走的 rich=False → 返回的 score 与以前逐字节相同；
+        #   2. 回填读的是**赛后**赛果缓存，绝不能进入分析（下单）prompt → 见
+        #      tests/test_persona_reflect_split.py 的后视红线断言。
+        goal_line = None
+        if rich:
+            if not score:
+                try:
+                    bi = (self.get_cached_beidan_results({lota_id}) or {}).get(lota_id) or {}
+                    if bi.get("score") not in (None, ""):
+                        score = str(bi.get("score"))
+                    gl = bi.get("goal_line")
+                    if gl not in (None, ""):
+                        goal_line = float(gl)
+                except Exception:
+                    pass
+            if goal_line is None:
+                try:
+                    m = self.get_cached_match(lota_id) or {}
+                    gl = ((m.get("beidan_info") or {}).get("goal_line"))
+                    if gl not in (None, ""):
+                        goal_line = float(gl)
+                    if not score and m.get("score") not in (None, ""):
+                        score = str(m.get("score"))
+                except Exception:
+                    pass
+
         return {
             "home": home,
             "away": away,
             "league": league,
             "match_time": match_time,
             "score": score,
+            "goal_line": goal_line,
         }
 
     def _fallback_match_info(self, lota_id: str) -> dict:
@@ -2000,22 +2292,6 @@ class DataManager:
             first_line = text.split("\n")[0][:120]
             lines.append(f"  [{slug}] {first_line}")
         return "\n".join(lines)
-
-
-# ═══════════════════════════════════════════════
-# 模块级便捷函数（兼容旧代码）
-# ═══════════════════════════════════════════════
-
-_dm = DataManager()
-
-get_match = _dm.get_match
-get_compact_fet = _dm.get_compact_fet
-get_tags = _dm.get_tags
-get_sections = _dm.get_sections
-get_odds = _dm.get_odds
-get_predictions = _dm.get_predictions
-get_orders = _dm.get_orders
-get_match_context = _dm.get_match_context
 
 
 # ═══════════════════════════════════════════════

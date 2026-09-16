@@ -7,12 +7,14 @@
 """
 
 import json
+import os
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-PROD = Path("/Users/cjy/Desktop/code/ds_agents/data/roles")
-PROD_DATA = Path("/Users/cjy/Desktop/code/ds_agents/data")
+# 生产侧数据根：用 DS_ROLES_ROOT / DS_DATA_ROOT 指到自己的仓库数据目录
+PROD = Path(os.environ.get("DS_ROLES_ROOT", "/path/to/ds-agents/data/roles"))
+PROD_DATA = Path(os.environ.get("DS_DATA_ROOT", "/path/to/ds-agents/data"))
 OLD_RETEST = Path("/private/tmp/ds_retest_old/data/roles")
 OLD_RETEST_DATA = Path("/private/tmp/ds_retest_old/data")
 DEDUP_RETEST = Path("/private/tmp/ds_retest/data/roles")

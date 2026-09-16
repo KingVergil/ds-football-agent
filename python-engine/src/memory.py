@@ -403,6 +403,15 @@ class FactorMemory:
                     best, best_score = n, score
             return best
 
+        def _avg_return(e):
+            denom = float(e.get("total", 0) or 0) - float(e.get("push", 0) or 0)
+            total_return = float(
+                e.get("total_return")
+                if "total_return" in e
+                else e.get("profit", 0) or 0
+            )
+            return total_return / denom if denom > 0 else 0.0
+
         verdict = None
         try:
             from src.providers.deepseek import DeepSeekProvider
@@ -410,7 +419,7 @@ class FactorMemory:
             lib_lines = "\n".join(
                 f"{i2}. {n} [状态:{self.factor_perf[n].get('status','active')}] | "
                 f"{self.factor_perf[n].get('desc','')[:200]} "
-                f"(样本{self.factor_perf[n].get('total',0)} 盈亏{self.factor_perf[n].get('profit',0):+.0f})"
+                f"(样本{self.factor_perf[n].get('total',0)} 单注{_avg_return(self.factor_perf[n]):+.2f})"
                 for i2, n in enumerate(short, 1)
             )
             system = ("你是足球因子库管理员。判断候选因子是否与现有因子重复。\n"
@@ -451,7 +460,21 @@ class FactorMemory:
     def record(self, factor_id: str, hit: bool | None, profit: float,
                desc: str = "", date: str = "", lota_id: str = "",
                bet_size: float = 0, factor_type: str = "directional",
-               sp: float | None = None, low_sample: bool = False) -> None:
+               sp: float | None = None, low_sample: bool = False,
+               unit_cost: float | None = None,
+               path: str | None = None,
+               unit_cost_default: float | None = None,
+               vol_base: float | None = None) -> None:
+        """记一条因子样本。
+
+        unit_cost：该样本的**注数基数**（单选腿 1、北单全包腿 3；缺省 None=按方向口径 1）。
+        不同基数的样本混在同一根 return_ratio 上不可比（全包腿输 = −3、单选腿输 = −1），
+        所以样本自带基数，供 factor_select 反推 SP 与分路径统计。
+
+        path / unit_cost_default：**按狗隔离的显式标注**（目前只有北单串关写 `path="beidan"`）。
+        只有带该标注的因子才会启用「口径不一致就不算」等北单专用统计语义；
+        其它狗（单关狗/竞彩狗等）不传 → 统计口径与历史行为完全一致。
+        """
         if not self._loaded:  # 防止覆盖磁盘上的因子库
             self.load()
         return_ratio = profit / bet_size if bet_size > 0 else 0.0
@@ -477,6 +500,10 @@ class FactorMemory:
             }
         p = self.factor_perf[factor_id]
         p.setdefault("type", factor_type)
+        if path:
+            p.setdefault("path", str(path))
+        if unit_cost_default is not None:
+            p.setdefault("unit_cost_default", float(unit_cost_default))
         if low_sample:
             p["low_sample"] = True
         self._backfill_fac_link(factor_id)
@@ -501,7 +528,37 @@ class FactorMemory:
             }
             if sp is not None:
                 hist_entry["sp"] = float(sp)
+            if unit_cost is not None:
+                hist_entry["unit_cost"] = float(unit_cost)
+            if vol_base is not None:
+                # 波动路径的粗筛对照：当日「高波动场次占比」基线
+                hist_entry["vol_base"] = float(vol_base)
             p.setdefault("history", []).append(hist_entry)
+        self._save()
+
+    def record_screen(self, factor_id: str, n: int, high: int,
+                      base_sum: float) -> None:
+        """波动路径专用（粗筛）：把"这个因子当天标记过的场次"里出高波动的比例累加。
+
+        与 record() 的区别：计数对象是**当天所有被该因子标记的场次**（不管有没有下注），
+        所以能避免"只统计自己下过的腿"造成的选择偏差（下过的腿本来就是精挑的）。
+        其它狗不调用 → 不产生该字段。
+        """
+        if not self._loaded:
+            self.load()
+        if n <= 0:
+            return
+        p = self.factor_perf.get(factor_id)
+        if p is None:
+            p = {"total": 0, "hit": 0, "miss": 0, "push": 0, "profit": 0.0,
+                 "status": "testing", "desc": "", "type": "volatility",
+                 "history": [], "aliases": [],
+                 "fac_id": self.fac_id_for(factor_id)}
+            self.factor_perf[factor_id] = p
+        sc = p.setdefault("screen", {"n": 0, "high": 0, "base_sum": 0.0})
+        sc["n"] = int(sc.get("n", 0)) + int(n)
+        sc["high"] = int(sc.get("high", 0)) + int(high)
+        sc["base_sum"] = float(sc.get("base_sum", 0.0)) + float(base_sum)
         self._save()
 
     def set_status(self, factor_id: str, status: str) -> None:
@@ -516,7 +573,8 @@ class FactorMemory:
 
     # ── 因子选择（注入 prompt 前）：样本窗 + 衰减加权 + 自适应休眠 ──
 
-    def selected_active(self, as_of=None):
+    def selected_active(self, as_of=None, max_main=None, max_aux=None,
+                        max_vol=None, include_volatility: bool = False):
         """
         返回 (main, aux, volatility, dormant_count)：
           main — 窗口内 n>=2 且加权回报>0 的活跃因子（按加权回报降序，最多 12 个）
@@ -524,6 +582,10 @@ class FactorMemory:
           volatility — 波动性因子（SP收益口径，不参与方向命中率排序）
           dormant_count — 超过 3×平均触发间隔未触发（或已被 review 标记 dormant）的因子数
         as_of: 评估基准时间（datetime）；历史回放时传模拟当日，默认用真实当前时间。
+        max_main / max_aux / max_vol: 可选，覆盖各类因子进入 prompt 的条数上限；
+          传入较大值等价于不截断（用于北单串关等长上下文路径）。
+        include_volatility: 是否返回波动因子。单场预测的单狗默认 False；
+          只有北单串关/覆盖腿选腿路径需要显式传 True。
         """
         if not self._loaded or not self.factor_perf:
             return [], [], [], 0
@@ -546,18 +608,22 @@ class FactorMemory:
                 s["status"] = "active"
                 status = "active"
             item = (fid, s, prof)
-            n, wr = prof["n"], prof["w_return"]
+            n = prof["n"]
+            # 方向因子用归一化评分分类（已扣除近期回报波动和样本惩罚）；
+            # w_return 只用于展示，不再作为进入主区顺/反向的门槛。
+            score = float(prof.get("rank_score") or prof.get("w_return") or 0)
 
             if prof["factor_type"] == "volatility":
-                volatility.append(item)
+                if include_volatility:
+                    volatility.append(item)
                 continue
 
             if n < 2:
                 aux.append(item)
-            elif wr >= FACTOR_NOISE_W_RETURN:
+            elif score >= FACTOR_NOISE_W_RETURN:
                 prof["sign"] = "pos"
                 main_pos.append(item)
-            elif wr <= -FACTOR_NOISE_W_RETURN:
+            elif score <= -FACTOR_NOISE_W_RETURN:
                 prof["sign"] = "neg"
                 main_neg.append(item)
             # else: 0 回报附近噪声 → 不展示
@@ -565,8 +631,13 @@ class FactorMemory:
         main_neg.sort(key=lambda x: x[2]["rank_score"])
         aux.sort(key=lambda x: -x[2]["w_return"] if x[2] else 0)
         volatility.sort(key=lambda x: -(x[2].get("avg_sp") or x[2].get("w_return") or 0))
-        main = main_pos[:FACTOR_MAX_MAIN_POS] + main_neg[:FACTOR_MAX_MAIN_NEG]
-        return main[:FACTOR_MAX_MAIN], aux[:10], volatility[:10], dormant_count
+        cap_main = FACTOR_MAX_MAIN if max_main is None else max_main
+        cap_main_pos = FACTOR_MAX_MAIN_POS if max_main is None else max_main
+        cap_main_neg = FACTOR_MAX_MAIN_NEG if max_main is None else max_main
+        cap_aux = 10 if max_aux is None else max_aux
+        cap_vol = 10 if max_vol is None else max_vol
+        main = main_pos[:cap_main_pos] + main_neg[:cap_main_neg]
+        return main[:cap_main], aux[:cap_aux], volatility[:cap_vol], dormant_count
 
     def perf_text(self, as_of=None) -> str:
         """分层注入：L1 负例护栏 + L2 顺向(正回报) + L3 反向(负回报/反买) + L4 观察 + 噪声/休眠计数。"""
@@ -583,15 +654,26 @@ class FactorMemory:
                 continue
             if abs(prof["w_return"]) < FACTOR_NOISE_W_RETURN:
                 noise_count += 1
+        def _avg_return(s0):
+            denom = float(s0.get("total", 0) or 0) - float(s0.get("push", 0) or 0)
+            total_return = float(
+                s0.get("total_return")
+                if "total_return" in s0
+                else s0.get("profit", 0) or 0
+            )
+            return total_return / denom if denom > 0 else 0.0
+
         retired = sorted(
             ((fid, s0) for fid, s0 in self.factor_perf.items() if s0.get("status") == "retired"),
-            key=lambda x: -float(x[1].get("profit") or 0),
+            key=lambda x: _avg_return(x[1]),
         )[:8]
         lines = []
         if retired:
             lines.append("🪦 已证伪模式（负例护栏，勿用）:")
             for fid, s0 in retired:
-                lines.append(f"  ❌ {fid} (累计{float(s0.get('profit') or 0):+.0f})")
+                lines.append(
+                    f"  ❌ {fid} (单注{_avg_return(s0):+.2f} / 样本{s0.get('total', 0)})"
+                )
         pos = [x for x in main if x[2].get("sign") == "pos"]
         neg = [x for x in main if x[2].get("sign") == "neg"]
         if pos:
@@ -608,9 +690,11 @@ class FactorMemory:
                     tag = " 🧪未验证"
                 elif s0.get("low_sample") or (0 < decided < FACTOR_SMALL_SAMPLE):
                     tag = " ⚠️样本少"
+                score = float(p0.get("rank_score") or p0.get("w_return") or 0)
                 lines.append(
                     f"  {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
-                    f"收缩命中{p0['shrunk_rate']:.0%} 加权回报{p0['w_return']:+.2f} "
+                    f"收缩命中{p0['shrunk_rate']:.0%} 归一化{score:+.2f} "
+                    f"加权回报{p0['w_return']:+.2f} "
                     f"| 全样本 {total:g}单 {hit:g}胜/{miss:g}负/{push:g}走]{tag}"
                 )
                 desc = s0.get("desc", "")
@@ -630,22 +714,12 @@ class FactorMemory:
                     tag = " 🧪未验证"
                 elif s0.get("low_sample") or (0 < decided < FACTOR_SMALL_SAMPLE):
                     tag = " ⚠️样本少"
+                score = float(p0.get("rank_score") or p0.get("w_return") or 0)
                 lines.append(
                     f"  {fid} [近{p0['n']}单 命中{p0['hits']:g}/{p0['n']} "
-                    f"收缩命中{p0['shrunk_rate']:.0%} 加权回报{p0['w_return']:+.2f} "
+                    f"收缩命中{p0['shrunk_rate']:.0%} 归一化{score:+.2f} "
+                    f"加权回报{p0['w_return']:+.2f} "
                     f"| 全样本 {total:g}单 {hit:g}胜/{miss:g}负/{push:g}走]{tag}"
-                )
-                desc = s0.get("desc", "")
-                if desc:
-                    lines.append(f"     {desc[:80]}")
-        if volatility:
-            lines.append("🌊 波动性因子（SP收益口径，不参与方向命中率）:")
-            for fid, s0, p0 in volatility:
-                avg_sp = p0.get("avg_sp")
-                sp_txt = f"均SP {avg_sp:.2f}" if avg_sp else "均SP —"
-                lines.append(
-                    f"  {fid} [近{p0['n']}单 {sp_txt} "
-                    f"加权回报{p0['w_return']:+.2f}]"
                 )
                 desc = s0.get("desc", "")
                 if desc:

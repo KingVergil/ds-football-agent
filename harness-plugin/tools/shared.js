@@ -19,14 +19,6 @@ export const KIND_DIR = {
 /** 宽容的对象 schema（返回结构随字段动态变化；挂载后可按需收紧）。 */
 export const LOOSE_OBJECT = { type: "object", additionalProperties: true };
 
-/** 自主 LLM stream 温度（旁路子程序式调用；主循环/分析 subagent 温度由会话配置决定）。 */
-export const LLM_TEMPERATURES = {
-  analyze: 0.1,   // 分析（预留：当前走 subagent 主循环，无 per-call 温度旋钮）
-  reflect: 0.6,   // 因子生成（反思）
-  induction: 0.1, // 因子归纳（判重）
-  review: 0.1,    // 因子退役（结构性评估）
-};
-
 /** 北京时间 ISO（与 Python datetime.now() 同口径，不依赖宿主机时区）。 */
 export function beijingNowIso() {
   const d = new Date(Date.now() + 8 * 3600 * 1000);

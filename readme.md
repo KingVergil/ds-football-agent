@@ -35,8 +35,9 @@ harness 插件（只读工具 + 斗狗场） ──POST /ds-run──►  python
   公开仓库只发布代码 + 历史比赛数据包。狗列表改为按本地角色派生
   （`python -m src.role_registry live`），因此公开克隆零狗时群体操作自然为空操作，
   用户创建自己的狗后自动生效，无需改代码。
-- **历史数据包**：`fixtures/` 提供 14 天 / 30 天比赛 + 特征缓存，让开源用户开箱即玩
-  （分析/回放）；实时数据需要 `LOTA_API_KEY`（找维护者要）。
+- **历史数据包随仓库一起发**：仓库根目录 `fixtures/` 下有
+  `testdata-14d.tar.gz` / `testdata-30d.tar.gz`（**未解压的归档**，不是目录树，见
+  [数据在哪](#数据在哪公开数据包)）；实时数据需要 `LOTA_API_KEY`（找维护者要）。
 
 ## 架构分层
 
@@ -136,10 +137,55 @@ node harness-plugin/scripts/install.mjs \
 
 两种方式，二选一：
 
-- **公开数据包**（开箱即玩）：解压 `fixtures/testdata-14d.tar.gz`（或
-  `fixtures/testdata-30d.tar.gz`，过去一个月），把 `cacheDir` 指向解压目录。
-- **真实数据**：配好 `LOTA_API_KEY` 后由引擎自己拉——桥 `prepare`（live 强制刷新 / replay 缓存优先）
+- **公开数据包**（开箱即玩）：见下面 [数据在哪（公开数据包）](#数据在哪公开数据包)。
+- **实时数据**：配好 `LOTA_API_KEY` 后由引擎自己拉——桥 `prepare`（live 强制刷新 / replay 缓存优先）
   会抓比赛 + compact-fet + 切 sections；命令行可用 `dsfootball_cli.py dashboard` 触发。
+  **需要实时数据 / 申请 `LOTA_API_KEY`：加微信 `researcher22`**（自建端点则用
+  `LOTA_API_BASE` 环境变量指过去，不要把地址写进代码）。
+
+#### 数据在哪（公开数据包）
+
+> ⚠️ 常见误会：**数据包在仓库根目录的 `fixtures/`，不是 `python-engine/fixtures`**；
+> 而且它是**两个 `.tar.gz` 归档**，clone 下来不会自动出现 `matches/`、`features/`
+> 目录，必须自己解压。`python-engine/data/`（运行时缓存）按设计不入库，
+> `git clone` 后本来是空的，不是克隆出错。
+
+| 文件（仓库根 `fixtures/`） | 覆盖范围 | 解压后 | 大小 |
+|---|---|---|---|
+| `testdata-14d.tar.gz` | 2026-08-01 ~ 08-14（14 个足球日） | `testdata-14d/{matches,features}`：1519 场 / 672 场特征 | 1.3 MB |
+| `testdata-30d.tar.gz` | 2026-07-19 ~ 08-19（32 个足球日） | `testdata-30d/{matches,features}`：2792 场 / 1371 场特征 | 2.7 MB |
+
+获取与使用（三选一）：
+
+```bash
+# ① 已经 clone：数据就在仓库里，直接解压
+tar -xzf fixtures/testdata-30d.tar.gz          # → ./testdata-30d/{matches,features}
+
+# ② 不想 clone：直连下载（仓库内文件）
+curl -LO https://github.com/KingVergil/ds-football-agent/raw/main/fixtures/testdata-30d.tar.gz
+
+# ③ 在线浏览 / 挑单个文件
+#    https://github.com/KingVergil/ds-football-agent/tree/main/fixtures
+```
+
+校验完整性（两个包的摘要）：
+
+```
+2149be9b976fb0fc570f58b1061de8cac9350ba8094880a1ea04c6c02b1a7d14  testdata-14d.tar.gz
+5f6716d0f95b5f174dfac5ea5664e08580adb5c6bbf5b3821091aa4d2edaf72e  testdata-30d.tar.gz
+```
+
+然后把插件的 `cacheDir` 指向解压目录（或把 `matches/`、`features/` 拷进你的缓存根目录）：
+
+```yaml
+- id: lota-data
+  name: 'ds-agents-lota-data'
+  config:
+    cacheDir: ./testdata-30d
+```
+
+数据包内容与「哪些没打包（`tags/`、`roles/`）及其原因」见
+[`fixtures/README.md`](fixtures/README.md)。
 
 ### 4. 初始化一只狗（角色）
 
@@ -220,7 +266,7 @@ python-engine/             # Python 引擎（入库）
 ├─ data/                   # 运行时数据（私有，不入库）
 └─ docs/                   # 架构/格式文档
 
-fixtures/                  # 公开测试数据包（matches + features）
+fixtures/                  # 公开数据包：未解压的 tar.gz（解压后是 matches/ + features/）
 ```
 
 ## 数据协议

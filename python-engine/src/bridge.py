@@ -100,8 +100,17 @@ def _role_dir() -> Path:
 
 
 def _is_parlay_dog(dog: str) -> bool:
-    """串关狗判定：角色目录存在 parlay.json（北单 8串1 / 7串1 双狗）。"""
-    return (_role_dir() / dog / "parlay.json").exists()
+    """串关狗判定：角色目录存在 parlay.json（北单 8串1 / 7串1 双狗）。
+
+    ⚠️ 沙箱回放（DS_ROLES_ROOT，见 src/role.py::_flat_role_root）下 role_root 是**单狗平铺**
+    目录：`parlay.json` 直接在根下，而非 `<root>/<狗>/parlay.json`。只认嵌套路径会让
+    串关狗在回放里被误判成普通狗 → 走通用竞彩 Agent（不组票、不产出北单因子），
+    症状是「analyze 有 21 场但 0 单、settle 反思 settled=0」。
+    与 _ensure_dog 的平铺兜底同口径（2026-09-11 bcl狗 回放实测踩到）。
+    """
+    return (_role_dir() / dog / "parlay.json").exists() or (
+        os.environ.get("DS_ROLES_ROOT") and (_role_dir() / "parlay.json").exists()
+    )
 
 
 def _ensure_dog(dog: str) -> None:
@@ -152,17 +161,28 @@ def _factor_summary(dog: str) -> dict:
                 st = "other"
             counts[st] += 1
             if st in names:
+                total = float(s.get("total", 0) or 0)
+                push = float(s.get("push", 0) or 0)
+                decided = max(total - push, 0.0)
+                total_return = float(
+                    s.get("total_return")
+                    if "total_return" in s
+                    else s.get("profit", 0) or 0
+                )
+                avg_return = round(total_return / decided, 4) if decided > 0 else 0.0
                 names[st].append({
                     "id": fid,
                     "status": st,
-                    "total": s.get("total", 0),
+                    "total": total,
                     "profit": round(s.get("profit", 0), 2),
+                    "total_return": round(total_return, 4),
+                    "avg_return": avg_return,
                 })
     except Exception:
         pass
     counts["total"] = sum(counts.values())
     for k in names:
-        names[k].sort(key=lambda x: x["profit"])
+        names[k].sort(key=lambda x: x["avg_return"])
     return {"counts": counts, "by_status": names}
 
 
@@ -239,6 +259,8 @@ def _parlay_order_views(orders: list[dict]) -> list[dict]:
             "legs": o.get("legs") or [],
             "total_stake": 0.0,
             "orders": [],
+            "rejected": bool(o.get("rejected")),
+            "reject_reason": o.get("reject_reason") or "",
         })
         # slip 级 order 已带 total_stake（= combos×unit）；竞彩仍按 bet_size 累加
         s["total_stake"] += float(o.get("total_stake") or o.get("bet_size") or 0)
@@ -260,9 +282,10 @@ def _do_prepare(req: dict) -> dict:
     beidan_only = bool(opts.get("beidan_only", False))
     if beidan_only:
         jingcai_only = False
-    beidan_only = bool(opts.get("beidan_only", False))
-    if beidan_only:
-        jingcai_only = False
+    # 「准备」的强制刷新语义：竞彩默认强制跳过 compact-fet 的 TTL 缓存，直接打线上，
+    # 否则刚点完准备，拿到的可能还是十几分钟前的旧赔率（2026-09-12 美因茨事故）。
+    # 北单场次多、上游限流敏感，保持 TTL 缓存，除非显式传 force_refresh。
+    force_refresh = bool(opts.get("force_refresh", not beidan_only))
 
     from src.environment import get_football_day, football_day_calendar_dates
     from src.data_manager import DataManager
@@ -270,29 +293,47 @@ def _do_prepare(req: dict) -> dict:
 
     d = date.fromisoformat(day)
     window_start, window_end = get_football_day(d)
-    cal_dates = football_day_calendar_dates(d)
+    calendar_dates = football_day_calendar_dates(d)
     dm = DataManager()
     if mode == "live":
         dm.set_live_mode(True)
 
-    all_matches = []
     fetched_dates = []
     warnings: list[str] = []
-    for i, cd in enumerate(cal_dates):
-        _progress("拉取比赛缓存", done=i, total=len(cal_dates), detail=cd)
-        cached_ms = dm.get_cached_matches(cd, lottery_type="all")
-        ms = cached_ms
-        if mode == "live" or not ms:
-            refreshed = dm.refresh_matches_cache(
-                cd, with_jc_odds=jingcai_only, with_beidan_odds=beidan_only
-            ) or []
-            if refreshed:
-                ms = refreshed
-                fetched_dates.append(cd)
-            elif mode == "live":
-                warnings.append(f"{cd} live 刷新比赛为空，回退本地缓存")
-                ms = cached_ms
-        all_matches += ms
+    _progress("拉取足球日比赛缓存", detail=day)
+    cached_ms = dm.get_cached_matches(day, lottery_type="all")
+    ms = cached_ms
+    if mode == "live" or not ms:
+        refreshed = dm.refresh_matches_range(
+            day, day, with_jc_odds=jingcai_only, with_beidan_odds=beidan_only
+        )
+        # refresh_matches_range 按足球日桶写 D.json；缓存键就是足球日起始日。
+        if refreshed:
+            ms = dm.get_cached_matches(day, lottery_type="all")
+            fetched_dates.append(day)
+        elif mode == "live":
+            warnings.append(f"{day} live 刷新比赛为空，回退本地缓存")
+            ms = cached_ms
+
+    # 缓存里的 match_time 可能来自数据源早期的"临时赛程"（之后改期/改开赛时间），
+    # 会让比赛落进错误的足球日（2026-09-11 事故：周五的沙特联被算进周四清单并下注）。
+    # prepare 是数据准备的唯一入口，这里按源头校正一次，下游才不会按错日子分析。
+    time_fixes: list[dict] = []
+    try:
+        rec = dm.reconcile_match_times(day)
+        time_fixes = rec.get("corrected", [])
+        if time_fixes:
+            ms = dm.get_cached_matches(day, lottery_type="all")
+            moved_map = {m["lota_id"]: m["to"] for m in rec.get("moved", [])}
+            for c in time_fixes:
+                suffix = f" → 归属足球日 {moved_map[c['lota_id']]}" if c["lota_id"] in moved_map else ""
+                warnings.append(
+                    f"⏰ 时间校正 {c['lota_id']} {c.get('home', '?')} vs {c.get('away', '?')}: "
+                    f"列表 {c['old']} → 实际 {c['new']}{suffix}｜{c['reason']}"
+                )
+    except Exception as e:  # noqa: BLE001 —— 校正失败不阻断拉取
+        warnings.append(f"比赛时间校正失败（不影响拉取）: {e}")
+    all_matches = ms or []
 
     candidates = [
         m for m in all_matches
@@ -314,11 +355,15 @@ def _do_prepare(req: dict) -> dict:
         seen_lids.add(lid)
         matches_view.append({"lota_id": lid, "match_time": str(m.get("match_time", ""))[:16]})
 
-    ok = fail = 0
+    ok = fail = forced = 0
     for m in candidates:
         time.sleep(COMPACT_FET_SLEEP_SECONDS)
         lid = m["lota_id"]
-        data = dm.get_compact_fet(lid)
+        # 强制刷新只对「还没开赛」的场次生效：开赛后赔率已冻结，重抓无意义。
+        refresh_now = bool(force_refresh and dm.needs_upcoming_refresh(lid))
+        data = dm.get_compact_fet(lid, refresh=refresh_now)
+        if refresh_now:
+            forced += 1
         if not data:
             fail += 1
             warnings.append(f"{lid} {m.get('home_name', '?')} vs {m.get('away_name', '?')} compact-fet 缺失")
@@ -340,14 +385,17 @@ def _do_prepare(req: dict) -> dict:
         "mode": mode,
         "jingcai_only": jingcai_only,
         "beidan_only": beidan_only,
+        "force_refresh": force_refresh,
+        "forced_refreshed": forced,
         "window": f"{window_start[:10]} 12:01 → {(date.fromisoformat(day) + timedelta(days=1)).isoformat()} 12:00",
-        "calendar_dates": cal_dates,
+        "calendar_dates": calendar_dates,
         "candidates": len(candidates),
         "matches": matches_view,
         "prefetched_ok": ok,
         "failed": fail,
         "matches_fetched": fetched_dates,
         "features_prefetched": ok,
+        "time_corrections": time_fixes,
         "warnings": warnings,
     }
 
@@ -508,18 +556,60 @@ def _do_settle(req: dict) -> dict:
     if _is_parlay_dog(dog):
         from src.beidan_parlay_dog import BeidanParlayDog
         pdog = BeidanParlayDog(user=dog)
-        _progress("结算中（北单串关）", detail=f"{dog} {day}")
-        s = pdog.settle(day, reflect=not bool(opts.get("skip_llm")))
+        # 阶段选择（2026-09-13 解耦工单）：
+        #   opts.stage = "settle"  → **只结算**（对账订单/资金，不产因子）
+        #                "reflect" → **只产因子**（不动订单与资金）
+        #                缺省/both → 结算 + 反思（改造前行为）
+        stage = str(opts.get("stage") or "both").strip().lower()
+        reflect_meta = None
+        if stage == "settle":
+            _progress("结算中（北单串关·仅结算）", detail=f"{dog} {day}")
+            s = pdog.settle_only(day)
+        elif stage == "reflect":
+            _progress("反思中（北单串关·仅产因子）", detail=f"{dog} {day}")
+            s = {"settled": 0, "hit": 0, "miss": 0, "push": 0, "pnl": 0.0,
+                 "slips_any_hit": 0, "slips_total": 0}
+            reflect_meta = pdog.reflect_only(day, include_skipped=not bool(opts.get("no_skipped")))
+        else:
+            _progress("结算中（北单串关）", detail=f"{dog} {day}")
+            s = pdog.settle(day, reflect=not bool(opts.get("skip_llm")))
         return {
             "user": dog,
             "day": day,
             "parlay": True,
+            "stage": stage,
+            **({"reflect": reflect_meta} if reflect_meta is not None else {}),
             "settlement": s,
             "capital": pdog._get_capital(),
             "stats": _role_of(dog).stats(),
         }
 
     agent = _agent(dog)
+    # 2026-09-16 结算/因子解耦（与北单串关狗同口径）：
+    #   opts.stage = "settle"  → 只结算（对账订单/资金，不烧 LLM）
+    #                "reflect" → 只产因子（不动订单与资金）
+    #                缺省/both → 结算 + 反思（改造前行为）
+    stage = str(opts.get("stage") or "both").strip().lower()
+    if stage == "settle":
+        _progress("结算中（仅结算）", detail=f"{dog} {day}")
+        s = agent.settle(day, jingcai_only=bool(opts.get("jingcai_only", False)),
+                         reflect=False)
+        if not os.environ.get("DS_ROLES_ROOT"):
+            _write_pre_factor_checkpoint(dog, day)
+        return {
+            "user": dog,
+            "day": day,
+            "stage": stage,
+            "settlement": s,
+            "capital": _role_of(dog).capital,
+            "stats": _role_of(dog).stats(),
+        }
+    if stage == "reflect":
+        _progress("反思中（仅产因子）", detail=f"{dog} {day}")
+        meta = agent.reflect_only(day)
+        return {"user": dog, "day": day, "stage": stage, "reflect": meta,
+                "settlement": {"settled": 0, "hit": 0, "miss": 0, "push": 0, "pnl": 0.0},
+                "capital": _role_of(dog).capital, "stats": _role_of(dog).stats()}
     # 结算后反思（归因 → 更新因子表现与 last_seen 有效期）需要 LLM：
     # 与 _do_analyze 对齐，否则 node_reflect 因 rt.provider 为空被跳过，
     # 回放/看板桥接结算从不更新因子有效期（2026-08-25 修复）。
@@ -660,6 +750,14 @@ def _do_refresh(req: dict) -> dict:
     if not _valid_date(day):
         raise BridgeError(f"日期格式错误: {day}")
     _ensure_dog(dog)
+    # 串关狗（含北单 8串1）必须走 BeidanParlayDog.refresh_orders：
+    # 按整票 total_stake 退款、按全部腿判断开赛，避免只退单注或漏判。
+    if _is_parlay_dog(dog):
+        from src.beidan_parlay_dog import BeidanParlayDog
+        pdog = BeidanParlayDog(user=dog)
+        _progress("刷新订单组（北单串关）", detail=f"{dog} {day}")
+        r = pdog.refresh_orders(day)
+        return {"user": dog, **r}
     agent = _agent(dog)
     _progress("刷新订单组", detail=f"{dog} {day}")
     r = agent.refresh_orders(day)
@@ -819,8 +917,36 @@ def _do_tavern(req: dict) -> dict:
     return {"messages": messages}
 
 
+def _do_reflect(req: dict) -> dict:
+    """**只产因子/反思**（不动订单与资金）——结算与因子生成解耦后的独立入口。
+
+    opts.include_skipped（默认 True）：无已结算订单时是否走观察样本路径。
+    """
+    dog = _need(req, "dog")
+    day = req.get("day") or ""
+    if day and not _valid_date(day):
+        raise BridgeError(f"日期格式错误: {day}")
+    _ensure_dog(dog)
+    opts = req.get("opts") or {}
+    if _is_parlay_dog(dog):
+        from src.beidan_parlay_dog import BeidanParlayDog
+        pdog = BeidanParlayDog(user=dog)
+        _progress("反思中（仅产因子）", detail=f"{dog} {day}")
+        meta = pdog.reflect_only(day or None,
+                                 include_skipped=not bool(opts.get("no_skipped")))
+        return {"user": dog, "day": day, "parlay": True, **meta}
+    # 2026-09-16：单狗同样支持「只产因子」（复用 agent.reflect_only，不结算不动资金）
+    agent = _agent(dog)
+    if not os.environ.get("DEEPSEEK_API_KEY"):
+        raise BridgeError("缺少 DEEPSEEK_API_KEY：只产因子需要 LLM provider")
+    _progress("反思中（仅产因子）", detail=f"{dog} {day}")
+    meta = agent.reflect_only(day or None)
+    return {"user": dog, "day": day, "parlay": False, **meta}
+
+
 FUNCS = {
     "prepare": _do_prepare,
+    "reflect": _do_reflect,
     "prepare-range": _do_prepare_range,
     "analyze": _do_analyze,
     "settle": _do_settle,

@@ -6,6 +6,9 @@ from pathlib import Path
 # 在导入 src 之前覆盖角色/session 根目录，避免污染线上 data/roles、data/sessions。
 os.environ.setdefault("DS_ROLES_ROOT", tempfile.mkdtemp(prefix="beidan_roles_"))
 os.environ.setdefault("DS_SESSIONS_ROOT", tempfile.mkdtemp(prefix="beidan_sessions_"))
+# 本文件验证线上取数路径（本地缓存）；显式关闭回测切片源，
+# 让结果不依赖当前机器上是否已经同步了 fet_txt 切片（见 tests/test_backtest_fet.py）。
+os.environ["DS_BACKTEST_FET"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -220,24 +223,27 @@ def test_analyze_writes_slip_level_order():
     """analyze 落盘应为「一张票一条 slip 级 order」，组合不再逐注展开。"""
     dog = BeidanParlayDog(user="pytest_beidan_slip")
     dog.reset()
+    _legacy(dog)
     matches = [_mk_match("L1", "A", "B"), _mk_match("L2", "C", "D")]
-    dog._beidan_matches = lambda day, live: (matches, [])
+    dog._beidan_matches = lambda day, live=False, **kw: (matches, [])
 
     a = dog.analyze("2026-08-20", tickets=["2串1"], max_picks=2, live=False)
 
-    # 2 腿 × 2 选 = 4 注，但只应产生 1 条 slip 级订单
+    # 规则回退/手工模式的语义（工作区 2026-09 起）：没有 LLM 给方向时，
+    # `_beidan_score_leg` 一律退化为「覆盖全部可投注边」→ 2 腿 × 3 选 = 9 注，
+    # 但组合只应产生 1 条 slip 级订单。
     assert a["placed"] == 1
     assert len(a["orders"]) == 1
     o = a["orders"][0]
     assert o["slip_type"] == "2串1"
-    assert o["combos_count"] == 4
-    assert o["total_stake"] == 8.0
+    assert o["combos_count"] == 9
+    assert o["total_stake"] == 18.0
     assert o["bet_size"] == 2.0
     assert len(o["legs"]) == 2
     # 腿保留 picks 列表（不落盘展开后的单选 combo）
-    assert all(l.get("picks") == ["H", "D"] for l in o["legs"])
+    assert all(l.get("picks") == ["H", "D", "A"] for l in o["legs"])
 
-    # 角色 JSON 里也只有这一条（而非 4 条）
+    # 角色 JSON 里也只有这一条（而非 9 条）
     role = dog._ensure_role()
     assert len(role.get_orders()) == 1
 
@@ -340,3 +346,179 @@ if __name__ == "__main__":
             traceback.print_exc()
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
+
+
+# ═══════════════════════════════════════════
+# 串关结算：一票否决（一关确定不中 → 不算组合）+ 只算活组合
+# ═══════════════════════════════════════════
+
+def _legacy(dog) -> None:
+    """显式锁定 legacy 模式：不依赖共享 DS_ROLES_ROOT 里有没有 parlay.json。"""
+    dog._parlay_cfg = {**BeidanParlayDog.FLEX_DEFAULTS, "mode": "legacy",
+                       "ticket": "8串1", "single_legs": 3, "cover_legs": 5,
+                       "cover_mode": "all", "cover_picks": 3}
+
+
+def _mk_order(legs: list[dict], combos: int, unit: float = 2.0,
+              tk: str = None) -> dict:
+    tk = tk or f"{len(legs)}串1"
+    return {
+        "id": "o1", "slip_id": "s1", "slip_type": tk, "slip_index": 1,
+        "combos_count": combos, "unit_stake": unit,
+        "total_stake": round(unit * combos, 2),
+        "ticket_legs": list(legs), "predict_id": "", "lota_id": legs[0]["lota_id"],
+        "bet_type": "北单串关", "ticket_type": tk, "pick": "x",
+        "odds": 0.0, "bet_size": unit, "legs": list(legs),
+        "created_at": "2026-08-20 12:00:00", "settled_at": None,
+    }
+
+
+def _leg(lid: str, picks: list[str]) -> dict:
+    return {"lota_id": lid, "picks": picks, "odds": {p: 2.0 for p in picks},
+            "goal_line": 0.0, "home_name": f"H{lid}", "away_name": f"A{lid}"}
+
+
+def test_settle_one_leg_wrong_kills_ticket_without_double_pick_math():
+    """一关确定不中 → 立刻按不中结算（不等其它腿、不算组合）。"""
+    dog = BeidanParlayDog(user="pytest_early_kill")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg("L1", ["A"]), _leg("L2", ["H"]), _leg("L3", ["D"])]
+    role.orders.append(_mk_order(legs, combos=1))
+    role.save()
+    # L1 已开奖且买 A 实际 H（必杀）；L2/L3 还没有结果（info 缺失）
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: {
+        "L1": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"}}
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["miss"] == 1 and s["hit"] == 0
+    o = role.get_orders()[0]
+    assert o["hit"] is False and o["return_amount"] == 0.0
+    assert o["profit"] == -o["total_stake"]
+    assert o["early_kill"]["lota_id"] == "L1" and o["early_kill"]["actual"] == "H"
+    # 未开奖的腿不伪造结果
+    assert [l.get("actual") for l in o["legs"]] == ["H", None, None]
+
+
+def test_settle_all_picks_of_a_leg_missing_kills_ticket():
+    """多选腿全不中同样是必杀（双选买 H/D 实际 A）。"""
+    dog = BeidanParlayDog(user="pytest_early_kill_cover")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg("L1", ["H", "D"]), _leg("L2", ["H"])]
+    role.orders.append(_mk_order(legs, combos=2))
+    role.save()
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: {
+        "L1": {"result": "0", "spvalue": 5.0, "score": "0:1", "goal_line": "0"},
+        "L2": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"}}
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["miss"] == 1
+    assert role.get_orders()[0]["early_kill"]["lota_id"] == "L1"
+
+
+def test_settle_only_surviving_combos_are_counted():
+    """双选腿只算命中的那一注：L1 买 H/D 实际 H、L2 买 H/A 实际 H → 只派 1 注。"""
+    dog = BeidanParlayDog(user="pytest_survivors")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg("L1", ["H", "D"]), _leg("L2", ["H", "A"])]
+    role.orders.append(_mk_order(legs, combos=4, unit=2.0))   # 成本 4 注 = 8 元
+    role.save()
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: {
+        "L1": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"},
+        "L2": {"result": "3", "spvalue": 3.0, "score": "2:0", "goal_line": "0"}}
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["hit"] == 1
+    o = role.get_orders()[0]
+    # 只有 1 注活下来：2 元 × 2.0 × 3.0 × 0.65 = 7.8（另 3 注派彩 0）
+    assert o["combos_count"] == 4
+    assert o["return_amount"] == 7.8
+    assert o["profit"] == round(7.8 - 8.0, 2)
+    assert o["sp_product"] == 6.0
+
+
+def test_settle_single_pick_multi_leg_still_works():
+    """回归：全单选多腿票（无必杀、无多选）结算结果不变。"""
+    dog = BeidanParlayDog(user="pytest_single_ok")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg("L1", ["H"]), _leg("L2", ["A"])]
+    role.orders.append(_mk_order(legs, combos=1))
+    role.save()
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: {
+        "L1": {"result": "3", "spvalue": 2.0, "score": "1:0", "goal_line": "0"},
+        "L2": {"result": "0", "spvalue": 3.0, "score": "0:2", "goal_line": "0"}}
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["hit"] == 1
+    assert role.get_orders()[0]["return_amount"] == 7.8
+
+
+# ═══════════════════════════════════════════
+# 容错票（N过M）结算：容错额度内的错腿不算一票否决
+# ═══════════════════════════════════════════
+
+def _res(lid: str, result: str, sp: float = 2.0) -> dict:
+    return {"result": result, "spvalue": sp, "score": "1:0", "goal_line": "0"}
+
+
+def test_settle_tolerance_ticket_survives_one_miss():
+    """8过7（容错 1）：错 1 条腿**不**一票否决，不含该腿的活组合照常派彩。"""
+    dog = BeidanParlayDog(user="pytest_tol_ok")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg(f"L{i}", ["H"]) for i in range(1, 9)]
+    role.orders.append(_mk_order(legs, combos=8, tk="8过7"))   # C(8,7)=8 注 = 16 元
+    role.save()
+    res = {f"L{i}": _res(f"L{i}", "3") for i in range(1, 9)}
+    res["L1"] = _res("L1", "0")          # L1 买 H 实际 A → 唯一错腿（容错内）
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: res
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["hit"] == 1 and s["miss"] == 0
+    o = role.get_orders()[0]
+    assert "early_kill" not in o and o["hit"] is True
+    # 7 个含 L1 的组合全废，只剩 1 注（L2..L8）活：2 元 × 2^7 × 0.65
+    assert o["return_amount"] == 166.4
+    assert o["profit"] == round(166.4 - 16.0, 2)
+    assert o["legs"][0]["actual"] == "A" and o["legs"][0]["hit"] is False
+
+
+def test_settle_tolerance_ticket_killed_when_exceeding():
+    """8过7 错 2 条腿 > 容错 1 → 一票否决：不等其它腿开奖、不算 C(8,7) 注组合。"""
+    dog = BeidanParlayDog(user="pytest_tol_dead")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg(f"L{i}", ["H"]) for i in range(1, 9)]
+    role.orders.append(_mk_order(legs, combos=8, tk="8过7"))
+    role.save()
+    # 只给 2 条错腿的结果，其余 6 条"没数据" → 仍应立刻判死
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: {
+        "L1": _res("L1", "0"), "L2": _res("L2", "0")}
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["miss"] == 1 and s["hit"] == 0
+    o = role.get_orders()[0]
+    assert o["hit"] is False and o["return_amount"] == 0.0
+    assert o["early_kill"]["lota_id"] == "L1"
+    assert [d["lota_id"] for d in o.get("early_kill_legs") or []] == ["L1", "L2"]
+    assert o["profit"] == -16.0
+    # 未开奖的腿不伪造结果
+    assert [l.get("actual") for l in o["legs"][2:]] == [None] * 6
+
+
+def test_settle_12_over_8_tolerance_four():
+    """12过8（12 场单选容错 4）：错 4 条腿仍在容错内 → 8 条活腿的 1 注照常派彩。"""
+    dog = BeidanParlayDog(user="pytest_tol_12")
+    dog.reset()
+    role = dog._ensure_role()
+    legs = [_leg(f"L{i:02d}", ["H"]) for i in range(1, 13)]
+    role.orders.append(_mk_order(legs, combos=495, tk="12过8"))   # C(12,8)=495 注 = 990 元
+    role.save()
+    res = {f"L{i:02d}": _res(f"L{i:02d}", "3") for i in range(1, 13)}
+    for i in range(1, 5):                # 恰好 4 条错腿（=容错额度）
+        res[f"L{i:02d}"] = _res(f"L{i:02d}", "0")
+    dog._fetch_beidan_results = lambda day, lids, sp_dates=None, orders=None: res
+    s = dog.settle("2026-08-20", reflect=False)
+    assert s["settled"] == 1 and s["hit"] == 1
+    o = role.get_orders()[0]
+    assert "early_kill" not in o
+    # 只有 1 注活（L05..L12 全中）：2 元 × 2^8 × 0.65
+    assert o["return_amount"] == 332.8
+    assert o["profit"] == round(332.8 - 990.0, 2)

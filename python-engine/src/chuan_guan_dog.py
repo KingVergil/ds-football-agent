@@ -161,16 +161,36 @@ class ChuanGuanDog(Agent):
         for o in role.get_orders():
             if o.get("settled_at"):
                 continue
-            times = [
-                _norm_time((self._dm.get_cached_match(lid) or {}).get("match_time", ""))
-                for lid in self._leg_ids(o)
-            ]
-            times = [t for t in times if t]
+            # 腿时间解析：缓存优先；**缓存查不到时回落该腿自身记录的 match_time**
+            # （北单 slip 级订单的 ticket_legs/legs 里带 match_time）。
+            # 旧实现只读缓存 → 查不到就整票跳过（既不退也不保护），
+            # 于是重跑分析会静默叠票（2026-09-13 定位）。
+            _by_lid = {}
+            for _l in list(o.get("legs") or []) + list(o.get("ticket_legs") or []):
+                if _l.get("lota_id") and _l.get("match_time"):
+                    _by_lid.setdefault(_l["lota_id"], _l["match_time"])
+            times = []
+            for lid in self._leg_ids(o):
+                t = _norm_time((self._dm.get_cached_match(lid) or {}).get("match_time", ""))
+                if not t:
+                    t = _norm_time(_by_lid.get(lid, ""))
+                if t:
+                    times.append(t)
+            # 仍取不到时间：保守保留（不可判定的票不动），但打印提示避免静默
+            if not times:
+                print(f"  ⚠️ 刷新: 票 {o.get('id')} 取不到腿时间（缓存缺失且票内无 match_time）→ 保守保留")
+                kept += 1
+                kept_orders.append({"id": o.get("id"), "pick": o.get("pick", ""),
+                                    "odds": o.get("odds", 0), "legs": [], "reason": "时间不可判定"})
+                continue
             if not times:
                 continue
             if not any(window_start <= t <= window_end for t in times):
                 continue
-            bet = float(o.get("bet_size", 0))
+            # 北单串关一张票只落一条 slip 级订单：钱按 total_stake 收，
+            # bet_size 只是单注基准（2 元），退款必须按 total_stake 退；
+            # 竞彩串关按注落单（无 total_stake），仍回退 bet_size 累加。
+            bet = float(o.get("total_stake") or o.get("bet_size") or 0)
             if any(t <= now for t in times):
                 kept += 1
                 kept_orders.append({
@@ -274,7 +294,8 @@ class ChuanGuanDog(Agent):
             return {}
 
     def _match_sections_text(self, match: dict, budget: int = None,
-                             extra_slugs: list[str] = None) -> str:
+                             extra_slugs: list[str] = None,
+                             source_order: bool = False) -> str:
         """拉取该场的因子相关数据段（离散/亚盘/必发/欧赔等），供 LLM 判断因子触发。
 
         参考单关狗阶段2：因子 slugs 决定取哪些段；串关固定取 7 个默认段
@@ -289,7 +310,7 @@ class ChuanGuanDog(Agent):
             for s in (extra_slugs or []):
                 if s not in slugs:
                     slugs.append(s)
-            text = self._dm.get_sections(lid, slugs)
+            text = self._dm.get_sections(lid, slugs, source_order=source_order)
         except Exception:
             return ""
         if not text:
@@ -353,7 +374,7 @@ class ChuanGuanDog(Agent):
         slugs: list[str] = []
         try:
             role.memory.factors.load()
-            main, _, _ = role.memory.factors.selected_active(as_of)
+            main, _, _, _ = role.memory.factors.selected_active(as_of)
             for fid, sdata, _ in main:
                 fac_id = sdata.get("fac_id") or role.memory.factors.fac_id_for(fid)
                 for s in (sdata.get("slugs") or role.memory.factors._load_slugs(fac_id)):
@@ -1015,11 +1036,17 @@ pick: H
                 hist_w = [h for h in s.get("history", [])
                           if cutoff < h.get("date", "") <= day_date]
                 w_ret = sum(h.get("return_ratio", 0) for h in hist_w)
+                total_return = float(
+                    s.get("total_return")
+                    if "total_return" in s
+                    else s.get("profit", 0) or 0
+                )
+                avg_return = round(total_return / denom, 2) if denom > 0 else 0.0
                 candidates[fid] = {
                     "status": s.get("status", "active"),
                     "total": total,
                     "hit_rate": hit_rate,
-                    "profit": s.get("profit", 0),
+                    "avg_return": avg_return,
                     "desc": s.get("desc", ""),
                     "first_seen": s.get("first_seen", ""),
                     "last_seen": s.get("last_seen", ""),
@@ -1035,7 +1062,7 @@ pick: H
                 persona = persona_path.read_text(encoding="utf-8").strip()
             candidates_text = "\n".join(
                 f"  {fid} [{c['status']}]: {c['total']}次 命中{c['hit_rate']} "
-                f"盈亏{c['profit']:+.0f} | 首见={c['first_seen']} 最近={c['last_seen']}\n"
+                f"单注均回报{c['avg_return']:+.2f} | 首见={c['first_seen']} 最近={c['last_seen']}\n"
                 f"    定义: {(c['desc'][:100] if c['desc'] else '(无描述)')}\n"
                 f"    近7天({cutoff}~{day_date}): {c['window_n']}次 回报{c['window_return']:+.2f}"
                 for fid, c in sorted(candidates.items(), key=lambda x: -x[1]["total"])

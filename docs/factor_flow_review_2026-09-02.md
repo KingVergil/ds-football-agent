@@ -259,7 +259,7 @@ if _recent and _profitable:
 
 1. 每个角色明确 `scope`：
    - 串关2狗 → `jc`
-   - 北单双选串关狗 → `beidan`
+   - bc狗 → `beidan`
 2. 因子归纳 alpha 池按 scope 分桶：
    - jc alpha 池：alpha狗 + alpha2狗 + 均注狗
    - beidan alpha 池：bc狗

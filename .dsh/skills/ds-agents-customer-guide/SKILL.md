@@ -28,7 +28,7 @@ description: 面向客户的 ds_agents 使用引导。适用于 dsh 会话里用
 | 因子归纳 / 退役 | 看板「🧬 归纳」「🪦 Review」；因子有效期批量刷新用 `python scripts/refresh_factor_time.py` |
 | 回放 | `ds_replay`：沙箱模型、线上零影响；半交互暂停给方向建议，可续跑 / `to_end` / `rewind_to` |
 | 练新狗 | 走训练模式技能 `ds-agents-training`（创建/选狗 → 回放 → 转正/放弃） |
-| 发邮件 | `email-orders`（默认 梭哈2狗 + 跟风狗） |
+| 发邮件 | `email-orders`：**发送前现查落盘**的当日待结算订单，有单的狗才发；`跟风狗` 无收件人条目会自寄；竞彩狗要发须显式传狗名 |
 
 ## 关键设定（回答「为什么 / 怎么配」时用）
 
@@ -41,6 +41,15 @@ description: 面向客户的 ds_agents 使用引导。适用于 dsh 会话里用
 - 引擎解释器必须是 miniconda python（含 langgraph）；homebrew python3 会报
   `ModuleNotFoundError: No module named 'langgraph'`（dsh 配置里 `pythonBin` 指向 miniconda）。
 - API 密钥客户自配（`DEEPSEEK_API_KEY` 环境变量 / `.env`），系统不内置。
+- 邮件范围**以落盘为准，不写死某只狗**：逐狗取该足球日窗口 `[D 12:01, D+1 12:00]` 内
+  `settled_at` 为空的订单 → 有单 → 订单邮件；无单但有 analyze skip 原因 → 「未下单」原因邮件；两者都无 → 不发。
+  ⚠️ **每次发送前现查落盘**：analyze 一跑完各狗就有新单（2026-09-11 00:12 那波 analyze 后
+  深度足球狗 2 单 / 梭哈2狗 4 单 / 跟风狗 1 单），别沿用「只有北单狗有单」这类旧结论。
+  ⚠️ **窗口外的单不进邮件**：如 `Lota4599595`（引擎侧 `match_time` = 2026-09-11 23:45，属下一足球日）
+  被窗口过滤掉，所以三只狗的邮件里都没有它；若某狗当天只有窗口外的单，会发出「本日未下单（全skip）」
+  邮件，口径与实际下单不符（跟风狗 2026-09-11 即如此）。
+  ⚠️ `跟风狗` 在 `email_recipients.txt` 里没有条目 → 回落到**发件人自己**（自寄），要真发给客户须先补收件人。
+  竞彩狗要发邮件必须显式传狗名。
 - 狗列表（live）：`alpha2狗 alpha狗 梭哈2狗 梭哈3狗 平局狗 跟风狗 均注狗`（7 只单关）
   + `深度足球狗 梭哈北单狗 跟风北单狗`（注册表单关）+ `bc狗`（北单 8串1 独立角色）。
 - `bc狗` 由 `roles/bc狗/parlay.json` 标记：斗狗场「⚡ 分析 / 🧾 结算」会分流到

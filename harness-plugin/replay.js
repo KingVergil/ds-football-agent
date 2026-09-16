@@ -13,9 +13,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { LLM_TEMPERATURES } from "./tools/shared.js";
 import { beijingNowIso } from "./tools/shared.js";
-import { streamText } from "./tools/llmText.js";
 import { runBridge, defaultPythonBin } from "./bridge.js";
 import { readDogRegistry, writeDogRegistry } from "./dogRegistry.js";
 import { splitDayWindows } from "./windows.js";
@@ -41,6 +39,41 @@ function writeJson(path, value) {
 
 function round2(x) {
   return Math.round(x * 100) / 100;
+}
+
+/**
+ * 回放彩票类型：串关（北单）狗走 beidan 口径（prepare/analyze 传 beidan_only），
+ * 其余（竞彩/未声明）保持 jingcai_only（默认 true，行为与改造前逐字节一致）。
+ * 判定以 dogRegistry 的 scope 为准，缺条目/读失败一律回退 jingcai。
+ */
+function lotteryTypeOf(cacheDir, dog) {
+  try {
+    const entry = readDogRegistry(cacheDir).find((d) => d && d.name === dog);
+    return entry && entry.scope === "beidan" ? "beidan" : "jingcai";
+  } catch {
+    return "jingcai";
+  }
+}
+
+/** 彩票类型 → 桥 opts（串关=北单走 beidan_only，竞彩走 jingcai_only）。 */
+export function lotteryOpts(lotteryType) {
+  return lotteryType === "beidan" ? { beidan_only: true } : { jingcai_only: true };
+}
+
+/**
+ * 彩票类型 → 回放行为（**分区判定唯一入口**，供 runReplayDay 与测试共用）。
+ *
+ * 单狗原则：只有 beidan 才改行为；jc / all / 未知 / 空一律精确回落竞彩语义
+ * （prepare + prepare-range + 拆窗 + jingcai_only），与改造前逐字节一致。
+ */
+export function resolveLottery(scope) {
+  const type = scope === "beidan" ? "beidan" : "jingcai";
+  return {
+    type,
+    opts: lotteryOpts(type),
+    usesPrepare: type !== "beidan",
+    splitWindows: type !== "beidan",
+  };
 }
 
 /** 起止足球日 → 逐日列表。 */
@@ -163,25 +196,38 @@ export function orderFootballDay(order) {
   return new Date(d.getTime() - 4 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-/** 桥调用封装（带 role_root）。 */
-async function bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot, envFile = "") {
+/** 桥调用实现：内部注入键在这里剥离，引擎请求里绝不会出现 `_bridge` / `_engineRoot`。 */
+async function bridgeCallImpl(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot, envFile = "", bridge = runBridge) {
+  const { _bridge, _engineRoot, ...engineReq } = req || {};
   const full = {
-    ...req,
-    opts: { ...(req.opts || {}), ...(roleRoot ? { role_root: roleRoot } : {}) },
+    ...engineReq,
+    opts: { ...(engineReq.opts || {}), ...(roleRoot ? { role_root: roleRoot } : {}) },
   };
   try {
-    const r = await runBridge({ pythonBin, engineRoot, envFile, req: full, onProgress });
-    if (r.ok) return { ok: true, data: r.data, func: req.func, dog: req.dog };
+    const r = await bridge({ pythonBin, engineRoot, envFile, req: full, onProgress });
+    if (r.ok) return { ok: true, data: r.data, func: engineReq.func, dog: engineReq.dog };
     const stderrTail = String(r.stderr || "").trim().slice(-600);
     return {
       ok: false,
-      func: req.func,
+      func: engineReq.func,
       error: (r.error || "桥调用失败") + (stderrTail ? `｜${stderrTail}` : ""),
-      dog: req.dog,
+      dog: engineReq.dog,
     };
   } catch (e) {
-    return { ok: false, func: req.func, error: String((e && e.message) || e), dog: req.dog };
+    return { ok: false, func: engineReq.func, error: String((e && e.message) || e), dog: engineReq.dog };
   }
+}
+
+/**
+ * 桥调用封装（带 role_root）。`opts._bridge` / `opts._engineRoot` 是**测试专用**注入点
+ * （默认即真实 runBridge / engineRoot），用于把「回放每天调了哪些 func、传了什么 opts」
+ * 钉成契约测试；两个键在上面的实现里被剥离，不会进入引擎请求，生产路径不受影响。
+ */
+async function bridgeCall(cacheDir, engineRoot, pythonBin, req, onProgress, roleRoot, envFile = "") {
+  const r0 = req || {};
+  const bridge = r0._bridge || runBridge;
+  const root = r0._engineRoot !== undefined ? r0._engineRoot : engineRoot;
+  return bridgeCallImpl(cacheDir, root, pythonBin, r0, onProgress, roleRoot, envFile, bridge);
 }
 
 /** 桥调用 + 心跳（LLM 决策期间任务进度不死）。 */
@@ -403,7 +449,14 @@ function writeFacts(cacheDir, sandboxDir, s) {
 
 /** 跑沙箱的一天。partialFirstDay=true 且 dayIdx===0：D 的分析/结算已随复制带过来，只从因子归纳继续。 */
 async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, d, dayIdx, cfg, acc) {
-  const { dog, factorReviewEvery, userNotes, onProgress, days, skipLlm, roleRoot } = cfg;
+  const { dog, factorReviewEvery, userNotes, onProgress, days, skipLlm, roleRoot, lotteryType } = cfg;
+  // 分区判定唯一入口（见 resolveLottery）：竞彩 → usesPrepare/splitWindows 均为 true，与改造前一致。
+  const lot = resolveLottery(lotteryType);
+  const lotOpts = lot.opts;
+  // 测试注入（生产为 null）：把当日桥请求标上替身，供契约测试捕获调用计划
+  const stamp = (req) => (cfg._bridge
+    ? { ...req, _bridge: cfg._bridge, ...(cfg._engineRoot !== undefined ? { _engineRoot: cfg._engineRoot } : {}) }
+    : req);
   const { trajectory, reviewLog, checkpointLog, log, prepLog } = acc;
   const warn = (msg) => log.push(`⚠️ ${msg}`);
   const total = days.length;
@@ -414,26 +467,39 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
   log.push(`\n📅 [${d}] 第 ${dayIdx + 1}/${total} 天（${beijingNowIso()}）${firstPartial ? "（沙箱起点日：分析/结算沿用复制状态，从因子归纳继续）" : ""}`);
 
   if (!firstPartial) {
-    // 1) 数据准备（replay：缓存优先）
-    onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备`, done: dayIdx, total, detail: d });
-    const prep = await bridgeCall(cacheDir, engineRoot, pythonBin, {
-      func: "prepare", day: d, opts: { mode: "replay", jingcai_only: true },
-    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), roleRoot, envFile);
-    const prepMeta = prep.ok ? {
-      day: d, candidates: prep.data.candidates, prefetched_ok: prep.data.prefetched_ok,
-      warnings: prep.data.warnings || [],
-    } : { day: d, error: prep.error };
-    prepLog.push(prepMeta);
-    if (prep.ok) {
-      log.push(`   数据准备: 竞彩 ${prep.data.candidates ?? 0} 场，预取 ${prep.data.prefetched_ok ?? 0}`);
-      for (const w of prepMeta.warnings) warn(`[${d}] ${w}`);
+    // 1) 数据准备：**仅竞彩**走 prepare（足球日窗口 + jingcai_number 过滤 + 特征预取）。
+    //    串关（北单）狗没有 prepare 阶段：引擎的 DataManager 自管取数——`_beidan_matches`
+    //    从 data/matches/<足球日>.json 读北单场次，compact-fet 由回测切片源
+    //    （src/backtest_fet.py，DS_ROLES_ROOT 存在时自动启用）按「访问时刻 → 开赛前档位」
+    //    逐波供给，波次（周末 16:30/20:30）由引擎 `_analyze_waves` 内部启动。
+    //    硬套竞彩 prepare 只会把 13 场竞彩当候选（2026-07-11 实测），既错又白烧。
+    //    ⚠️ 竞彩分支（else 段）与改造前逐行一致：单狗回放不受影响。
+    let prep = { ok: false, data: {} };
+    if (!lot.usesPrepare) {
+      prepLog.push({ day: d, skipped: true, reason: "北单：引擎 DataManager + 回测切片源自管取数，无 prepare 阶段" });
+      log.push("   数据准备: 跳过（北单走引擎 DataManager + fet_txt 回测切片，逐波自取）");
     } else {
-      warn(`[${d}] 数据准备失败: ${prep.error}`);
+      onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备`, done: dayIdx, total, detail: d });
+      prep = await bridgeCall(cacheDir, engineRoot, pythonBin, stamp({
+        func: "prepare", day: d, opts: { mode: "replay", jingcai_only: true },
+      }), (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 数据准备·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), roleRoot, envFile);
+      const prepMeta = prep.ok ? {
+        day: d, candidates: prep.data.candidates, prefetched_ok: prep.data.prefetched_ok,
+        warnings: prep.data.warnings || [],
+      } : { day: d, error: prep.error };
+      prepLog.push(prepMeta);
+      if (prep.ok) {
+        log.push(`   数据准备: 竞彩 ${prep.data.candidates ?? 0} 场，预取 ${prep.data.prefetched_ok ?? 0}`);
+        for (const w of prepMeta.warnings) warn(`[${d}] ${w}`);
+      } else {
+        warn(`[${d}] 数据准备失败: ${prep.error}`);
+      }
     }
 
     // 2) 分析（沙箱内 LLM 决策；当日竞彩 >10 场时按智能窗口分批，模拟多波次启动）
+    //    北单不拆窗口：波次是引擎内部概念（fet_txt 切片 + as_of），拆窗会让每窗重复跑全天。
     const prepMatches = (prep.ok && Array.isArray(prep.data.matches)) ? prep.data.matches : [];
-    const windows = splitDayWindows(d, prepMatches, {});
+    const windows = lot.splitWindows ? splitDayWindows(d, prepMatches, {}) : [];
     const winList = windows.length > 1 ? windows : [null];
     let placedTotal = 0;
     for (let wi = 0; wi < winList.length; wi++) {
@@ -442,14 +508,14 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
         ? `窗口 ${wi + 1}/${winList.length} [${win.anchor}] ${win.start.slice(11)}~${win.end.slice(11)}·${win.match_ids.length}场`
         : "全量";
       onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog} ${winLabel}`, done: dayIdx, total, detail: d });
-      const r = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
+      const r = await bridgeCallTick(cacheDir, engineRoot, pythonBin, stamp({
         func: "analyze", dog, day: d,
         opts: {
-          prefetched: true, live: false, jingcai_only: true,
+          prefetched: lot.usesPrepare, live: false, ...lotOpts,
           ...(win ? { window: { match_ids: win.match_ids } } : {}),
           ...(skipLlm ? { skip_llm: true } : {}),
         },
-      }, (p) => onProgress({
+      }), (p) => onProgress({
         phase: `第 ${dayIdx + 1}/${total} 天 分析 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d,
       }), `第 ${dayIdx + 1}/${total} 天 分析 ${dog} ${winLabel}`, roleRoot, envFile);
       const placedWin = r.ok ? (r.data.placed || 0) : 0;
@@ -460,10 +526,13 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
     if (windows.length > 1) {
       log.push(`     🪟 ${dog} 当日 ${windows.reduce((s, w) => s + w.match_ids.length, 0)} 场拆 ${windows.length} 个窗口，共下单 ${placed} 单`);
     }
+    if (!lot.splitWindows) {
+      log.push(`     🌊 ${dog} 北单：由引擎按 fet_txt 切片源逐波（周末 16:30/20:30）内部启动，回放层不再拆窗口`);
+    }
 
     // 3) 结算（写沙箱；live 侧由桥自动落 pre-factor 检查点，沙箱内由本层管）
     onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 结算 ${dog}`, done: dayIdx, total, detail: d });
-    const settle = await bridgeCall(cacheDir, engineRoot, pythonBin, { func: "settle", dog, day: d, opts: {} }, undefined, roleRoot, envFile);
+    const settle = await bridgeCall(cacheDir, engineRoot, pythonBin, stamp({ func: "settle", dog, day: d, opts: {} }), undefined, roleRoot, envFile);
     const settleRes = settle.ok ? (settle.data.settlement || {}) : { settled: 0, pnl: 0 };
     settled = settleRes.settled || 0;
     pnl = settleRes.pnl || 0;
@@ -477,9 +546,9 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
 
   // 4) 因子归纳（沙箱内）
   onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, done: dayIdx, total, detail: d });
-  const ind = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
+  const ind = await bridgeCallTick(cacheDir, engineRoot, pythonBin, stamp({
     func: "factor-induction", dog, day: d, opts: {},
-  }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, roleRoot, envFile);
+  }), (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子归纳 ${dog}`, roleRoot, envFile);
   const sum = ind.ok ? (ind.data.summary || {}) : {};
   if (ind.ok) log.push(`   🧬 因子归纳 ${dog}: 合并 ${sum.merged || 0}，补定义 ${sum.fac_created || 0}`);
   else warn(`[${d}] 因子归纳失败: ${ind.error}`);
@@ -490,10 +559,10 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
     onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子退役`, done: dayIdx, total, detail: d });
     const cycleStartIdx = Math.max(0, dayIdx - (dayIdx % factorReviewEvery));
     const startDate = days[cycleStartIdx];
-    const rev = await bridgeCallTick(cacheDir, engineRoot, pythonBin, {
+    const rev = await bridgeCallTick(cacheDir, engineRoot, pythonBin, stamp({
       func: "factor-review", dog, end: d, start: startDate,
       opts: { user_notes: userNotes, ...(skipLlm ? { skip_llm: true } : {}) },
-    }, (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}`, roleRoot, envFile);
+    }), (p) => onProgress({ phase: `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}·${p.phase || ""}`, done: dayIdx, total, detail: p.detail || d }), `第 ${dayIdx + 1}/${total} 天 因子退役 ${dog}`, roleRoot, envFile);
     const entry = { day: d, dog, ...(rev.ok ? rev.data : { error: rev.error }) };
     reviewLog.push(entry);
     if (rev.ok) {
@@ -533,9 +602,8 @@ async function runReplayDay(ctx, cacheDir, engineRoot, pythonBin, envFile, sandb
   return { reviewDone };
 }
 
-/** 生成「下一轮方向建议」：skipLlm=true 只启发式；否则启发式 + LLM 润色（失败回退）。 */
-async function buildDirection(ctx, { dogs, cycleReviews, cycleTraj, model, skipLlm }) {
-  const dog = dogs[0];
+/** 生成「下一轮方向建议」：启发式摘要；会话 agent 基于 factor-review 结果润色后供用户编辑。 */
+function buildDirection({ dogs, cycleReviews, cycleTraj }) {
   const lines = [];
   for (const d of dogs) {
     const revs = cycleReviews.filter((r) => r.dog === d && !r.error);
@@ -552,16 +620,7 @@ async function buildDirection(ctx, { dogs, cycleReviews, cycleTraj, model, skipL
       : "下轮建议维持现有因子，重点观察样本不足的新因子";
     lines.push(`- ${d}：${trend}${bits.length ? "；" + bits.join("；") : "；本周期无退役"}。${advice}`);
   }
-  let text = `下一轮因子归纳/退役方向建议（可编辑后作为 induction_notes 回传，将注入下一周期退役评估）：\n${lines.join("\n")}`;
-
-  if (!skipLlm && ctx && ctx.llm && typeof ctx.llm.stream === "function") {
-    try {
-      const prompt = `你是足球投注因子教练。基于下面本周期的因子退役与盈亏摘要，给出「下一轮因子归纳/退役方向」的简洁建议（中文，≤200字，聚焦保留/收紧/观察方向，不要复述数字）：\n\n${text}`;
-      const refined = (await streamText(ctx, prompt, { model, maxTokens: 800, temperature: LLM_TEMPERATURES.induction })).trim();
-      if (refined) text = refined;
-    } catch { /* 回退启发式 */ }
-  }
-  return text;
+  return `下一轮因子归纳/退役方向建议（可编辑后作为 induction_notes 回传，将注入下一周期退役评估）：\n${lines.join("\n")}`;
 }
 
 /** 从 s.next_idx 起逐日跑；interactive 在周期边界（做了退役且非最后一天）暂停。 */
@@ -571,6 +630,8 @@ async function replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sand
     onProgress: s.onProgress || (() => {}), days: s.days,
     skipLlm: s.skip_llm === true, roleRoot: join(sandboxDir, "workspace"),
     partialFirstDay: s.partial_first_day === true,
+    lotteryType: s.lottery_type || "jingcai",
+    _bridge: s._test_bridge || null, _engineRoot: s._test_engine_root,
   };
   const acc = {
     trajectory: s.trajectory, reviewLog: s.reviewLog, checkpointLog: s.checkpointLog,
@@ -598,9 +659,7 @@ async function pauseReplay(ctx, cacheDir, sandboxDir, s, seg) {
   const cycleReviews = s.reviewLog.filter((r) => r.day === d);
   const cycleStartIdx = Math.max(0, seg.cycleEndIdx - s.factor_review_every + 1);
   const cycleTraj = s.trajectory.slice(cycleStartIdx, seg.cycleEndIdx + 1);
-  const suggestion = await buildDirection(ctx, {
-    dogs: [s.dog], cycleReviews, cycleTraj, model: s.model, skipLlm: s.skip_llm === true,
-  });
+  const suggestion = buildDirection({ dogs: [s.dog], cycleReviews, cycleTraj });
   s.status = "paused";
   s.pending_direction = suggestion;
   writeFacts(cacheDir, sandboxDir, s);
@@ -740,8 +799,15 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
   const restoreAfter = opts.restore_after === true;
   const userNotes = String(opts.user_notes || "").trim();
   const skipLlm = opts.skip_llm === true;
+  const lotteryType = lotteryTypeOf(cacheDir, dog);
   const pythonBin = opts.pythonBin || defaultPythonBin();
   const envFile = opts.envFile || "";
+  // 测试注入（生产不传）：_bridge 替身 + _engineRoot 覆盖
+  const testBridge = typeof opts._bridge === "function" ? opts._bridge : null;
+  const testEngineRoot = opts._engineRoot !== undefined ? opts._engineRoot : undefined;
+  const stamp = (req) => (testBridge
+    ? { ...req, _bridge: testBridge, ...(testEngineRoot !== undefined ? { _engineRoot: testEngineRoot } : {}) }
+    : req);
   const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
   const runId = opts.run_id || `replay_${sandbox}_${Date.now()}`;
 
@@ -752,9 +818,9 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
   try {
     // 可选：从 0 开始（沙箱 workspace 内重置）
     if (reset === "zero") {
-      const r = await bridgeCall(cacheDir, engineRoot, pythonBin, {
+      const r = await bridgeCall(cacheDir, engineRoot, pythonBin, stamp({
         func: "reset", dog, opts: { reset_mode: "full" },
-      }, undefined, roleRoot, envFile);
+      }), undefined, roleRoot, envFile);
       if (r.ok) log.push(`🧹 reset=zero：${dog} 已重置为初始资金 + 空记忆`);
       else warn(`${dog} reset 失败: ${r.error}`);
     }
@@ -770,9 +836,9 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
         log.push(`🧹 沙箱起点结算（无 ${start}__pre-factor 检查点）：先结算带入历史挂单 ${pending.length} 单（${settleDays.join("、")}）`);
         for (const day of settleDays) {
           onProgress({ phase: "沙箱起点结算", detail: `${dog} ${day}` });
-          const sr = await bridgeCall(cacheDir, engineRoot, pythonBin, {
+          const sr = await bridgeCall(cacheDir, engineRoot, pythonBin, stamp({
             func: "settle", dog, day, opts: {},
-          }, undefined, roleRoot, envFile);
+          }), undefined, roleRoot, envFile);
           const sm = (sr.ok && sr.data && sr.data.settlement) || {};
           if (sr.ok) log.push(`   ✅ 起点结算 ${day}: ${sm.settled ?? 0} 单，PnL ${sm.pnl ?? 0}`);
           else warn(`[起点结算] ${day} 失败: ${sr.error}`);
@@ -783,11 +849,13 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
     const startCapital = Number(readJson(join(roleRoot, `${dog}.json`)).capital || 0);
     const s = {
       run_id: runId, sandbox, dog, start, end, model,
+      lottery_type: lotteryType,
       factor_review_every: factorReviewEvery, reset, restore_after: restoreAfter,
       interactive, days: dayListOf(start, end), next_idx: 0, status: "running",
       pause_every: pauseEvery,
       batch_until: pauseEvery > 0 ? Math.min(pauseEvery, dayListOf(start, end).length) : dayListOf(start, end).length,
       user_notes: userNotes, skip_llm: skipLlm,
+      _test_bridge: testBridge || undefined, _test_engine_root: testEngineRoot,
       partial_first_day: created.partialFirstDay === true,
       start_capital: startCapital,
       trajectory: [], reviewLog: [], checkpointLog: [], prepLog: [], log,
@@ -798,21 +866,28 @@ export async function runReplay(ctx, cacheDir, engineRoot, opts = {}) {
 
     // 回放前全量预取（非因子数据，prepareRange）：一次拉全 start~end 比赛缓存 + 特征，
     // 逐日 prepare 只读缓存，避免中途"缓存缺失→临时拉取返回空→0 场"的数据不一致。
-    onProgress({ phase: "范围数据预取", detail: `${start} ~ ${end}` });
-    const prepRange = await bridgeCall(cacheDir, engineRoot, pythonBin, {
-      func: "prepare-range", start, end, opts: { jingcai_only: true },
-    }, undefined, roleRoot, envFile);
-    if (prepRange.ok) {
-      const days0 = (prepRange.data.days || []).filter((x) => (x.candidates || 0) === 0);
-      log.push(`🗂️ 范围预取: ${start}~${end} ${(prepRange.data.days || []).length} 天，共 ${prepRange.data.total_candidates ?? 0} 场候选`);
-      if (days0.length) {
-        log.push(`⚠️ 预取后仍 0 场: ${days0.map((x) => x.day).join("、")}（可能当天无竞彩或拉取失败）`);
-      }
-      if ((prepRange.data.total_failed || 0) > 0) {
-        log.push(`⚠️ 范围预取特征失败 ${prepRange.data.total_failed} 场`);
-      }
+    // 串关（北单）狗跳过：它的比赛缓存（matches/<足球日>.json）与开奖（beidan/、beidan_sp/）
+    // 由引擎 DataManager 按足球日直读，compact-fet 由 fet_txt 切片源按波次供给，
+    // prepareRange 的竞彩口径（jingcai_only 候选 + 特征预取）对它没有意义。
+    if (!resolveLottery(lotteryType).usesPrepare) {
+      log.push("🗂️ 范围预取: 跳过（北单走引擎 DataManager + fet_txt 切片源，无 prepare 阶段）");
     } else {
-      warn(`范围预取失败: ${prepRange.error}`);
+      onProgress({ phase: "范围数据预取", detail: `${start} ~ ${end}` });
+      const prepRange = await bridgeCall(cacheDir, engineRoot, pythonBin, stamp({
+        func: "prepare-range", start, end, opts: { ...lotteryOpts(lotteryType) },
+      }), undefined, roleRoot, envFile);
+      if (prepRange.ok) {
+        const days0 = (prepRange.data.days || []).filter((x) => (x.candidates || 0) === 0);
+        log.push(`🗂️ 范围预取: ${start}~${end} ${(prepRange.data.days || []).length} 天，共 ${prepRange.data.total_candidates ?? 0} 场候选`);
+        if (days0.length) {
+          log.push(`⚠️ 预取后仍 0 场: ${days0.map((x) => x.day).join("、")}（可能当天无比赛或拉取失败）`);
+        }
+        if ((prepRange.data.total_failed || 0) > 0) {
+          log.push(`⚠️ 范围预取特征失败 ${prepRange.data.total_failed} 场`);
+        }
+      } else {
+        warn(`范围预取失败: ${prepRange.error}`);
+      }
     }
 
     const seg = await replaySegment(ctx, cacheDir, engineRoot, pythonBin, envFile, sandboxDir, s);

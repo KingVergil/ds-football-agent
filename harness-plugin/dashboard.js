@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import { DS_REAL_DOGS } from "./tools/roles.js";
 import { readTasks } from "./taskStatus.js";
+import { extractSectionLastLine, splitOddsLine, parseHandicap } from "./odds.js";
 import {
   runBridge, BRIDGE_FUNCS, MUTATING_FUNCS, isValidDateStr, bridgeResultSummary, defaultPythonBin,
 } from "./bridge.js";
@@ -124,6 +125,13 @@ function bjDateStr(ts) {
   return new Date(ts + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
+/** 北京时间的今天 / 偏移 N 天日期串（YYYY-MM-DD）。 */
+function bjDateOffsetStr(days) {
+  const bj = new Date(Date.now() + 8 * 3600 * 1000);
+  bj.setUTCDate(bj.getUTCDate() + days);
+  return bj.toISOString().slice(0, 10);
+}
+
 /** 比赛开赛时间（北京墙钟 "YYYY-MM-DD HH:MM"）→ 足球日（窗口 [D 12:01, D+1 12:00]，12:00 前归前一天）。 */
 function footballDayOf(matchTime) {
   const t = String(matchTime || "");
@@ -138,6 +146,12 @@ function footballDayOf(matchTime) {
 /** 当前足球日（窗口 [D 12:01, D+1 12:00]）：北京时间 now 减 12:01 后的日期。 */
 function footballDayToday() {
   return bjDateStr(Date.now() - (12 * 3600 + 60) * 1000);
+}
+
+/** 当前足球日往前/后 N 天的足球日标签（YYYY-MM-DD）。 */
+function footballDayOffsetStr(days) {
+  const base = Date.parse(`${footballDayToday()}T12:01:00+08:00`);
+  return bjDateStr(base + days * 24 * 3600 * 1000);
 }
 
 /** 读当前足球日的竞彩列表（jingcai_number 非空）。
@@ -254,6 +268,52 @@ function fillMissingFromTags(cacheDir, matchMap, neededIds) {
   }
 }
 
+/** tags/<id>.json 的 sections（60s TTL 缓存；只为待投订单按需读，避免扫全库）。 */
+const _tagSections = new Map();
+function tagSectionsFor(cacheDir, lotaId) {
+  const now = Date.now();
+  const key = `${cacheDir}|${lotaId}`;
+  const hit = _tagSections.get(key);
+  if (hit && now - hit.at < 60000) return hit.sections;
+  const tag = readJson(join(cacheDir, "tags", `${lotaId}.json`));
+  const sections = (tag && tag.sections) || null;
+  _tagSections.set(key, { at: now, sections });
+  return sections;
+}
+
+/**
+ * 皇冠同侧报价（斗狗场订单行标注用，**只作参考、不参与结算**）。
+ *
+ * 引擎订单记的是 Pinnacle 终盘水位（`tools.py::extract_odds`），实际下注常在皇冠，
+ * 两家水位差 0.01~0.06 属常态，标出来便于下单前比价。取 tags 里对应段的末点：
+ *   亚盘 → asian-handicap-crown（h/盘口/a/r）；大小球 → over-under-crown（大/盘口/小/r）
+ * 返回 { odds, handicap }；无该段/无 Δ 行时返回 null。
+ * handicap 统一为主队视角（负=主让），与 order.handicap 同口径。
+ */
+export function crownQuote(cacheDir, lotaId, betType, pick) {
+  // 只有亚盘/大小球有皇冠段；胜平负没有皇冠欧赔，残缺订单（bet_type 为空）也不标
+  if (betType !== "亚盘" && betType !== "大小球") return null;
+  const sections = tagSectionsFor(cacheDir, lotaId);
+  if (!sections) return null;
+  const isOu = betType === "大小球";
+  const slug = isOu ? "over-under-crown" : "asian-handicap-crown";
+  const marker = isOu ? "大小球:Crown" : "亚盘:Crown";
+  const text = sections[slug] || "";
+  if (!text || !text.includes(marker)) return null;
+  const line = extractSectionLastLine(text, marker, []);
+  if (!line) return null;
+  const parts = splitOddsLine(line);
+  if (parts.length < 4) return null;
+  const sideIdx = isOu ? (pick === "under" ? parts.length - 2 : 0)
+    : (pick === "A" ? parts.length - 2 : 0);
+  const odds = parseFloat(parts[sideIdx]);
+  if (Number.isNaN(odds)) return null;
+  const hcText = parts.slice(1, -2).join("/");
+  // HANDICAP_MAP 是「受=负/让=正」raw 约定；亚盘取反成主队视角，与 odds.js::extractOdds 一致
+  const handicap = isOu ? parseHandicap(hcText) : -parseHandicap(hcText);
+  return { odds, handicap };
+}
+
 function pickLabel(betType, pick, match) {
   if (pick === "over") return "大球";
   if (pick === "under") return "小球";
@@ -268,26 +328,41 @@ function pickLabel(betType, pick, match) {
   return pick || "";
 }
 
-/** 某狗「正在应用」的活跃因子（status=active），按样本数降序。 */
+/**
+ * 某狗「正在应用」的因子，按样本数降序。
+ *
+ * 口径（2026-09-13 修正，对齐引擎 memory.selected_active）：
+ * 引擎**只排除 `retired` 与（无强证据的）`dormant`**，`testing`/`active` 都照常进 prompt。
+ * 旧实现只认 `status === "active"` → 新狗（因子都还是 testing）会误显示"0 个因子"，
+ * 与实际行为不符（95狗 131 个 testing 因子当时被显示成 0）。
+ */
 function activeFactorsFor(rec) {
   const fp = (rec && rec.factor_perf) || {};
   return Object.entries(fp)
-    .filter(([, s]) => s && s.status === "active")
+    .filter(([, s]) => s && (s.status === "active" || s.status === "testing"))
     .sort((a, b) => (Number((b[1] && b[1].total) || 0)) - (Number((a[1] && a[1].total) || 0)))
-    .map(([factor, s]) => ({
-      factor,
-      source: String(factor || "").startsWith("矿") || String((s && s.fac_id) || "").startsWith("fac_矿")
-        ? "矿因子"
-        : "基础因子",
-      desc: (s && s.desc) || "",
-      total: Number((s && s.total) || 0),
-      hit: Number((s && s.hit) || 0),
-      profit: Number((s && s.profit) || 0),
-      lastSeen: (s && s.last_seen) || "",
-    }));
+    .map(([factor, s]) => {
+      const total = Number((s && s.total) || 0);
+      const push = Number((s && s.push) || 0);
+      const decided = Math.max(total - push, 0);
+      const totalReturn = Number((s && s.total_return) != null ? s.total_return : (s && s.profit) || 0);
+      const profitPerUnit = decided > 0 ? totalReturn / decided : null;
+      return {
+        factor,
+        source: String(factor || "").startsWith("矿") || String((s && s.fac_id) || "").startsWith("fac_矿")
+          ? "矿因子"
+          : "基础因子",
+        desc: (s && s.desc) || "",
+        total,
+        hit: Number((s && s.hit) || 0),
+        profitPerUnit,
+        totalReturn,
+        lastSeen: (s && s.last_seen) || "",
+      };
+    });
 }
 
-function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs, roles) {
+function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs, roles, cacheDir) {
   const dogs = [];
   for (const name of activeDogs) {
     const role = readRole(name);
@@ -305,12 +380,42 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     const limits = roles && typeof roles.limitsFor === "function" ? roles.limitsFor(name) : null;
     const settled = orders.filter((o) => o.settled_at);
     const pending = orders.filter((o) => !o.settled_at);
-    const locked = pending.reduce((s, o) => s + Number(o.bet_size || 0), 0);
+    const locked = pending.reduce((s, o) => s + orderStake(o), 0);
     const pnl = settled.reduce((s, o) => s + Number(o.profit || 0), 0);
-    // 胜率口径：以「票/单」为结算单位。
-    // 北单/竞彩串关一张票展开成多注（如 8串1=243 注），中奖按票算 1 次，而不能按注算成 1/243；
-    // 单关单每单就是 1 个单位。只有串关票使用 slip_id；单关狗无 slip_id，按注计数不受影响。
-    // money（pnl/bet/turnover）仍按注累计，不随此口径变化。
+    // 投入/回报：串关票的真金白银是 slip 级 total_stake = 注数 × 单注（北单 2 元/注）。
+    // per-bet 的 bet_size 只是「单注金额」，拿它当整票投入会把 ROI 放大上百倍
+    // （2026-09-16 实盘：252 元成本的票被当成 2 元投入，ROI 从 +163.6% 变成 +20614%）。
+    const orderStake = (o) => Number((o && (o.total_stake || (o.flex && o.flex.cost))) || (o && o.bet_size) || 0);
+    const orderReturn = (o) => Number((o && o.return_amount) || 0);
+    // 命中率口径：
+    //   - 串关票 → 注级：中奖注 / 总注（9过4 = C(9,4)=126 注；命中 5 腿 → C(5,4)=5 注 → 5/126）
+    //   - 单关单 → 每单 1 注，票级即注级
+    const comb = (n, k) => {
+      if (k < 0 || n < 0 || k > n) return 0;
+      let r = 1;
+      for (let i = 0; i < k; i++) r = (r * (n - i)) / (i + 1);
+      return Math.round(r);
+    };
+    const slipComboStats = (o) => {
+      const flex = (o && o.flex) || {};
+      const m = Number(flex.m || 0);
+      const legs = Array.isArray(o && o.legs) ? o.legs : [];
+      if (!(m > 0) || legs.length < m) return null;
+      const total = Number((o && o.combos_count) || 0) || comb(legs.length, m);
+      const hits = legs.filter((l) => l && l.hit === true).length;
+      return { total, wins: comb(hits, m) };
+    };
+    let comboTotal = 0;
+    let comboWins = 0;
+    let comboSlips = 0;
+    for (const o of settled) {
+      const st = slipComboStats(o);
+      if (!st) continue;
+      comboTotal += st.total;
+      comboWins += st.wins;
+      comboSlips += 1;
+    }
+    const hitRateBasis = comboSlips > 0 ? "combo" : "ticket";
     const betUnitKey = (o) => (o && o.slip_id)
       ? "slip:" + String(o.slip_id)
       : "ord:" + String((o && (o.id || o.lota_id)) || "");
@@ -340,22 +445,56 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     const settledCount = countBetUnits(settled);
     const pendingCount = countBetUnits(pending);
     const totalCount = settledCount + pendingCount;
-    const turnover = settled.reduce((s, o) => s + Number(o.bet_size || 0), 0);
-    const hitRate = decided > 0 ? wins / decided : null;
-    const roi = turnover > 0 ? pnl / turnover : null;
+    const turnover = settled.reduce((s, o) => s + orderStake(o), 0);
+    const totalReturn = settled.reduce((s, o) => s + orderReturn(o), 0);
+    const hitRate = hitRateBasis === "combo"
+      ? (comboTotal > 0 ? comboWins / comboTotal : null)
+      : (decided > 0 ? wins / decided : null);
+    // ROI = 回报 / 投入（1.0 = 不赔不赚）；净收益率单列 roiNet，避免再被当成「利润百分比」读。
+    const roi = turnover > 0 ? totalReturn / turnover : null;
+    const roiNet = turnover > 0 ? pnl / turnover : null;
+
+    function footballDayOfOrder(o) {
+      const lids = [
+        o.lota_id,
+        ...((o.ticket_legs || o.legs || []).map((l) => l && l.lota_id)),
+      ].filter(Boolean);
+      for (const lid of lids) {
+        const m = matchMap[lid];
+        if (m && m.time) {
+          const d = footballDayOf(m.time);
+          if (d) return d;
+        }
+      }
+      return "";
+    }
 
     const dayMap = {};
     for (const o of settled) {
-      const d = String(o.settled_at || "").slice(0, 10);
+      const d = footballDayOfOrder(o);
       if (d) dayMap[d] = (dayMap[d] || 0) + Number(o.profit || 0);
     }
     const dates = Object.keys(dayMap).sort();
     let run = initial;
     const curve = dates.map((d) => { run += dayMap[d]; return { date: d, capital: round2(run) }; });
+    const todayStr = footballDayToday();
+    const yesterdayStr = footballDayOffsetStr(-1);
+    const weekStartStr = footballDayOffsetStr(-6);
+    let pnlYesterday = 0;
+    let pnlLast7d = 0;
+    for (const o of settled) {
+      const d = footballDayOfOrder(o);
+      if (!d) continue;
+      const p = Number(o.profit || 0);
+      if (d === yesterdayStr) pnlYesterday += p;
+      if (d >= weekStartStr && d <= todayStr) pnlLast7d += p;
+    }
 
     function singleOrderRow(o) {
       const lota = String(o.lota_id || "");
       const m = matchMap[lota] || {};
+      // 待投单标一行皇冠同侧水位，便于下单前与记录的 Pinnacle 水位比价（已结算单不标）
+      const crown = o.settled_at ? null : crownQuote(cacheDir, lota, o.bet_type || "", o.pick || "");
       return {
         lotaId: lota,
         match: m.match || "",
@@ -367,6 +506,8 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
         pickLabel: pickLabel(o.bet_type, o.pick, m.match || ""),
         handicap: o.handicap == null ? null : o.handicap,
         odds: o.odds == null ? null : o.odds,
+        crownOdds: crown ? crown.odds : null,
+        crownHandicap: crown ? crown.handicap : null,
         betSize: o.bet_size == null ? null : o.bet_size,
         score: o.score || "",
         hit: o.hit == null ? null : !!o.hit,
@@ -431,8 +572,14 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
       const hitCount = sub.filter((o) => o.hit).length;
       const legs = (p.ticket_legs || []).map(parlayLegView);
       const nSingle = legs.filter((l) => l.picks.length === 1).length;
-      const nCover = legs.length - nSingle;
-      const totalStake = sub.reduce((s, o) => s + (Number(o.bet_size) || 0), 0);
+      const nDouble = legs.filter((l) => l.picks.length === 2).length;
+      const nCover = legs.filter((l) => l.picks.length >= 3).length;
+      // ⚠️ 旧实现把「双选」也算进 nCover（nCover = 总腿数 − 单选腿数）→ 文案显示
+      //    "5全包+4单选"，而实际是 5双选+4单选、0 全包（2026-09-13 实测）。
+      const picksDesc = [nCover ? `${nCover}全包` : "", nDouble ? `${nDouble}双选` : "",
+                         nSingle ? `${nSingle}单选` : ""].filter(Boolean).join("+");
+      // 一张票的投入 = slip 级 total_stake（注数 × 单注），不是 per-bet 的 2 元。
+      const totalStake = sub.reduce((s, o) => s + orderStake(o), 0);
       const created = sub.map((o) => o.created_at || "").sort().pop() || "";
       const settledAt = sub.map((o) => o.settled_at || "").sort().pop() || "";
       const kickoffTimes = (p.ticket_legs || []).map((l) => l.match_time).filter(Boolean).sort();
@@ -441,7 +588,7 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
         .filter(Boolean).map(footballDayOf).sort().pop() || "";
       orderRows.push({
         lotaId: "slip_" + p.slip_id,
-        match: `${p.ticket_type || "串关"} · ${nCover}全包+${nSingle}单选`,
+        match: `${p.ticket_type || "串关"} · ${picksDesc || "—"}`,
         league: p.bet_type || "",
         time: created,
         earliestKickoff,
@@ -451,7 +598,10 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
         pickLabel: `${p.combos_count || sub.length} 注`,
         handicap: null,
         odds: null,
+        // 串关票的真金白银是 slip 级 total_stake（= 注数 × 2 元）；
+        // per-bet 的 bet_size（2 元）只作注额基准，展示上会让人误以为整张只要 2 元。
         betSize: totalStake || null,
+        unitStake: Number(p.unit_stake || (sub[0] && sub[0].bet_size) || 0) || null,
         score: "",
         hit: allSettled ? hitCount > 0 : null,
         profit: allSettled ? round2(profit) : null,
@@ -464,9 +614,14 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     }
     orderRows.sort((a, b) => String(b.matchDay || b.settledAt || b.time || "").localeCompare(String(a.matchDay || a.settledAt || a.time || "")));
 
+    // 是否「串关角色」= 角色目录有 parlay.json（bc狗/bcl狗/95狗 这类）。
+    // ⚠️ 不能只看 scope：梭哈北单狗 / 跟风北单狗 的 scope 也是 beidan，但走通用单关链路
+    //    （无 parlay.json），必须落在单关场。
+    const isParlayRole = Boolean(cacheDir) && existsSync(join(cacheDir, "roles", name, "parlay.json"));
     dogs.push({
       name,
       scope,
+      isParlayRole,
       enabled: Boolean(enabled),
       observation: !enabled,
       limits,
@@ -482,8 +637,16 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
       lockedExposure: round2(locked),
       initialCapital: round2(initial),
       pnl: round2(pnl),
+      pnlYesterday: round2(pnlYesterday),
+      pnlLast7d: round2(pnlLast7d),
       hitRate,
+      hitRateBasis,
+      comboWins,
+      comboTotal,
       roi,
+      roiNet,
+      turnover: round2(turnover),
+      totalReturn: round2(totalReturn),
       sharpe: calcSharpe(settled),
       mdd: round2(calcMdd(curve)),
       totalCount,
@@ -551,6 +714,7 @@ export function setupDashboard(ctx, cacheDir, roles = null, avatarDir = null, ex
             avatarDirs,
             activeDogs,
             roles,
+            cacheDir,
           );
           result.todayMatches = buildTodayMatches(cacheDir);
           result.tasks = readTasks(cacheDir).tasks || [];

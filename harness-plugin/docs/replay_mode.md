@@ -25,6 +25,43 @@ DSH harness：**数据准备先行 → 逐日（分析 → 结算 → 反思 →
 实现：`harness-plugin/dataflow.js`。分析框架（system prompt `ds-agents-analyze`）已改为
 先调 `ds_prepare_day(day, mode="live")`，禁止再用 `lota_matches` 拉全量。
 
+### 北单（串关）狗例外：没有 prepare 阶段（2026-09-11）
+
+以上 `prepare` / `prepareRange` 前置**只适用于竞彩狗**。串关狗（`dogs.json` 里 `scope="beidan"`，
+即 `bc狗` / `bcl狗`）在回放里**跳过 prepare 与 prepare-range**，因为它的数据由引擎
+DataManager 自管，harness 侧再 prepare 一遍既错又白烧：
+
+| 数据面 | 竞彩狗 | 北单串关狗 |
+|---|---|---|
+| 比赛列表 | `prepare` 按足球日窗口筛 `jingcai_number` 非空 | `BeidanParlayDog._beidan_matches` 直读 `data/matches/<足球日>.json`，筛 `beidan_info` 齐全场次 |
+| compact-fet / sections | `prepare` 预取进 `features/` | `src/backtest_fet.py` 切片源按「访问时刻 → 开赛前档位」供给（`DS_ROLES_ROOT` 存在时自动启用），不落 features 缓存 |
+| 开奖 result/SP | settle 按比分 | `_fetch_beidan_results` 走 `beidan/`、`beidan_sp/`、matches 的 `beidan_info` |
+| 波次 | harness `windows.js` 按开赛时刻切窗，逐窗调 analyze | **引擎内部** `_analyze_waves`（周末 16:30/20:30，工作日 22:30），harness 不拆窗 |
+
+实测教训（2026-07-11，bcl狗）：走竞彩 prepare 时 `prepare` 返回的是「13 场竞彩」，
+不是「21 场北单」，且 replay 的 `splitDayWindows` 把这一天拆成 4 个窗口各跑一遍 —— 全程与
+北单链路无关。因此 `replay.js` 的 `lotteryTypeOf(dog)` 按 `dogs.json` 的 `scope` 分派：
+`beidan` → 跳过 prepare/prepare-range、不拆窗、`analyze` 传 `beidan_only: true` 且
+`prefetched: false`；其余保持原样（`jingcai_only: true` + 切窗）。
+
+### 薄壳等价性：ds_replay ≡ 引擎脚本（契约测试钉住）
+
+薄壳原则要求斗狗场只是**忠实转发**：ds_replay 跑一天，引擎收到的调用序列必须与
+`python3 -m scripts.run_beidan_loop --day D --dog <北单狗>` 完全一致。
+
+| | 引擎脚本 `run_beidan_loop.py` | ds_replay（北单分支） |
+|---|---|---|
+| 取数 | `DS_ROLES_ROOT=沙箱` + `backtest_fet` 切片（引擎内部逐波） | 同（桥经 `opts.role_root` 设同一组 `DS_*`） |
+| prepare / prepare-range | 不调 | **不调**（契约测试断言） |
+| 分析 | `BeidanParlayDog.analyze(day, live=False, use_llm=True)` | 桥 `analyze` → 同一函数（`live=false`、`beidan_only=true`、`prefetched=false`） |
+| 结算 | `settle(day, reflect=True)` | 桥 `settle {dog, day}` → 同一函数（`reflect` 默认 True） |
+| 归纳 | `factor_induction.main(["--roles", dog])` | 桥 `factor-induction {dog, day}` |
+| 因子退役 | 单日 loop 不跑 | 仅周期边界（`factor_review_every`，默认 7 天）——**额外能力，不改变日结果** |
+
+契约测试：`tests/replayBridgePlan.test.mjs`（捕获每日完整桥调用计划并逐条断言，
+用测试专用 `opts._bridge` 替身，注入键在 `bridgeCallImpl` 里剥离、不进引擎请求）；
+`tests/replayLottery.test.mjs`（只有 `scope="beidan"` 进北单分支，其余精确回落竞彩）。
+
 ## 回放工具
 
 ```

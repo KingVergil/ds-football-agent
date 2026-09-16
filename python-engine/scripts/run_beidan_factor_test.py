@@ -327,7 +327,10 @@ def _batch_worker(payload: tuple) -> dict:
 
     if phase == "analyze":
         a = dog.analyze(day, use_llm=True, dry_run=True)
-        return {"day": day, "orders": a.get("orders", []),
+        # 被拒绝落盘的记录（单选/覆盖不足目标数量）不能进回放再 place_order，
+        # 否则会污染回测；这里直接剔除。
+        pl_orders = [o for o in a.get("orders", []) if not o.get("rejected")]
+        return {"day": day, "orders": pl_orders,
                 "llm_used": a.get("llm_used", False)}
 
     # settle + reflect

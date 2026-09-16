@@ -87,7 +87,7 @@ agent 工具面板只剩只读：`lota_matches` / `lota_match` / `lota_sections`
   `DS_ROLES_ROOT` / `DS_SESSIONS_ROOT` / `DS_FACTORS_ROOT` 重定向，线上零影响；
 - `enable` 已重构为 `status ∈ {live, sandbox, archived}`（`role_registry sync` 迁移；
   `batch_agents.sh` 默认列表改 `role_registry live`）；
-- 半交互暂停：harness LLM（`tools/llmText.js::streamText`，失败回退启发式）起草方向建议 →
+- 半交互暂停：启发式起草方向建议（`replay.js::buildDirection`）→
   卡片预填 → 用户编辑 → `induction_notes` 注入下一周期；agent 面板 `ds_replay` 工具为唯一回放入口。
 
 ## 验证
@@ -100,8 +100,8 @@ node --test tests/taskStatus.test.mjs   # 无宿主依赖测试
 
 # python 桥冒烟（离线可测：status / prepare replay / 校验错误）
 cd ../python-engine
-printf '%s' '{"func":"status","dog":"梭哈2狗"}' | /Users/cjy/miniconda3/bin/python -m src.bridge
-printf '%s' '{"func":"prepare","day":"2026-06-11","opts":{"mode":"replay"}}' | /Users/cjy/miniconda3/bin/python -m src.bridge
+printf '%s' '{"func":"status","dog":"梭哈2狗"}' | python -m src.bridge
+printf '%s' '{"func":"prepare","day":"2026-06-11","opts":{"mode":"replay"}}' | python -m src.bridge
 ```
 
 > ⚠️ `analyze` / `factor-review` 会触发 python 引擎内的 LLM 与写盘；冒烟测试只用

@@ -9,6 +9,7 @@
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 from collections import OrderedDict
@@ -20,6 +21,7 @@ from .email_sender import send_email
 
 SNAPSHOT_DIR = Path(__file__).parent.parent / "data" / "email_snapshots"
 ROLES_DIR = Path(__file__).parent.parent / "data" / "roles"
+SESSIONS_DIR = Path(__file__).parent.parent / "data" / "sessions"
 
 # 距开赛超过该小时数的比赛，其预测视为「可能变」（尚未定型）
 PROVISIONAL_HOURS = 3
@@ -761,6 +763,141 @@ def build_beidan_parlay_email_body(agent_name: str, football_day: str,
 
 
 # ═══════════════════════════════════════════════
+# 无下单邮件（读 analyze 会话中的 skip 理由）
+# ═══════════════════════════════════════════════
+
+def _load_analyze_skip_reasons(agent_name: str, football_day: str) -> tuple[list[dict], str]:
+    """从当天最近的 analyze 会话中提取 skip 理由，供无下单时发原因邮件。
+
+    Returns:
+        entries: [{lota_id, type, reason, home_name, away_name, league_name, match_time}]
+        summary: 会话结论句（如「当前连败…全部跳过」），无则空串。
+    """
+    agent_dir = SESSIONS_DIR / agent_name
+    if not agent_dir.exists():
+        return [], ""
+    files = sorted(
+        agent_dir.glob(f"*_analyze_{football_day}.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not files:
+        return [], ""
+    text = files[0].read_text(encoding="utf-8")
+
+    # 当晚真实可投注场次（「## 比赛数据 … ## 决策框架」区），用于剔除系统提示里的示例 skip 块
+    m_data = re.search(r"## 比赛数据.*?## 决策框架", text, re.S)
+    valid_ids = set(re.findall(r"^\s*lota_id:\s*(Lota\d+)", m_data.group(0), re.M)) if m_data else set()
+
+    # 只取 LLM 回复段，避免解析到系统提示里的「不下注示例」块
+    resp_part = text.split("LLM Response")[-1] if "LLM Response" in text else text
+
+    # 1) 逐场结论行（- 比赛N 主队 vs 客队：结论）
+    summary_parts = []
+    for m in re.finditer(r"^-\s*比赛\d+\s+(\S+)\s+vs\s+(\S+)[：:](.+)$", resp_part, re.M):
+        summary_parts.append(m.group(3).strip().rstrip("。；"))
+    # 2) 结论句（「当前…全部跳过」等）
+    for line in resp_part.splitlines():
+        s = line.strip()
+        if s.startswith("当前") and "跳过" in s and len(s) > 8:
+            summary_parts.append(s)
+            break
+
+    # 3) 解析 ```order 块：lota_id / 类型 / 理由
+    entries = []
+    for block in re.findall(r"```order\n(.*?)```", resp_part, re.S):
+        e = {}
+        for line in block.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                e[k.strip()] = v.strip()
+        lid = e.get("lota_id", "")
+        if not lid or e.get("类型") != "skip" or (valid_ids and lid not in valid_ids):
+            continue
+        match = tools.lookup_match(lid) or {}
+        entries.append({
+            "lota_id": lid,
+            "type": e.get("类型", "skip"),
+            "reason": e.get("理由", ""),
+            "home_name": match.get("home_name", "?"),
+            "away_name": match.get("away_name", "?"),
+            "league_name": match.get("league_name", "?"),
+            "match_time": match.get("match_time", ""),
+        })
+
+    return entries, "".join(summary_parts)
+
+
+def build_no_order_email_body(agent_name: str, football_day: str,
+                              entries: list[dict], summary: str) -> str:
+    """构建「本日无下单 + skip 原因」邮件正文。"""
+    now = datetime.now()
+    rows = ""
+    for i, e in enumerate(entries, 1):
+        bg = "#f9f9f9" if i % 2 == 1 else "#ffffff"
+        mt = (e.get("match_time") or "")[5:16]
+        rows += f"""
+        <tr style="background:{bg}">
+            <td style="padding:6px 8px;text-align:center;color:#999">{i}</td>
+            <td style="padding:6px 6px;white-space:nowrap;color:#888">{mt}</td>
+            <td style="padding:6px 6px;color:#888">{e.get('league_name','?')}</td>
+            <td style="padding:6px 6px;text-align:right;color:#333">{e.get('home_name','?')}</td>
+            <td style="padding:6px 2px;text-align:center;color:#ccc">vs</td>
+            <td style="padding:6px 6px;color:#333">{e.get('away_name','?')}</td>
+            <td style="padding:6px 6px;text-align:center;font-weight:bold;color:#c0392b">⏭ 跳过</td>
+            <td style="padding:6px 8px;font-size:12px;color:#666">{e.get('reason','')}</td>
+        </tr>"""
+
+    summary_html = (
+        f'<div style="background:#fdf2f2;border:1px solid #f0b0b0;border-radius:6px;padding:10px 14px;'
+        f'margin-bottom:16px;font-size:13px;color:#8a4b4b">🎯 <b>结论：</b>{summary}</div>'
+        if summary else ""
+    )
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,SF Pro Display,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#333;max-width:900px;margin:0 auto;padding:20px">
+
+    <div style="background:#fdf2f2;border:1px solid #f0b0b0;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#8a4b4b">
+        ⚠️ <b>本足球日未下单：</b>经分析判断，{len(entries)} 场比赛均不满足下注条件，全部「跳过 / 不下」，故无待结算订单。
+    </div>
+
+    {summary_html}
+
+    <div style="margin-bottom:16px">
+        <span style="font-size:18px;font-weight:bold">{agent_name}</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span>足球日 {football_day}</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span style="color:#c0392b">0 单待结算</span>
+        <span style="color:#999;margin:0 8px">·</span>
+        <span>跳过 {len(entries)} 场</span>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+            <tr style="background:#f0f0f0;color:#999">
+                <th style="padding:6px 8px;text-align:center">#</th>
+                <th style="padding:6px 8px;text-align:center">时间</th>
+                <th style="padding:6px 8px;text-align:left">联赛</th>
+                <th style="padding:6px 8px;text-align:right">主队</th>
+                <th style="padding:6px 2px"></th>
+                <th style="padding:6px 8px;text-align:left">客队</th>
+                <th style="padding:6px 8px;text-align:center">判断</th>
+                <th style="padding:6px 8px;text-align:left">跳过原因</th>
+            </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+    </table>
+
+    <div style="margin-top:20px;font-size:12px;color:#aaa">
+        {agent_name} · 自动发送 | {now.strftime('%Y-%m-%d %H:%M')}
+    </div>
+</body></html>"""
+    return html
+
+
+# ═══════════════════════════════════════════════
 # 主入口
 # ═══════════════════════════════════════════════
 
@@ -805,7 +942,21 @@ def send_order_email(agent_name: str = "均注狗", day_str: str | None = None) 
     # 2. 加载未结算订单
     orders = get_pending_orders(agent_name, start, end)
     if not orders:
-        print(f"[order_email] {agent_name} 足球日 {football_day} 无待结算订单，跳过发送")
+        # 无下单 → 发送「无下单 + skip 原因」邮件（当天发过则跳过）
+        snapshot = load_snapshot(agent_name)
+        if snapshot and snapshot.get("football_day") == football_day and not snapshot.get("orders"):
+            print(f"[order_email] {agent_name} 足球日 {football_day} 已发送过无下单邮件，跳过")
+            return True
+        entries, summary = _load_analyze_skip_reasons(agent_name, football_day)
+        if not entries:
+            print(f"[order_email] {agent_name} 足球日 {football_day} 无待结算订单(未找到 skip 原因)，跳过发送")
+            return True
+        body = build_no_order_email_body(agent_name, football_day, entries, summary)
+        subject = f"[{agent_name}] 足球日 {football_day} 未下单（全skip {len(entries)}场）"
+        ok = send_email(subject, body, mail_cfg="163", is_html=True, agent_name=agent_name)
+        if not ok:
+            return False
+        save_snapshot(agent_name, football_day, [])
         return True
 
     # 3. 加载快照 & 检测变化

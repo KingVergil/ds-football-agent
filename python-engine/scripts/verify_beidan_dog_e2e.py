@@ -8,7 +8,7 @@ bc狗 端到端验证（用临时沙箱角色，不碰线上角色）。
   - 每腿官方 result 与 score+goal_line 推导一致（mismatch == False）
 
 运行:
-  /Users/cjy/miniconda3/bin/python scripts/verify_beidan_dog_e2e.py [日期] [票型] [picks]
+  python scripts/verify_beidan_dog_e2e.py [日期] [票型] [picks]
 """
 
 from __future__ import annotations

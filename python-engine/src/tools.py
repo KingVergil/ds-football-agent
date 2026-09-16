@@ -239,6 +239,96 @@ _SECTION_RULES: list[tuple[str, str]] = [
 ]
 
 
+# 离散指数序列的一行：`OPt-1438m=1.34/3.08/4.55` 或 `Δt+1418m↓↓↓1.17/2.92/3.54`
+_DISCRETE_ROW_RE = re.compile(
+    r"(?:OPt|Δt)\s*[-+]?\d+\s*m\s*[↑↓→=]*\s*([\d.]+)\s*/\s*([\d.]+)\s*/\s*([\d.]+)")
+
+
+def prematch_dispersion(lota_id: str, sections: dict | None = None) -> Optional[float]:
+    """赛前离散程度（完全来自赛前数据，不含开奖信息）。
+
+    取「离散指数」序列里**首行（开盘）→ 末行（最新）**各方向赔率的最大相对变动：
+    变动越大说明赛前盘口/离散越不稳定 —— 这是"这场可能出高 SP"的赛前信号。
+
+    用途：给「按赛前特征分层抽样」提供特征，替代"按开奖 SP 取 TOP-N"这种
+    **结果条件化**的候选选择（会让归纳出的波动因子只会描述事后赢家）。
+    解析不到返回 None —— 调用方应回退随机抽样，**不要用开奖 SP 兜底**。
+    """
+    text = (sections or {}).get("discrete-odds") if sections else None
+    if not text:
+        try:
+            data = get_cached_compact_fet(lota_id)
+            if data:
+                text = (compact_fet_to_tags(lota_id, data) or {}).get("discrete-odds")
+        except Exception:
+            text = None
+    if not text:
+        return None
+    rows = _DISCRETE_ROW_RE.findall(text)
+    if len(rows) < 2:
+        return None
+    try:
+        first = [float(x) for x in rows[0]]
+        last = [float(x) for x in rows[-1]]
+    except (TypeError, ValueError):
+        return None
+    moves = [abs(a - b) / max((a + b) / 2.0, 1e-9) for a, b in zip(first, last)]
+    return max(moves) if moves else None
+
+
+def stratified_pick(items: list, limit: int, key) -> list:
+    """按 `key` 分层抽样（低/中/高 + key 缺失归入尾部），确定性、无 RNG。
+
+    用途：反思候选/补充样本必须**由赛前特征**决定，不能由开奖结果（如 SP 降序）决定——
+    否则归纳出的因子只会描述"事后赢家"，学不到区分度（`actual` 只能当标签）。
+    `key` 返回 None 的条目排最后，只在名额没用满时补充。
+    """
+    if limit <= 0 or not items:
+        return []
+    if len(items) <= limit:
+        known = []
+        unknown = []
+        for it in items:
+            try:
+                k = key(it)
+            except Exception:
+                k = None
+            (known if k is not None else unknown).append((k, it))
+        known.sort(key=lambda x: x[0])
+        return [it for _, it in known] + [it for _, it in unknown]
+
+    known, unknown = [], []
+    for it in items:
+        try:
+            k = key(it)
+        except Exception:
+            k = None
+        (known if k is not None else unknown).append((k, it))
+    known.sort(key=lambda x: x[0])
+    out: list = []
+    n = len(known)
+    if n:
+        size = max(1, n // 3)
+        strata = [known[i:i + size] for i in range(0, n, size)][:3]
+        per = max(1, limit // len(strata))
+        for st in strata:
+            step = max(1, len(st) // per)
+            out.extend(it for _, it in st[::step][:per])
+    for _, it in unknown:
+        if len(out) >= limit:
+            break
+        out.append(it)
+    if len(out) < limit:
+        picked = {id(x) for x in out}
+        for _, it in known:
+            if len(out) >= limit:
+                break
+            if id(it) in picked:
+                continue
+            out.append(it)
+    return out[:limit]
+
+
 def compact_fet_to_tags(lota_id: str, data: dict = None) -> dict[str, str]:
     text = _extract_compact_fet_text(data, lota_id)
     if not text: return {}

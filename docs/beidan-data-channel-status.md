@@ -53,3 +53,27 @@ spider(bjlot 抓取) ──> spdex DB(BeidanDraw) ──> deepseek_lota /beidan/
   - 足球日 30（26090）：`settle 2026-08-31` 结 2 张票（slip_69a1c、slip_a318b，均 -486，合计 -972），已归纳（合并 3 组）。
 - bc狗 capital：**→ 5644.31**。
 - 上游修复由 spider 端负责；ds_agents 只依赖 `/beidan/sp` 结果，上游修正后直接生效。
+
+## 五、2026-09-16 复核：`date=` 口径漂移（已修）+ 脏值误判（已修）
+
+94狗 转正后第一次真实结算（足球日 09-15，live）暴露两个引擎侧 bug：
+
+1. **`/beidan/sp?date=D` 的窗口口径依赖服务端当前时间**（见 `deepseek_lota/predictions/views/api_v2/beidan_draw_api.py`）：
+   `hour>=12 → [D 12:01, D+1 12:00]`，`hour<12 → [D-1 12:01, D 12:00]`。
+   引擎传的是**足球日标签**，于是 2026-09-16 10:55 用 `date=2026-09-15` 拉到的是
+   **足球日 09-14** 的 40 条开奖（实测 `draw_datetime` 全是 09-15）。
+   - 修复：`fetch_beidan_sp(sp_date)` 改用**显式时间窗** `start_date/end_date`（`beidan_day_window`），
+     中午前后跑结算都锁定同一个足球日；`merge_beidan_sp(sp_map, day=D)` 增加窗口门，
+     越界场次不写入任何缓存文件。
+   - 数据修：错落成 `beidan_sp/2026-09-15.json` 的那 40 条已改名为 `2026-09-14.json` 并重新合并。
+
+2. **脏值校验把「让球线缺失」当让球 0**：`_beidan_result_suspect` 对缓存的空
+   `beidan_info`（无 goal_line）也做推导比对，导致 9 场正常开奖（如中国香港女足 1:5 中国女足，
+   北单主队受让 4 → 官方「平」）被标 `result_suspect`，直接卡住结算。
+   - 修复：`goal_line` 缺失时直接放行；成功合并后清掉历史 `result_suspect` 标记。
+
+3. **足球日 09-15（期 26095）的开奖 SP 上游尚未入库**：窗口内最后一场
+   （普埃布拉 vs 托卢卡，09-16 09:00 开球）刚结束，`/beidan/sp` 用 `lota_id` 单场查也是空。
+   接口本身正常（同一时刻用已知老场次 `lota_id=Lota4594092` 能查到 result/spvalue）。
+   比分已可从 `/matches` 取到，9 条腿推导命中 5/9（C(5,4)=5 注中），与用户实际兑奖一致；
+   但派彩必须用开奖 SP，所以结算只能等上游发布。

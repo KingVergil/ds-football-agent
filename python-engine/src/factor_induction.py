@@ -91,6 +91,11 @@ def clean_name(name: str) -> str:
     return n
 
 
+def _factor_type(e: dict) -> str:
+    t = (e or {}).get("type", "directional")
+    return t if t == "volatility" else "directional"
+
+
 def fac_id_for(name: str) -> str:
     return f"fac_{name.lower().replace(' ','_')[:40]}"
 
@@ -170,9 +175,9 @@ def bit_distance(sa: set, sb: set) -> int:
 def find_candidates(entries: dict[str, dict]) -> list[tuple[str, str, str]]:
     """返回候选对列表 [(a, b, kind)]，kind ∈ {same_name, bit, name}。"""
     # 1) 同清洗名（确定性合并，不调 LLM）
-    by_clean: dict[str, list[str]] = {}
+    by_clean: dict[tuple[str, str], list[str]] = {}
     for name in entries:
-        by_clean.setdefault(clean_name(name), []).append(name)
+        by_clean.setdefault((clean_name(name), _factor_type(entries[name])), []).append(name)
     same = []
     for names in by_clean.values():
         for i in range(len(names)):
@@ -187,6 +192,8 @@ def find_candidates(entries: dict[str, dict]) -> list[tuple[str, str, str]]:
         if not sa:
             continue
         for j in range(i + 1, len(names)):
+            if _factor_type(entries[names[i]]) != _factor_type(entries[names[j]]):
+                continue
             sb = set(entry_slugs(entries[names[j]]))
             if not sb:
                 continue
@@ -212,6 +219,8 @@ def find_candidates(entries: dict[str, dict]) -> list[tuple[str, str, str]]:
         for j in range(i + 1, len(names)):
             if entry_slugs(entries[names[j]]):
                 continue
+            if _factor_type(entries[names[i]]) != _factor_type(entries[names[j]]):
+                continue
             if difflib.SequenceMatcher(None, names[i], names[j]).ratio() >= NAME_RATIO_MIN:
                 name_pairs.append((names[i], names[j], "name"))
 
@@ -222,17 +231,24 @@ JUDGE_SYSTEM = """你是足球因子库管理员。判断两个因子是否为�
 规则：
 1. 语义重复（同一模式的不同表述/同义改写）→ merge=true，keep 填样本更多、描述更全的一方
 2. 方向相反（上盘vs下盘、让球方vs受让方、追强vs防冷、诱上vs阻上）→ merge=false
-3. 两者样本都充足且盈亏方向相反 → 视为经验上不同模式，merge=false
+3. 两者样本都充足且单注回报方向相反 → 视为经验上不同模式，merge=false
 4. 仅名称/描述部分相似但模式不同 → merge=false
 只输出严格 JSON，不要多余文字。"""
 
 
 def llm_judge_pair(provider, a_name: str, a_entry: dict, b_name: str, b_entry: dict) -> dict:
     def _line(name, e):
+        denom = max(float(e.get("total", 0) or 0) - float(e.get("push", 0) or 0), 1.0)
+        total_return = float(
+            e.get("total_return")
+            if "total_return" in e
+            else e.get("profit", 0) or 0
+        )
+        avg_return = total_return / denom
         return (
             f"{name} | 描述: {e.get('desc','')[:120]} | "
             f"slugs: {', '.join(entry_slugs(e)[:5])} | "
-            f"样本{e.get('total',0)} 盈亏{e.get('profit',0):+.0f} 命中率"
+            f"样本{e.get('total',0)} 单注均回报{avg_return:+.2f} 命中率"
             f"{e.get('hit',0)/max(e.get('total',0)-e.get('push',0),1)*100:.0f}%"
         )
     user = f"因子A:\n{_line(a_name, a_entry)}\n\n因子B:\n{_line(b_name, b_entry)}\n\n" \
@@ -436,6 +452,22 @@ def main(argv: list = None) -> None:
         print("没有可处理的角色。")
         return
 
+    # 归档因子（cleanup_action=archive）不参与任何合并/补定义，也不被归纳借尸还魂；
+    # 但它们要原样保留在 factor_perf 里，日常 analyze 会因为 dormant 跳过它们。
+    archived_by_role: dict[str, dict[str, dict]] = {}
+    for role, data in roles.items():
+        fp = data.get("factor_perf", {})
+        archived = {
+            name: entry for name, entry in fp.items()
+            if entry.get("cleanup_action") == "archive"
+        }
+        if archived:
+            archived_by_role[role] = archived
+            data["factor_perf"] = {
+                name: entry for name, entry in fp.items()
+                if name not in archived
+            }
+
     if args.dry_run:
         provider = None
     else:
@@ -471,10 +503,10 @@ def main(argv: list = None) -> None:
             pool: dict[str, dict] = {}
             role_of: dict[str, str] = {}
             removed: dict[str, list[str]] = {r: [] for r in scope_roles}
-            groups: dict[str, list[tuple[str, str, dict]]] = {}
+            groups: dict[tuple[str, str], list[tuple[str, str, dict]]] = {}
             for r in scope_roles:
                 for name, entry in roles[r].get("factor_perf", {}).items():
-                    groups.setdefault(clean_name(name), []).append((r, name, entry))
+                    groups.setdefault((clean_name(name), _factor_type(entry)), []).append((r, name, entry))
             # 跨角色同清洗名：确定性合并（不调 LLM），保留样本最多者
             for cname, items in groups.items():
                 if len(items) == 1:
@@ -507,6 +539,12 @@ def main(argv: list = None) -> None:
             for k in ("merged", "llm_calls", "fac_created"):
                 summary[k] += res[k]
             summary["scopes"] += 1
+
+    # 归档因子重新放回，确保 factor_induction 不会把它们从库里丢掉。
+    for role, archived in archived_by_role.items():
+        if role in roles:
+            roles[role].setdefault("factor_perf", {}).update(archived)
+            changed.add(role)
 
     if not args.dry_run and changed:
         save_roles(roles, changed)

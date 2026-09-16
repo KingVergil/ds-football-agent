@@ -6,6 +6,7 @@ DSFootball Python CLI — 角色对象
 """
 
 import json
+import math
 import os
 from pathlib import Path
 from datetime import datetime
@@ -157,12 +158,39 @@ class Role:
         r.memory.refresh_from_role(r)
         return r
 
-    def persona_text(self) -> str:
-        """读取 roles/{name}/persona.md，注入 prompt。文件不存在则返回空字符串。"""
+    def has_reflect_persona(self) -> bool:
+        """是否配置了独立的反思人设（`persona_reflect.md` 非空）。"""
+        rp = self._role_dir / "persona_reflect.md"
+        try:
+            return bool(rp.exists() and rp.read_text(encoding="utf-8").strip())
+        except OSError:
+            return False
+
+    def persona_text(self, mode: str = "bet", with_header: bool = True) -> str:
+        """读取人设并注入 prompt。
+
+        `mode`（2026-09-13 起支持人设分离）：
+          * `"bet"`（默认）：下注人设 → `persona.md`（**改造前行为，逐字节不变**）
+          * `"reflect"`：反思人设 → `persona_reflect.md`；**文件不存在则回落 `persona.md`**
+
+        `with_header=False` 时**只返回正文**（剥掉 `## 🎯 个人偏好` / `## 🪞 反思人设`），
+        供调用方自己写更贴切的段落标题 —— 否则反思 prompt 会叠成
+        `## 投注人设…` + `## 🎯 个人偏好` 双标题（用户报障）。
+
+        只多读一个**可选文件**，且默认分支与原实现完全一致 ⇒ 未写 `persona_reflect.md`
+        的角色（含全部单狗）行为不变。
+        """
+        if mode == "reflect":
+            rp = self._role_dir / "persona_reflect.md"
+            if rp.exists():
+                text = rp.read_text(encoding="utf-8").strip()
+                if text:
+                    return text if not with_header else "## 🪞 反思人设\n\n" + text
+            # 没写反思人设 → 回落下注人设（保持旧行为）
         if self._persona_path.exists():
             text = self._persona_path.read_text(encoding="utf-8").strip()
             if text:
-                return "## 🎯 个人偏好\n\n" + text
+                return text if not with_header else "## 🎯 个人偏好\n\n" + text
         return ""
 
     @classmethod
@@ -423,12 +451,72 @@ class Role:
     # 统计
     # ═══════════════════════════════════════════
 
+    @staticmethod
+    def _order_stake(o: dict) -> float:
+        """一张票的真实投入（元）：串关票 = total_stake（= 注数 × 单注），否则 bet_size。
+
+        `bet_size` 在北单串关里是「单注金额」（2 元），拿它当整票成本会把 ROI 放大上百倍。
+        """
+        for key in ("total_stake", "stake"):
+            try:
+                v = float(o.get(key) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            if v > 0:
+                return v
+        flex = o.get("flex") if isinstance(o.get("flex"), dict) else {}
+        try:
+            cost = float(flex.get("cost") or 0)
+        except (TypeError, ValueError):
+            cost = 0.0
+        if cost > 0:
+            return cost
+        try:
+            return float(o.get("bet_size") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _combo_counts(o: dict) -> tuple[int, int]:
+        """(总注数, 中奖注数)。
+
+        - 串关票：总注 = combos_count（缺省 C(腿数, 过关数)），中奖注 = C(命中腿数, 过关数)
+          —— 每注是「过关数」条腿的全组合，全中才算中。
+        - 单关单：总注 1，命中 1/0。
+        """
+        legs = o.get("legs") or []
+        flex = o.get("flex") if isinstance(o.get("flex"), dict) else {}
+        try:
+            m = int(flex.get("m") or 0)
+        except (TypeError, ValueError):
+            m = 0
+        n = len(legs)
+        try:
+            total = int(o.get("combos_count") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        if m > 0 and n >= m:
+            if total <= 0:
+                total = math.comb(n, m)
+            hits = sum(1 for l in legs if isinstance(l, dict) and l.get("hit") is True)
+            return total, math.comb(hits, m)
+        return (total or 1), (1 if o.get("hit") is True else 0)
+
     def stats(self) -> dict:
-        """角色订单统计"""
+        """角色订单统计。
+
+        口径（2026-09-16 明确）：
+          - 投入 = 一张票的真金白银：串关票取 slip 级 `total_stake`（注数 × 单注），
+            而不是 per-bet 的 `bet_size`（北单串关只有 2 元/注，直接用会把 ROI 放大上百倍）。
+          - ROI = 回报 / 投入（1.0 = 不赔不赚）；`roi_net` 另给净收益率。
+          - 注级命中 = 中奖注 / 总注：串关票 = C(命中腿数, 过关数) / C(腿数, 过关数)。
+        """
         orders = self.get_orders()
         by_type = defaultdict(lambda: {"total": 0, "hit": 0, "miss": 0, "push": 0, "profit": 0.0, "bet": 0.0})
         total_bet = 0.0
         total_return = 0.0
+        combos = 0
+        combo_wins = 0
         settled = 0
 
         for o in orders:
@@ -436,7 +524,8 @@ class Role:
                 continue
             settled += 1
             bt = o.get("bet_type", "其他")
-            bs = float(o.get("bet_size", 100))
+            bs = self._order_stake(o)
+            n_combo, n_win = self._combo_counts(o)
             by_type[bt]["total"] += 1
             by_type[bt]["bet"] += bs
             by_type[bt]["profit"] += o.get("profit", 0)
@@ -446,6 +535,8 @@ class Role:
             else:               by_type[bt]["push"] += 1
             total_bet += bs
             total_return += o.get("return_amount", 0)
+            combos += n_combo
+            combo_wins += n_win
 
         result = {
             "total_orders": len(orders),
@@ -454,7 +545,12 @@ class Role:
             "total_bet": total_bet,
             "total_return": total_return,
             "pnl": self.pnl(),
-            "roi": round((total_return - total_bet) / total_bet * 100, 1) if total_bet > 0 else 0,
+            # ROI = 回报 / 投入（用户口径）；净收益率另给字段，避免再被当成百分比利润读
+            "roi": round(total_return / total_bet * 100, 1) if total_bet > 0 else 0,
+            "roi_net": round((total_return - total_bet) / total_bet * 100, 1) if total_bet > 0 else 0,
+            "combos": combos,
+            "combo_wins": combo_wins,
+            "combo_hit_rate": round(combo_wins / combos * 100, 2) if combos > 0 else 0,
             "by_type": {},
         }
 

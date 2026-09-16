@@ -139,6 +139,8 @@ window.__ModuleLoader__.load({
 .dsd-td-match{max-width:200px;overflow:hidden;text-overflow:ellipsis}
 .dsd-match-cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsd-reason-line{font-size:10px;color:var(--dsw-alias-label-secondary);white-space:normal;word-break:break-all;max-width:220px;line-height:1.4;margin-top:2px}
+.dsd-crown{font-size:10px;line-height:1.35;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dsd-crown.warn{color:var(--dsw-alias-state-warn-primary)}
 .dsd-parlay-ticket{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--dsw-alias-bg-layer-1)}
 .dsd-parlay-ticket-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .dsd-parlay-title{font-weight:700;font-size:12px}
@@ -561,6 +563,18 @@ window.__ModuleLoader__.load({
         var pick = (o.betType || "") + " " + (o.pickLabel || "");
         var date = (o.matchDay || o.settledAt || o.time || "").slice(5) || "—";
         var title = (o.league || "") + (o.reason ? " | " + o.reason : "");
+        // 皇冠同侧水位：引擎订单记的是 Pinnacle 终盘，实际常下在皇冠，标出来便于比价
+        var crownNode = null;
+        if (o.crownOdds != null) {
+          var crownHcp = o.crownHandicap == null ? null
+            : (o.betType === "大小球" ? Number(o.crownHandicap).toFixed(2)
+              : ((o.crownHandicap >= 0 ? "+" : "") + Number(o.crownHandicap).toFixed(2)));
+          var hcpMismatch = crownHcp != null && o.handicap != null && crownHcp !== hcp;
+          crownNode = h("div", {
+            className: "dsd-crown" + (hcpMismatch ? " warn" : ""),
+            title: "皇冠同侧水位（参考，不参与结算）" + (hcpMismatch ? " · 盘口与 Pinnacle 不同：" + crownHcp : ""),
+          }, "皇 " + o.crownOdds + (hcpMismatch ? " @" + crownHcp + " ⚠" : ""));
+        }
         return h("tr", { key: o.lotaId + "|" + o.betType + "|" + o.pick + "|" + (o.matchDay || o.settledAt || o.time) },
           h("td", { className: "dsd-num" }, date),
           h("td", { className: "dsd-td-match", title: title },
@@ -569,7 +583,7 @@ window.__ModuleLoader__.load({
           h("td", null, pick),
           h("td", { className: "dsd-num dsd-hcp" }, hcp || "—"),
           h("td", { className: "dsd-num" }, o.score || "—"),
-          h("td", { className: "dsd-num" }, o.odds == null ? "—" : "@" + o.odds),
+          h("td", { className: "dsd-num" }, o.odds == null ? "—" : "@" + o.odds, crownNode),
           h("td", { className: "dsd-num dsd-money" }, hide ? "•••" : (fmt(o.betSize) + " · " + posPct(o.betSize, totalFunds))),
           h("td", { className: "dsd-num " + tone }, pnl));
       });
@@ -591,7 +605,7 @@ window.__ModuleLoader__.load({
                 : null),
             f.desc ? h("div", { className: "dsd-factor-desc" }, f.desc) : null,
             h("div", { className: "dsd-factor-meta" },
-              "样本 " + f.total + " · 命中 " + f.hit + " · 净 " + signed(f.profit) + (f.lastSeen ? " · 最近 " + f.lastSeen : "")));
+              "样本 " + f.total + " · 命中 " + f.hit + " · 单注 " + (f.profitPerUnit == null ? "—" : signed(f.profitPerUnit)) + (f.lastSeen ? " · 最近 " + f.lastSeen : "")));
         }));
     }
 
@@ -616,10 +630,41 @@ window.__ModuleLoader__.load({
         h("tbody", null, rows));
     }
 
+    // 串关狗判定（与 lobby.js::lobbyOf 同口径）：**有 parlay.json** 才是串关狗。
+    // ⚠️ 只看 scope 会把「梭哈北单狗 / 跟风北单狗」误判为串关——它们 scope=beidan
+    //    但走通用单关链路。dashboard 下发 isParlayRole 作为权威依据。
+    function isParlayDog(d) {
+      if (!d) return false;
+      if (typeof d.isParlayRole === "boolean") return d.isParlayRole;
+      return d.scope === "beidan";   // 兜底（旧 payload）
+    }
+
     function singleDogActionDefs(dog) {
       var name = dog.name || "";
       var fday = footballDayBj();
       var today = bjDate(Date.now());
+      // 结算/因子解耦（2026-09-13 工单②）：只给**串关狗**加「只结算 / 只产因子」。
+      // 单关狗按钮组保持原样 —— 「改造不得影响单关狗」红线在 UI 上的落地。
+      // 2026-09-16：结算 / 因子生成**彻底分开**（北单串关 + 单狗同一套按钮）。
+      // 「🧾 结算」= 只结算（不烧 LLM）；「🧬 产因子」= 只反思（不动订单与资金）。
+      // ⚠️ 产因子走 func="settle" + opts.stage="reflect"：`reflect` 不在桥的
+      //    BRIDGE_FUNCS 白名单里（旧实现发 func:"reflect" ⇒ 直接报「未知功能」）。
+      var stageActions = [
+        {
+          id: "settle-only",
+          label: "🧾 结算",
+          title: "python 桥直启：只对账订单/资金，不产因子（不烧 LLM）",
+          func: "settle",
+          payload: { dog: name, func: "settle", day: fday, opts: { stage: "settle" } },
+        },
+        {
+          id: "reflect-only",
+          label: "🧬 产因子",
+          title: "python 桥直启：只反思产因子，不动订单与资金（消耗 LLM）",
+          func: "settle",
+          payload: { dog: name, func: "settle", day: fday, opts: { stage: "reflect" } },
+        },
+      ];
       return [
         {
           id: "analyze",
@@ -629,19 +674,13 @@ window.__ModuleLoader__.load({
           payload: { dog: name, func: "analyze", day: fday, opts: (dog.scope === "beidan") ? { live: true, prefetched: false, beidan_only: true } : { live: true, prefetched: false, jingcai_only: true } },
         },
         {
-          id: "settle",
-          label: "🧾 结算",
-          title: "python 桥直启：结算某足球日未结算订单",
+          id: "settle-both",
+          label: "🧾 结算+产因子",
+          title: "python 桥直启：结算 + 反思产因子（旧口径，少用）",
           func: "settle",
-          payload: { dog: name, func: "settle", day: fday, opts: {} },
+          payload: { dog: name, func: "settle", day: fday, opts: { stage: "both" } },
         },
-        {
-          id: "induct",
-          label: "🧬 归纳",
-          title: "python 桥直启：因子归纳/去重（alpha 狗的跨狗逻辑由引擎内部判定）",
-          func: "factor-induction",
-          payload: { dog: name, func: "factor-induction", opts: {} },
-        },
+      ].concat(stageActions).concat([
         {
           id: "review",
           label: "🪦 Review",
@@ -656,7 +695,7 @@ window.__ModuleLoader__.load({
           func: "status",
           payload: { dog: name, func: "status", opts: {} },
         },
-      ];
+      ]);
     }
 
     function DogFlowActions(props) {
@@ -1224,6 +1263,12 @@ window.__ModuleLoader__.load({
               h("div", null,
                 h("div", { className: dog.roi >= 0 ? "dsd-pos" : "dsd-neg" }, pct(dog.roi)),
                 h("div", { className: "dsd-row-metric-label" }, "ROI")),
+              h("div", null,
+                h("div", { className: dog.pnlYesterday >= 0 ? "dsd-pos" : "dsd-neg" }, signed(dog.pnlYesterday)),
+                h("div", { className: "dsd-row-metric-label" }, "昨日")),
+              h("div", null,
+                h("div", { className: dog.pnlLast7d >= 0 ? "dsd-pos" : "dsd-neg" }, signed(dog.pnlLast7d)),
+                h("div", { className: "dsd-row-metric-label" }, "近7天")),
               h("span", { className: "dsd-row-enter" }, "详情 ›"))),
           h("div", { className: "dsd-row-actions" },
             h("span", { className: "dsd-row-actions-title" }, "操作 · 分析直接启动"),
@@ -1250,7 +1295,13 @@ window.__ModuleLoader__.load({
           h("span", { className: "dsd-power-badge" }, "夏普 " + (dog.sharpe == null ? "—" : Number(dog.sharpe).toFixed(2)))),
         h("div", { className: "dsd-stats" },
           Stat("净粮", signed(dog.pnl), dog.pnl >= 0 ? "dsd-pos" : "dsd-neg"),
-          Stat("咬中", dog.hitRate == null ? "—" : (dog.hitRate * 100).toFixed(0) + "%", ""),
+          Stat("昨日", signed(dog.pnlYesterday), dog.pnlYesterday >= 0 ? "dsd-pos" : "dsd-neg"),
+          Stat("近7天", signed(dog.pnlLast7d), dog.pnlLast7d >= 0 ? "dsd-pos" : "dsd-neg"),
+          Stat(dog.hitRateBasis === "combo" ? "咬中(注)" : "咬中",
+            dog.hitRate == null ? "—" : (dog.hitRate * 100).toFixed(dog.hitRateBasis === "combo" ? 2 : 0) + "%", ""),
+          dog.hitRateBasis === "combo"
+            ? Stat("注", dog.comboWins + "/" + dog.comboTotal, "")
+            : null,
           Stat("ROI", dog.roi == null ? "—" : pct(dog.roi), dog.roi >= 0 ? "dsd-pos" : "dsd-neg"),
           Stat("回撤", dog.mdd == null ? "—" : Number(dog.mdd).toFixed(1) + "%", ""),
           Stat("单数", String(dog.totalCount) + "单", ""),
@@ -1275,7 +1326,8 @@ window.__ModuleLoader__.load({
             h("div", { className: "dsd-orders dsd-orders-compact" }, renderOrders(pending.concat(settled), hide, dog.fullCapital))),
           h("div", { className: "dsd-panel" },
             h("details", { className: "dsd-factor-details", open: true },
-              h("summary", { className: "dsd-factor-toggle" }, "🧬 正在应用因子 · " + ((dog.factors || []).length) + " 个"),
+              h("summary", { className: "dsd-factor-toggle" },
+                "🧬 正在应用因子 · " + ((dog.factors || []).length) + " 个（active）"),
               renderFactorList(dog.factors || [])))));
     }
 
@@ -1626,6 +1678,11 @@ window.__ModuleLoader__.load({
       var selected = selState[0], setSelected = selState[1];
       var createState = React.useState(false);
       var showCreate = createState[0], setShowCreate = createState[1];
+      // 斗狗场分区（2026-09-13）：单关场 / 串关场。
+      // 判定用 registry 的 scope：beidan = 北单串关狗（组合票型：N串1 / N过M / 包腿）；
+      // 其余（jc / all）走单关链路 → 单关场。默认落在串关场（当前主力）。
+      var lobbyState = React.useState("parlay");
+      var lobby = lobbyState[0], setLobby = lobbyState[1];
       var prepMsgState = React.useState("");
       var prepMsg = prepMsgState[0], setPrepMsg = prepMsgState[1];
       var prepBdMsgState = React.useState("");
@@ -1636,12 +1693,17 @@ window.__ModuleLoader__.load({
       var inductAllMsg = inductAllMsgState[0], setInductAllMsg = inductAllMsgState[1];
 
       // 顶部「准备」：某足球日数据预取（全局，不属单狗）→ POST /ds-run func=prepare
+      // force_refresh：跳过 compact-fet 的 TTL 缓存，强制拉最新竞彩赔率
       function prepToday() {
         setPrepMsg("");
         fetch("/ds-run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ func: "prepare", day: footballDayBj(), opts: { mode: "live", jingcai_only: true } }),
+          body: JSON.stringify({
+            func: "prepare",
+            day: footballDayBj(),
+            opts: { mode: "live", jingcai_only: true, force_refresh: true },
+          }),
         })
           .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
           .then(function (res) {
@@ -1687,21 +1749,6 @@ window.__ModuleLoader__.load({
         });
       }
 
-      // 顶部「归纳全部」：batch 模式——非 alpha 并行 → 结束后 alpha barrier 串行（POST /ds-induct-all）
-      function inductAll() {
-        setInductAllMsg("");
-        fetch("/ds-induct-all", { method: "POST" })
-          .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
-          .then(function (res) {
-            if (res.body && res.body.ok) {
-              setInductAllMsg("✅ " + (res.body.message || "归纳全部已启动（📡 看进度）"));
-            } else {
-              setInductAllMsg("⚠️ " + ((res.body && res.body.error) || ("启动失败 HTTP " + res.status)));
-            }
-          })
-          .catch(function (e) { setInductAllMsg("⚠️ " + String((e && e.message) || e)); });
-      }
-
       function load(silent) {
         if (!silent) setLoading(true);
         fetch("/ds-dashboard")
@@ -1740,7 +1787,18 @@ window.__ModuleLoader__.load({
 
       var gen = data && data.generatedAt ? String(data.generatedAt).replace("T", " ").replace("Z", "").slice(0, 19) : "";
       var radars = data ? buildRadars(data.dogs) : {};
-      var sorted = data ? data.dogs.slice().sort(function (a, b) {
+      // 分区判定（与 lobby.js 同口径）：**是否有 parlay.json** 才是串关狗的标志。
+      // ⚠️ 只看 scope 会把「梭哈北单狗 / 跟风北单狗」错分进来——它们 scope=beidan
+      //    但走通用单关链路（无 parlay.json）。dashboard 下发 isParlayRole 作为权威依据。
+      function lobbyOf(d) {
+        return isParlayDog(d) ? "parlay" : "single";
+      }
+      var allDogs = data ? data.dogs : [];
+      var lobbyDogs = allDogs.filter(function (d) { return lobbyOf(d) === lobby; });
+      var lobbyCounts = allDogs.reduce(function (acc, d) {
+        var k = lobbyOf(d); acc[k] = (acc[k] || 0) + 1; return acc;
+      }, { single: 0, parlay: 0 });
+      var sorted = data ? lobbyDogs.slice().sort(function (a, b) {
         var sa = a.sharpe == null ? -Infinity : Number(a.sharpe);
         var sb = b.sharpe == null ? -Infinity : Number(b.sharpe);
         return sb - sa;
@@ -1760,20 +1818,29 @@ window.__ModuleLoader__.load({
       return h("div", { className: "dsd-root" },
         h("div", { className: "dsd-header" },
           h("div", null,
-            h("div", { className: "dsd-h1" }, "🐕 斗狗场"),
+            h("div", { className: "dsd-h1" }, lobby === "parlay" ? "🐕 斗狗场 · 串关" : "🐕 斗狗场 · 单关"),
+            h("div", { className: "dsd-lobby-tabs" },
+              h("button", {
+                className: "dsd-btn" + (lobby === "single" ? " on" : ""),
+                onClick: function () { setLobby("single"); setSelected(null); },
+                title: "单关狗的场子（scope=jc/all；分析/结算走单关链路）",
+              }, "单关场 " + lobbyCounts.single),
+              h("button", {
+                className: "dsd-btn" + (lobby === "parlay" ? " on" : ""),
+                onClick: function () { setLobby("parlay"); setSelected(null); },
+                title: "串关狗的场子（scope=beidan；组合票型 N串1 / N过M / 包腿）",
+              }, "串关场 " + lobbyCounts.parlay)),
             gen ? h("div", { className: "dsd-h2" }, "更新于 " + gen) : null),
           h("div", { className: "dsd-actions" },
             h("button", { className: "dsd-btn", onClick: load, disabled: loading }, loading ? "加载中…" : "🔄 刷新"),
             h("button", { className: "dsd-btn", onClick: prepToday, title: "预取当天足球日竞彩比赛 + 赔率/特征段（全局数据准备）" }, "📦 准备"),
             h("button", { className: "dsd-btn", onClick: prepBeidanToday, title: "预取当天足球日北单比赛 + 让球/开奖SP + 特征段（北单范围数据准备）" }, "📦 北单准备"),
             h("button", { className: "dsd-btn", onClick: settleAll, title: "对所有 live 狗并行结算当天足球日" }, "🧾 结算全部"),
-            h("button", { className: "dsd-btn", onClick: inductAll, title: "归纳全部：非 alpha 并行 → alpha barrier 串行" }, "🧬 归纳全部"),
             h("button", { className: "dsd-btn", onClick: function () { setSelected(null); setShowCreate(!showCreate); }, disabled: !!selDog }, showCreate ? "✖ 关闭创建" : "➕ 创建狗"),
             h("button", { className: "dsd-btn" + (hideMoney ? " on" : ""), onClick: function () { setHideMoney(!hideMoney); } }, hideMoney ? "👁 显示狗粮" : "🙈 隐藏狗粮"))),
         prepMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, prepMsg) : null,
         prepBdMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, prepBdMsg) : null,
         settleAllMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, settleAllMsg) : null,
-        inductAllMsg ? h("div", { className: "dsd-flow-hint", style: { marginBottom: 8 } }, inductAllMsg) : null,
         error ? h("div", { className: "dsd-error" }, "⚠️ " + error) : null,
         loading && !data ? h("div", { className: "dsd-empty" }, "加载中…") : null,
         data && !error ? (
@@ -1809,7 +1876,10 @@ window.__ModuleLoader__.load({
                     if (first && sorted.some(function (d) { return d.name === first; })) setSelected(first);
                   },
                 }),
-                Podium({ rows: rows, hide: hideMoney }),
+                Podium({ rows: rows, hide: hideMoney, title: lobby === 'parlay' ? '串关场 · 狗粮榜' : '单关场 · 狗粮榜' }),
+                sorted.length === 0 ? h("div", { className: "dsd-empty" },
+                  lobby === "parlay" ? "串关场暂无狗（scope=beidan 的狗会出现在这里）"
+                                     : "单关场暂无狗") : null,
                 h("div", { className: "dsd-dog-list" },
                   sorted.map(function (dog) {
                     return DogRow({
