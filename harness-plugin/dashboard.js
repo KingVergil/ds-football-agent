@@ -380,13 +380,15 @@ function buildDashboard(readRole, readFactors, matchMap, avatarDirs, activeDogs,
     const limits = roles && typeof roles.limitsFor === "function" ? roles.limitsFor(name) : null;
     const settled = orders.filter((o) => o.settled_at);
     const pending = orders.filter((o) => !o.settled_at);
-    const locked = pending.reduce((s, o) => s + orderStake(o), 0);
-    const pnl = settled.reduce((s, o) => s + Number(o.profit || 0), 0);
     // 投入/回报：串关票的真金白银是 slip 级 total_stake = 注数 × 单注（北单 2 元/注）。
     // per-bet 的 bet_size 只是「单注金额」，拿它当整票投入会把 ROI 放大上百倍
     // （2026-09-16 实盘：252 元成本的票被当成 2 元投入，ROI 从 +163.6% 变成 +20614%）。
+    // ⚠️ 这两个 helper 必须在**任何使用之前**定义（2026-09-17：原先 locked 先用了
+    //    orderStake，const 的 TDZ 直接抛 "Cannot access 'orderStake' before initialization"）。
     const orderStake = (o) => Number((o && (o.total_stake || (o.flex && o.flex.cost))) || (o && o.bet_size) || 0);
     const orderReturn = (o) => Number((o && o.return_amount) || 0);
+    const locked = pending.reduce((s, o) => s + orderStake(o), 0);
+    const pnl = settled.reduce((s, o) => s + Number(o.profit || 0), 0);
     // 命中率口径：
     //   - 串关票 → 注级：中奖注 / 总注（9过4 = C(9,4)=126 注；命中 5 腿 → C(5,4)=5 注 → 5/126）
     //   - 单关单 → 每单 1 注，票级即注级
